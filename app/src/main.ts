@@ -399,7 +399,7 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
     return draw()
   }
   if (is(OsEventTypeList.DOUBLE_CLICK_EVENT)) {
-    if (sc.layout === 'review') { review = ''; return draw() } // back to the alert
+    if (sc.layout === 'review') { review = ''; cursor = { key: '', at: 0 }; return draw() } // back to the alert, on Dismiss like every rebuilt page
     return act(sc, 0) // Dismiss, or OK on a result; nothing while it waits for Bybit
   }
   if (is(OsEventTypeList.CLICK_EVENT)) return act(sc, sc.at)
