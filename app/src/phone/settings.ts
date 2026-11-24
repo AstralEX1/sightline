@@ -1,0 +1,142 @@
+/**
+ * Settings (spec §5.12, arch §15): Bybit (read-only), Even G2, Notifications with Telegram, Timing, Connection, and
+ * the lens preview. The Connection and preview elements carry the ids main.ts writes to, so they are built once and kept.
+ */
+import * as api from '../api.ts'
+import type { SettingsPage } from '../api.ts'
+import type { Settings } from '../../../server/src/types.ts'
+import { parseDec } from './sentence.ts'
+import { h, rowSwitch, sheet, subNav, toast } from './ui.ts'
+
+let page: SettingsPage | null = null
+let dynamic: HTMLElement
+/** main.ts writes the account line and the glasses state here; moved, never rebuilt, so they always exist once. */
+const sourceEl = h('span', { id: 'source', class: 'row__value' }, 'Connecting…')
+const glassesEl = h('span', { id: 'glasses', class: 'row__value' }, 'Looking for glasses…')
+
+const row = (label: string, value: Node | string, id?: string) =>
+  h('div', { class: 'row' }, h('span', { id }, label), typeof value === 'string' ? h('span', { class: 'row__value' }, value) : value)
+const status = (on: boolean, text: string) => h('span', { class: 'row__value' }, h('span', { class: `dot${on ? ' is-on' : ''}`, 'aria-hidden': 'true' }), text)
+
+/** The fixed part: built once by startPhonePage, with the elements main.ts keeps writing to. */
+export function buildSettings(el: HTMLElement) {
+  dynamic = h('div', {}, h('div', { class: 'group' }, row('Account', sourceEl), row('Glasses', glassesEl)))
+  el.append(
+    subNav('Settings'),
+    dynamic,
+    h('h2', { class: 'group-label' }, 'Connection'),
+    h('div', { class: 'group' },
+      h('details', { id: 'server-box', class: 'server-box' },
+        h('summary', { class: 'row row--summary' }, h('span', {}, 'Server'), h('span', { id: 'server-state', class: 'row__value' }, 'Connecting…')),
+        h('label', { class: 'row row--field' }, h('span', {}, 'Address'), h('input', { id: 'server', class: 'row__input', placeholder: 'Same as this page', autocomplete: 'off', 'aria-label': 'Server address' })),
+        h('label', { class: 'row row--field' }, h('span', {}, 'Token'), h('input', { id: 'token', class: 'row__input', type: 'password', placeholder: 'APP_TOKEN', autocomplete: 'off', 'aria-label': 'Server token' })),
+        h('div', { class: 'row' }, h('button', { id: 'connect', class: 'row--btn is-accent', type: 'button' }, 'Connect')))),
+    h('h2', { class: 'group-label' }, 'On your glasses'),
+    h('div', { class: 'lens' }, h('span', { id: 'preview-icon', class: 'lens__icon' }), h('pre', { id: 'preview', class: 'lens__text' })),
+    h('p', { class: 'footnote' }, 'Every trade is confirmed on Even G2. The phone never confirms one.'))
+}
+
+async function save(next: Settings) {
+  // the server wants every field, so the whole object goes, never a patch
+  const s = await api.putAccountSettings(next)
+  if (page) page.settings = s
+}
+
+/** One of the 10–300 s timings, in the numeric sheet. */
+function timing(label: string, get: (s: Settings) => number, set: (s: Settings, v: number) => void) {
+  const s = page!.settings
+  const btn = h('button', {
+    class: 'row row--btn', type: 'button', 'aria-label': `${label}, ${get(s)} seconds, edit`,
+    onclick: () => {
+      const input = h('input', { class: 'numeric__input', type: 'text', inputmode: 'numeric', value: String(get(page!.settings)), 'aria-label': `${label}, seconds` })
+      const note = h('p', { class: 'footnote' }, 'From 10 to 300 seconds')
+      const ok = () => { const v = parseDec(input.value); return v !== null && Number.isInteger(Number(v)) && Number(v) >= 10 && Number(v) <= 300 ? Number(v) : null }
+      const sh = sheet({
+        title: label, back: () => btn.focus(), focus: input,
+        body: [h('label', { class: 'numeric' }, h('span', { class: 'numeric__word' }, 'Every'), h('span', { class: 'numeric__value' }, input), h('span', { class: 'numeric__unit' }, 's')), note],
+        onDone: () => {
+          const v = ok()
+          if (v === null) return false
+          const next = structuredClone(page!.settings)
+          set(next, v)
+          save(next).then(() => renderSettings(), e => toast((e as Error).message))
+        },
+      })
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); sh.el.querySelector<HTMLButtonElement>('.link-btn--strong')?.click() } })
+      input.addEventListener('input', () => { const v = ok(); sh.setDone(v !== null); note.classList.toggle('is-error', v === null && input.value !== ''); note.textContent = v === null && input.value !== '' ? 'Enter a number from 10 to 300' : 'From 10 to 300 seconds' })
+      input.select()
+    },
+  }, h('span', {}, label), h('span', { class: 'row__value num' }, `${get(s)} s`))
+  return btn
+}
+
+function notifySwitch(label: string, id: string, key: keyof Settings['notifications']) {
+  return h('div', { class: 'row row--switch' }, h('span', { id }, label), rowSwitch(page!.settings.notifications[key], id, (on, el) => {
+    el.setAttribute('aria-checked', String(on))
+    const next = structuredClone(page!.settings)
+    next.notifications[key] = on
+    save(next).catch(e => { el.setAttribute('aria-checked', String(!on)); toast((e as Error).message) }) // springs back
+  }))
+}
+
+function telegramRow() {
+  const t = page!.telegram
+  if (!t.configured) return row('Telegram', 'Not set up on the server')
+  if (!t.linked) {
+    return h('div', { class: 'row' }, h('span', {}, 'Telegram'), h('button', {
+      class: 'row__action', type: 'button', 'aria-label': 'Connect Telegram',
+      onclick: async () => {
+        try {
+          const { url } = await api.linkTelegram()
+          window.open(url, '_blank', 'noopener')
+          toast('Send /start in Telegram, then come back')
+        } catch (e) { toast((e as Error).message) }
+      },
+    }, 'Connect'))
+  }
+  return h('div', { class: 'row' }, h('span', {}, t.name ? `Connected · @${t.name}` : 'Connected'), h('button', {
+    class: 'row__action is-danger', type: 'button', 'aria-label': 'Disconnect Telegram',
+    onclick: async () => {
+      try { await api.unlinkTelegram(); await renderSettings() } catch (e) { toast((e as Error).message) }
+    },
+  }, 'Disconnect'))
+}
+
+/** The changing part, refetched on every visit. */
+export async function renderSettings() {
+  try {
+    page = await api.getAccountSettings()
+  } catch (e) {
+    dynamic.replaceChildren(h('h2', { class: 'group-label' }, 'Bybit'),
+      h('div', { class: 'group' }, row('Status', status(false, 'Server offline')), row('Account', sourceEl), row('Glasses', glassesEl)),
+      h('p', { class: 'footnote' }, (e as Error).message))
+    return
+  }
+  const b = page.bybit
+  const up = b.status === 'Connected'
+  const key = b.apiKey
+  const access = key ? (key.readOnly || !key.trade ? 'Read only' : 'Read + Trade') : b.apiKeyError ? 'Unknown' : '—'
+  dynamic.replaceChildren(
+    h('h2', { class: 'group-label' }, 'Bybit'),
+    h('div', { class: 'group' },
+      row('Status', status(up, up ? 'Connected' : 'Offline')),
+      up ? null : h('p', { class: 'row row--note' }, b.status),
+      row('Environment', b.source.includes('testnet') ? 'Testnet' : 'Demo'),
+      row('Account', sourceEl),
+      row('API access', access),
+      row('Withdrawals', key?.withdraw ? 'On' : 'Off'),
+      row('Live trading', 'Off')),
+    h('h2', { class: 'group-label' }, 'Even G2'),
+    h('div', { class: 'group' }, row('Glasses', glassesEl)),
+    h('h2', { class: 'group-label' }, 'Notifications'),
+    h('div', { class: 'group' },
+      notifySwitch('Show alerts on glasses', 'set-glasses', 'glasses'),
+      notifySwitch('In-app notifications', 'set-app', 'app'),
+      telegramRow()),
+    h('p', { class: 'footnote' }, 'Alerts reach Telegram when the glasses are off. Telegram cannot confirm a trade.'),
+    h('h2', { class: 'group-label' }, 'Timing'),
+    h('div', { class: 'group' },
+      timing('Repeat cooldown', s => s.cooldownSec, (s, v) => { s.cooldownSec = v }),
+      timing('Trade proposals expire', s => s.expiry.marketSec, (s, v) => { s.expiry.marketSec = v }),
+      timing('Other proposals expire', s => s.expiry.protectionSec, (s, v) => { s.expiry.protectionSec = v })))
+}

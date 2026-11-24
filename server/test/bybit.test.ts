@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { assertTestnet, createBybit, sign } from '../src/bybit.ts'
+import { assertTestnet, createBybit, sign, toStep } from '../src/bybit.ts'
+import type { OrderRequest } from '../src/types.ts'
 
 const TS = 1_700_000_000_000
 
@@ -28,8 +29,10 @@ const client = (routes: Record<string, unknown>) => {
 }
 
 const ok = (result: unknown) => ({ retCode: 0, retMsg: 'OK', result })
+const bodyOf = (calls: Call[], path: string) => JSON.parse(String(calls.find(c => c.url.pathname === path)!.init.body))
 
-const instruments = ok({ list: [{ symbol: 'BTCUSDT', priceFilter: { tickSize: '0.10' }, lotSizeFilter: { qtyStep: '0.001', minOrderQty: '0.001' } }] })
+const instruments = ok({ list: [{ symbol: 'BTCUSDT', priceFilter: { tickSize: '0.10' }, lotSizeFilter: { qtyStep: '0.001', minOrderQty: '0.001', maxMktOrderQty: '119', minNotionalValue: '5' } }] })
+const order: OrderRequest = { symbol: 'BTCUSDT', side: 'Sell', qty: '0.025', positionIdx: 0, reduceOnly: true, orderLinkId: 'p1-e1' }
 
 test('signs GET with the query string', async () => {
   const { ex, calls } = client({ '/v5/position/list': ok({ list: [] }) })
@@ -53,14 +56,20 @@ test('signs POST with the JSON body', async () => {
 test('parses positions and skips empty ones', async () => {
   const { ex } = client({
     '/v5/position/list': ok({ list: [
-      { symbol: 'BTCUSDT', side: 'Buy', size: '0.05', avgPrice: '62000', markPrice: '61000', liqPrice: '59500', unrealisedPnl: '-50', stopLoss: '', tradeMode: 1, positionIdx: 0, createdTime: '1600000000000', updatedTime: '1699999000000' },
-      { symbol: 'ETHUSDT', side: '', size: '0', avgPrice: '0', markPrice: '3000', liqPrice: '', unrealisedPnl: '0', stopLoss: '0', tradeMode: 0, positionIdx: 0, createdTime: '1600000000000', updatedTime: '1699999000000' },
+      { symbol: 'BTCUSDT', side: 'Buy', size: '0.05', avgPrice: '62000', markPrice: '61000', liqPrice: '59500', unrealisedPnl: '-50', stopLoss: '', takeProfit: '65000', positionIM: '310.5', leverage: '10', tradeMode: 1, positionIdx: 0, createdTime: '1600000000000', updatedTime: '1699999000000' },
+      { symbol: 'ETHUSDT', side: '', size: '0', avgPrice: '0', markPrice: '3000', liqPrice: '', unrealisedPnl: '0', stopLoss: '0', takeProfit: '', positionIM: '', leverage: '10', tradeMode: 0, positionIdx: 0, createdTime: '1600000000000', updatedTime: '1699999000000' },
     ] }),
   })
   assert.deepEqual(await ex.positions(), [{
     symbol: 'BTCUSDT', side: 'Buy', size: 0.05, entryPrice: 62000, markPrice: 61000, liqPrice: 59500,
-    unrealisedPnl: -50, stopLoss: 0, isolated: true, positionIdx: 0, openedAt: 1699999000000,
+    unrealisedPnl: -50, stopLoss: 0, takeProfit: 65000, positionIM: 310.5, leverage: 10, isolated: true, positionIdx: 0, openedAt: 1699999000000,
   }])
+})
+
+test('position fields Bybit leaves empty read as 0', async () => {
+  const { ex } = client({ '/v5/position/list': ok({ list: [{ symbol: 'BTCUSDT', side: 'Buy', size: '0.05', avgPrice: '62000', markPrice: '61000', takeProfit: '', positionIM: '', leverage: '', positionIdx: 0 }] }) })
+  const [p] = await ex.positions()
+  assert.deepEqual([p.takeProfit, p.positionIM, p.leverage], [0, 0, 0])
 })
 
 test('throws on a non-zero retCode', async () => {
@@ -73,27 +82,52 @@ test('a Bybit server error is not a clear rejection: the write may have gone thr
   await assert.rejects(ex.positions(), { message: 'Bybit 10016: Internal server error', name: 'Error' })
 })
 
-test('market order rounds qty down to the step', async () => {
-  const { ex, calls } = client({
-    '/v5/market/instruments-info': instruments,
-    '/v5/market/tickers': ok({ list: [{ symbol: 'BTCUSDT', lastPrice: '61000' }] }),
+test('toStep rounds to the step without float noise', () => {
+  assert.equal(toStep(200 / 61000, '0.001', Math.floor), '0.003')
+  assert.equal(toStep(0.3 / 1, '0.1', Math.floor), '0.3') // 0.3 / 0.1 = 2.9999999999999996 in floats
+  assert.equal(toStep(60760.04, '0.10', Math.round), '60760')
+  assert.equal(toStep(0.01234567, '0.0000001', Math.round), '0.0123457')
+  assert.equal(toStep(1234, '100', Math.floor), '1200')
+})
+
+test('placeOrder sends the authorized qty as given, with reduceOnly, positionIdx and orderLinkId', async () => {
+  const { ex, calls } = client({ '/v5/order/create': ok({ orderId: 'o-1', orderLinkId: 'p1-e1' }) })
+  assert.deepEqual(await ex.placeOrder(order), { orderId: 'o-1' })
+  assert.deepEqual(bodyOf(calls, '/v5/order/create'), {
+    category: 'linear', symbol: 'BTCUSDT', side: 'Sell', orderType: 'Market', qty: '0.025', positionIdx: 0, reduceOnly: true, orderLinkId: 'p1-e1',
   })
-  await ex.marketOrder('BTCUSDT', 'Buy', 200)
-  const post = calls.find(c => c.url.pathname === '/v5/order/create')!
-  const { orderLinkId, ...rest } = JSON.parse(String(post.init.body))
-  assert.match(orderLinkId, /^[0-9a-f-]{36}$/) // Bybit allows up to 36 characters
-  assert.deepEqual(rest, { category: 'linear', symbol: 'BTCUSDT', side: 'Buy', orderType: 'Market', qty: '0.003' })
+  assert.equal(calls.length, 1)
+})
+
+test('placeOrder attaches stop and take profit rounded to the tick, never closeOnTrigger', async () => {
+  const { ex, calls } = client({ '/v5/market/instruments-info': instruments, '/v5/order/create': ok({ orderId: 'o-2' }) })
+  await ex.placeOrder({ ...order, side: 'Buy', reduceOnly: false, positionIdx: 1, stopLoss: 59999.96, takeProfit: 65000.04 })
+  const body = bodyOf(calls, '/v5/order/create')
+  assert.deepEqual(body, {
+    category: 'linear', symbol: 'BTCUSDT', side: 'Buy', orderType: 'Market', qty: '0.025', positionIdx: 1, reduceOnly: false, orderLinkId: 'p1-e1',
+    stopLoss: '60000', takeProfit: '65000',
+  })
+  assert.equal('closeOnTrigger' in body, false)
+})
+
+test('placeOrder refuses a qty that is not above 0 before sending', async () => {
+  const { ex, calls } = client({})
+  for (const qty of ['0', '-0.01', '', 'abc']) {
+    await assert.rejects(ex.placeOrder({ ...order, qty }), { name: 'ExchangeRejected' })
+  }
+  assert.equal(calls.length, 0)
 })
 
 const limited = { retCode: 10006, retMsg: 'Too many visits!', result: {} }
-const ticker = ok({ list: [{ symbol: 'BTCUSDT', lastPrice: '61000' }] })
+const ticker = ok({ list: [{ symbol: 'BTCUSDT', lastPrice: '61000', markPrice: '61010.5', indexPrice: '61005' }] })
 
 test('a rate-limited order is resent once with the same body, so the same orderLinkId', async () => {
-  const { ex, calls, waits } = client({ '/v5/market/instruments-info': instruments, '/v5/market/tickers': ticker, '/v5/order/create': [limited, ok({})] })
-  await ex.marketOrder('BTCUSDT', 'Buy', 200)
+  const { ex, calls, waits } = client({ '/v5/order/create': [limited, ok({ orderId: 'o-3' })] })
+  assert.deepEqual(await ex.placeOrder(order), { orderId: 'o-3' })
   const posts = calls.filter(c => c.url.pathname === '/v5/order/create')
   assert.equal(posts.length, 2)
   assert.equal(posts[1].init.body, posts[0].init.body)
+  assert.equal(JSON.parse(String(posts[1].init.body)).orderLinkId, 'p1-e1')
   assert.deepEqual(waits, [250])
 })
 
@@ -106,34 +140,77 @@ test('still rate-limited after two resends: a clear no, safe to offer again', as
 
 test('HTTP 429 and 403 are resent; other HTTP errors are not, their result is unknown', async () => {
   const resent = client({ '/v5/market/tickers': [new Response('', { status: 429 }), new Response('', { status: 403 }), ticker] })
-  assert.equal(await resent.ex.lastPrice('BTCUSDT'), 61000)
+  assert.equal((await resent.ex.ticker('BTCUSDT')).last, 61000)
   assert.equal(resent.calls.length, 3)
 
   const gaveUp = client({ '/v5/market/tickers': [403, 403, 403].map(status => new Response('', { status })) })
-  await assert.rejects(gaveUp.ex.lastPrice('BTCUSDT'), { message: 'Bybit HTTP 403', name: 'ExchangeRejected' })
+  await assert.rejects(gaveUp.ex.ticker('BTCUSDT'), { message: 'Bybit HTTP 403', name: 'ExchangeRejected' })
 
   const unknown = client({ '/v5/market/tickers': [new Response('', { status: 502 }), ticker] })
-  await assert.rejects(unknown.ex.lastPrice('BTCUSDT'), { message: 'Bybit HTTP 502', name: 'Error' })
+  await assert.rejects(unknown.ex.ticker('BTCUSDT'), { message: 'Bybit HTTP 502', name: 'Error' })
   assert.equal(unknown.calls.length, 1)
 })
 
-test('market order qty survives float noise', async () => {
-  const { ex, calls } = client({
-    '/v5/market/instruments-info': ok({ list: [{ symbol: 'XUSDT', priceFilter: { tickSize: '0.01' }, lotSizeFilter: { qtyStep: '0.1', minOrderQty: '0.1' } }] }),
-    '/v5/market/tickers': ok({ list: [{ symbol: 'XUSDT', lastPrice: '1' }] }),
-  })
-  await ex.marketOrder('XUSDT', 'Buy', 0.3) // 0.3 / 1 / 0.1 = 2.9999999999999996 in floats
-  const post = calls.find(c => c.url.pathname === '/v5/order/create')!
-  assert.equal(JSON.parse(String(post.init.body)).qty, '0.3')
+test('ticker: last, mark and index; an unknown symbol is a rejection', async () => {
+  const { ex, calls } = client({ '/v5/market/tickers': [ticker, ok({ list: [] })] })
+  assert.deepEqual(await ex.ticker('BTCUSDT'), { last: 61000, mark: 61010.5, index: 61005 })
+  assert.equal(calls[0].url.search, '?category=linear&symbol=BTCUSDT')
+  await assert.rejects(ex.ticker('NOPEUSDT'), { message: 'Unknown symbol NOPEUSDT', name: 'ExchangeRejected' })
 })
 
-test('market order below the minimum is refused before sending', async () => {
-  const { ex, calls } = client({
-    '/v5/market/instruments-info': instruments,
-    '/v5/market/tickers': ok({ list: [{ symbol: 'BTCUSDT', lastPrice: '61000' }] }),
-  })
-  await assert.rejects(ex.marketOrder('BTCUSDT', 'Buy', 30), { message: 'Amount too small: min 0.001 BTC is about $61' })
-  assert.equal(calls.some(c => c.url.pathname === '/v5/order/create'), false)
+test('kline asks the path of each price source, 1-minute, and reads start and close', async () => {
+  const rows = ok({ list: [['1700000060000', '61000', '61100', '60900', '61050.5', '12', '700000'], ['1700000000000', '60900', '61000', '60800', '61000', '9', '500000']] })
+  const { ex, calls } = client({ '/v5/market/kline': rows, '/v5/market/mark-price-kline': rows, '/v5/market/index-price-kline': rows })
+  assert.deepEqual(await ex.kline('BTCUSDT', 'LAST', 2), [{ start: 1700000060000, close: 61050.5 }, { start: 1700000000000, close: 61000 }])
+  await ex.kline('BTCUSDT', 'MARK', 5000)
+  await ex.kline('BTCUSDT', 'INDEX', 30)
+  assert.deepEqual(calls.map(c => c.url.pathname), ['/v5/market/kline', '/v5/market/mark-price-kline', '/v5/market/index-price-kline'])
+  assert.equal(calls[0].url.search, '?category=linear&symbol=BTCUSDT&interval=1&limit=2')
+  assert.equal(calls[1].url.searchParams.get('limit'), '1000') // Bybit's maximum
+})
+
+test('openOrders maps plain and conditional orders, a partial stop included', async () => {
+  const { ex, calls } = client({ '/v5/order/realtime': ok({ list: [
+    { orderId: 'a', orderLinkId: '', symbol: 'BTCUSDT', side: 'Buy', orderType: 'Limit', price: '60000', qty: '0.01', leavesQty: '0.01', reduceOnly: false, stopOrderType: '', triggerBy: '', triggerPrice: '', positionIdx: 0, orderStatus: 'New' },
+    { orderId: 'b', orderLinkId: 'x', symbol: 'BTCUSDT', side: 'Sell', orderType: 'Market', price: '0', qty: '0.02', leavesQty: '0.02', reduceOnly: true, stopOrderType: 'PartialStopLoss', triggerBy: 'MarkPrice', triggerPrice: '59000', positionIdx: 1, orderStatus: 'Untriggered' },
+  ] }) })
+  assert.deepEqual(await ex.openOrders(), [
+    { orderId: 'a', orderLinkId: '', symbol: 'BTCUSDT', side: 'Buy', orderType: 'Limit', price: 60000, qty: 0.01, leavesQty: 0.01, reduceOnly: false, stopOrderType: '', triggerBy: '', triggerPrice: 0, positionIdx: 0, status: 'New' },
+    { orderId: 'b', orderLinkId: 'x', symbol: 'BTCUSDT', side: 'Sell', orderType: 'Market', price: 0, qty: 0.02, leavesQty: 0.02, reduceOnly: true, stopOrderType: 'PartialStopLoss', triggerBy: 'MarkPrice', triggerPrice: 59000, positionIdx: 1, status: 'Untriggered' },
+  ])
+  assert.equal(calls[0].url.search, '?category=linear&settleCoin=USDT&limit=50')
+})
+
+test('cancelOrder sends symbol and orderId', async () => {
+  const { ex, calls } = client({})
+  await ex.cancelOrder('BTCUSDT', 'o-9')
+  assert.equal(calls[0].url.pathname, '/v5/order/cancel')
+  assert.deepEqual(JSON.parse(String(calls[0].init.body)), { category: 'linear', symbol: 'BTCUSDT', orderId: 'o-9' })
+})
+
+test('apiKeyInfo reads readOnly and the permissions', async () => {
+  const permissions = { ContractTrade: ['Order', 'Position'], Wallet: [] }
+  const { ex, calls } = client({ '/v5/user/query-api': [ok({ readOnly: 0, permissions }), ok({ readOnly: 1 })] })
+  assert.deepEqual(await ex.apiKeyInfo(), { readOnly: false, permissions })
+  assert.deepEqual(await ex.apiKeyInfo(), { readOnly: true, permissions: {} })
+  assert.equal(calls[0].url.pathname, '/v5/user/query-api')
+})
+
+test('instrument carries the market order max and the minimum notional, 0 when Bybit sends none', async () => {
+  const { ex, calls } = client({ '/v5/market/instruments-info': [instruments, ok({ list: [{ priceFilter: { tickSize: '0.01' }, lotSizeFilter: { qtyStep: '0.1', minOrderQty: '0.1', maxMktOrderQty: '5000' } }] })] })
+  assert.deepEqual(await ex.instrument('BTCUSDT'), { tickSize: '0.10', qtyStep: '0.001', minOrderQty: 0.001, maxMktOrderQty: 119, minNotionalValue: 5 })
+  await ex.instrument('BTCUSDT') // cached
+  assert.equal((await ex.instrument('XUSDT')).minNotionalValue, 0)
+  assert.equal(calls.length, 2)
+})
+
+test('slots keep the empty rows: leverage is set per slot', async () => {
+  const { ex, calls } = client({ '/v5/position/list': ok({ list: [
+    { symbol: 'BTCUSDT', side: 'Buy', size: '0.05', leverage: '10', positionIdx: 1 },
+    { symbol: 'BTCUSDT', side: '', size: '0', leverage: '5', positionIdx: 2 },
+  ] }) })
+  assert.deepEqual(await ex.slots('BTCUSDT'), [{ positionIdx: 1, leverage: 10, size: 0.05 }, { positionIdx: 2, leverage: 5, size: 0 }])
+  assert.equal(calls[0].url.search, '?category=linear&symbol=BTCUSDT')
 })
 
 test('known exchange codes read as a sentence, the Bybit code last', async () => {
@@ -144,21 +221,27 @@ test('known exchange codes read as a sentence, the Bybit code last', async () =>
 test('stop price is rounded to the tick size', async () => {
   const { ex, calls } = client({ '/v5/market/instruments-info': instruments })
   await ex.setStop('BTCUSDT', 0, 60760.04)
-  const post = calls.find(c => c.url.pathname === '/v5/position/trading-stop')!
-  assert.deepEqual(JSON.parse(String(post.init.body)), { category: 'linear', symbol: 'BTCUSDT', stopLoss: '60760', tpslMode: 'Full', positionIdx: 0 })
+  assert.deepEqual(bodyOf(calls, '/v5/position/trading-stop'), { category: 'linear', symbol: 'BTCUSDT', stopLoss: '60760', tpslMode: 'Full', positionIdx: 0 })
 })
 
 test('stop with a 1e-7 tick keeps its digits', async () => {
   const { ex, calls } = client({ '/v5/market/instruments-info': ok({ list: [{ symbol: '1000PEPEUSDT', priceFilter: { tickSize: '0.0000001' }, lotSizeFilter: { qtyStep: '100', minOrderQty: '100' } }] }) })
   await ex.setStop('1000PEPEUSDT', 0, 0.01234567)
-  const post = calls.find(c => c.url.pathname === '/v5/position/trading-stop')!
-  assert.equal(JSON.parse(String(post.init.body)).stopLoss, '0.0123457')
+  assert.equal(bodyOf(calls, '/v5/position/trading-stop').stopLoss, '0.0123457')
 })
 
 test('a stop that rounds to zero is refused before sending', async () => {
   const { ex, calls } = client({ '/v5/market/instruments-info': instruments })
   await assert.rejects(ex.setStop('BTCUSDT', 0, 0.01), { message: 'Bad stop price' })
   assert.equal(calls.some(c => c.url.pathname === '/v5/position/trading-stop'), false)
+})
+
+test('take profit is rounded to the tick and sends no stopLoss, so Bybit keeps the stop', async () => {
+  const { ex, calls } = client({ '/v5/market/instruments-info': instruments })
+  await ex.setTakeProfit('BTCUSDT', 2, 65000.06)
+  assert.deepEqual(bodyOf(calls, '/v5/position/trading-stop'), { category: 'linear', symbol: 'BTCUSDT', takeProfit: '65000.1', tpslMode: 'Full', positionIdx: 2 })
+  await assert.rejects(ex.setTakeProfit('BTCUSDT', 0, 0.01), { message: 'Bad take profit price', name: 'ExchangeRejected' })
+  assert.equal(calls.filter(c => c.url.pathname === '/v5/position/trading-stop').length, 1)
 })
 
 test('isolated comes from the unified account margin mode', async () => {
@@ -170,8 +253,8 @@ test('isolated comes from the unified account margin mode', async () => {
 })
 
 test('requests carry a timeout signal', async () => {
-  const { ex, calls } = client({ '/v5/market/tickers': ok({ list: [{ lastPrice: '1' }] }) })
-  await ex.lastPrice('BTCUSDT')
+  const { ex, calls } = client({ '/v5/market/tickers': ticker })
+  await ex.ticker('BTCUSDT')
   assert.ok(calls[0].init.signal instanceof AbortSignal)
 })
 
@@ -181,9 +264,9 @@ test('sums closed pnl since a time', async () => {
   assert.equal(calls[0].url.searchParams.get('startTime'), '123')
 })
 
-test('maps fills', async () => {
-  const { ex } = client({ '/v5/execution/list': ok({ list: [{ execId: 'e1', symbol: 'BTCUSDT', side: 'Sell', execQty: '0.01', execPrice: '61000.5', execTime: '1700000001000' }] }) })
-  assert.deepEqual(await ex.fillsSince(1), [{ id: 'e1', symbol: 'BTCUSDT', side: 'Sell', qty: 0.01, price: 61000.5, time: 1700000001000 }])
+test('maps fills with their order and what is still open', async () => {
+  const { ex } = client({ '/v5/execution/list': ok({ list: [{ execId: 'e1', orderId: 'o1', orderLinkId: 'p1-e1', symbol: 'BTCUSDT', side: 'Sell', execQty: '0.01', execPrice: '61000.5', leavesQty: '0.015', execTime: '1700000001000' }] }) })
+  assert.deepEqual(await ex.fillsSince(1), [{ id: 'e1', orderId: 'o1', orderLinkId: 'p1-e1', symbol: 'BTCUSDT', side: 'Sell', qty: 0.01, price: 61000.5, leavesQty: 0.015, time: 1700000001000 }])
 })
 
 test('funding payments are not fills, a liquidation is', async () => {
@@ -196,15 +279,6 @@ test('positions ask for the 200 maximum: the default page is 20', async () => {
   const { ex, calls } = client({ '/v5/position/list': ok({ list: [] }) })
   await ex.positions()
   assert.equal(calls[0].url.searchParams.get('limit'), '200')
-})
-
-test('transfer moves USDT from Funding to Unified', async () => {
-  const { ex, calls } = client({})
-  await ex.transferToTrading(100)
-  const { transferId, ...rest } = JSON.parse(String(calls[0].init.body))
-  assert.equal(calls[0].url.pathname, '/v5/asset/transfer/inter-transfer')
-  assert.match(transferId, /^[0-9a-f-]{36}$/)
-  assert.deepEqual(rest, { coin: 'USDT', amount: '100', fromAccountType: 'FUND', toAccountType: 'UNIFIED' })
 })
 
 test('assertTestnet accepts only testnet and demo hosts', () => {

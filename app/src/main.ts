@@ -4,22 +4,19 @@ import {
   CreateStartUpPageContainer,
   RebuildPageContainer,
   TextContainerUpgrade,
-  ListContainerProperty,
   ImageContainerProperty,
   ImageRawDataUpdate,
-  ListItemContainerProperty,
   MenuContainerProperty,
   MenuItemProperty,
   OsEventTypeList,
   AudioInputSource,
   type EvenAppBridge,
 } from '@evenrealities/even_hub_sdk'
-import type { Config, ServerState } from '../../server/src/types.ts'
-import { previewText, screen, ROWS, type Screen } from './view.ts'
-import { alertLine, describeAlert, parseAlerts } from './alerts.ts'
-import { describeShortcut, parseShortcuts, shortcutLine } from './shortcuts.ts'
+import type { ExecutionStatus, Proposal, ServerState } from '../../server/src/types.ts'
+import { previewText, screen, ROWS, type Layout, type Outcome, type Screen } from './view.ts'
 import * as api from './api.ts'
 import { png, svg, type IconName } from './icons.ts'
+import { startPhonePage } from './phone/index.ts'
 import { LIFECYCLE, createDedupe, exitStep, type Exit } from './lifecycle.ts'
 
 const POLL_MS = 1000
@@ -32,13 +29,20 @@ const NOTE_MS = 5000
 // shortcut: a fixed guess, measure how long the lens takes to redraw on real glasses and tune it
 const CARD_SETTLE_MS = 1000
 const PAUSE_MS = 15 * 60_000
-const HINT_MS = 10_000 // the gesture line on the calm screen, after launch and on every return to the app
-const BLINK_MS = 400 // one on/off step of the new-card blink (matic-even H1 used 400 ms)
+const HINT_MS = 10_000 // the gesture line on Main, after launch and on every return to the app
+const BLINK_MS = 400 // one on/off step of the new-alert blink (matic-even H1 used 400 ms)
 const SWIPE_GATE_MS = 700 // one long swipe arrives as several scroll events (matic-even H12)
+// shortcut: the state has no status for a card that left the queue, so one that leaves this close to its expiry counts as expired
+// (server tick 2 s + lens poll 1 s); ask the server for the card's last status if a withdrawn card must say why
+const EXPIRY_SLACK_MS = 3000
+/** Results that no longer change: polling the execution stops. */
+const FINAL: ExecutionStatus[] = ['FILLED', 'APPLIED', 'REJECTED', 'SIMULATED']
+/** Results that went through: the lens goes back to Main on its own after NOTE_MS. */
+const DONE: ExecutionStatus[] = ['FILLED', 'APPLIED']
 
 let state: ServerState | null = null
 let offline = false
-let cardSince = 0
+let pageSince = 0
 let pausedUntil = 0
 let needToken = false
 let pageNo = 0
@@ -52,12 +56,17 @@ const repeated = createDedupe()
 /** Resolves once the settings are read from the bridge, or the bridge turned out to be absent. */
 let settingsLoaded!: () => void
 const settingsReady = Promise.race([new Promise<void>(r => (settingsLoaded = r)), new Promise(r => setTimeout(r, SETTINGS_WAIT_MS))])
-/** Layout on the lens, from pageKey(); '' means unknown, so the next draw rebuilds. */
+/** Page on the lens, from pageKey(); '' means unknown, so the next draw rebuilds. */
 let page = ''
 let shown: Record<string, string> = {}
-/** Boxes the lens draws dim right now, like `shown` for brightness. */
-let shownDim: string[] = []
-let answering = false
+/** Brightness the lens draws each box at right now, like `shown` for text. */
+let shownTone: Record<string, number> = {}
+let shownIcon = ''
+let outcome: Outcome | null = null
+let execId = ''
+let review = ''
+let hide = ''
+let cursor = { key: '', at: 0 }
 let mic: 'off' | 'starting' | 'on' | 'sending' = 'off'
 let audio: Uint8Array[] = []
 let listenTimer: ReturnType<typeof setTimeout> | undefined
@@ -67,66 +76,80 @@ const pausedMin = () => Math.max(0, Math.ceil((pausedUntil - Date.now()) / 60_00
 /** The server has no speech key: the menu loses Speak (a rebuild sets the menu, so it is part of the page key). */
 const noVoice = () => state?.voice === false
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+const CALL_MS = 3000 // a BLE reply can get lost; without a cap one lost reply froze the lens for good
+/** A bridge call that does not answer in time counts as failed, so the next draw can try again. */
+const timed = <T>(call: Promise<T>, ms = CALL_MS) =>
+  Promise.race([call, sleep(ms).then((): never => { throw new Error('No reply from the glasses') })])
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 
 // ── glasses ────────────────────────────────────────────────
 
-type Box = { name: string; x: number; y: number; w: number; h: number }
-// Edge to edge, as in the Even OS guidelines: 16 px side margins, 8 px top and bottom, 27 px a text line (+2 px padding each side).
-const BOXES: Box[] = [
-  { name: 'head', x: 16, y: 8, w: 544, h: 31 },
-  { name: 'c0', x: 16, y: 43, w: 140, h: 139 },
-  { name: 'c1', x: 156, y: 43, w: 140, h: 139 },
-  { name: 'c2', x: 296, y: 43, w: 120, h: 139 },
-  { name: 'c3', x: 416, y: 43, w: 144, h: 139 },
-  { name: 'main', x: 16, y: 43, w: 544, h: 139 },
-  { name: 'foot', x: 16, y: 195, w: 544, h: 85 },
-]
-// A card reads like a notification: a rounded frame holding its icon, title, detail and the time it still waits.
-// The card page reuses the names (so the same IDs) of the boxes it keeps; only their place differs.
-// The frame is declared first, so it sits behind the text it holds.
-const CARD_BOXES: Box[] = [
-  { name: 'frame', x: 8, y: 4, w: 560, h: 98 },
-  { name: 'head', x: 68, y: 8, w: 484, h: 31 },
-  { name: 'main', x: 68, y: 38, w: 484, h: 58 },
-  { name: 'foot', x: 16, y: 195, w: 544, h: 85 },
-]
-const FRAME_ID = 9
-const ICON = { id: 21, name: 'icon', x: 20, y: 35, w: 36, h: 36 }
-// Two 40 px items. The firmware draws the outline on the selected one and moves it on a swipe:
-// one focused element with an outline (Even OS guidelines), and a tap confirms exactly what the lens shows.
-const LIST = { id: 20, name: 'choice', x: 16, y: 108, w: 360, h: 96 }
-// Text brightness, 0 to 4: the main line full, what supports it lower. Warnings never dim.
-const BRIGHT = 4
-const DIM = 2
-const ICON_TIMEOUT_MS = 3000 // an icon is decoration: a slow image transfer must not hold up the card
+/** `capture`: the one box that takes input; it holds one line, so a swipe has nothing to scroll. */
+type Box = { name: string; x: number; y: number; w: number; h: number; capture?: true }
+// docs/glasses-shortcuts.md §4: 8 px grid, 16 px edge inset, 27 px a text line. Padding is 2 px, not the spec's 4:
+// a 32 px box with 4 px padding is shorter than a line, and the simulator draws a scroll bar on it. Widths match view.ts INNER_PX.
+const HINT: Box = { name: 'hint', x: 16, y: 248, w: 544, h: 32 }
+const LAYOUTS: Record<Layout, Box[]> = {
+  // A header-less table, one box per column so rows line up; losses and gains are separate boxes, so a loss can be brighter.
+  main: [
+    { name: 'top', x: 16, y: 16, w: 544, h: 32, capture: true },
+    { name: 'name', x: 16, y: 56, w: 144, h: 144 },
+    { name: 'price', x: 160, y: 56, w: 128, h: 144 },
+    { name: 'loss', x: 288, y: 56, w: 104, h: 144 },
+    { name: 'gain', x: 288, y: 56, w: 104, h: 144 },
+    { name: 'flag', x: 392, y: 56, w: 168, h: 144 },
+    HINT,
+  ],
+  // The frame is the notification; declared first, so it sits behind the text it holds. The choices sit under it.
+  alert: [
+    { name: 'frame', x: 16, y: 16, w: 544, h: 96 },
+    { name: 'who', x: 96, y: 32, w: 384, h: 32 },
+    { name: 'why', x: 96, y: 64, w: 384, h: 32 },
+    { name: 'queue', x: 480, y: 24, w: 72, h: 32 },
+    { name: 'opt1', x: 16, y: 136, w: 544, h: 32, capture: true },
+    { name: 'opt2', x: 16, y: 168, w: 544, h: 32 },
+    HINT,
+  ],
+  review: [
+    { name: 'frame', x: 16, y: 16, w: 544, h: 112 },
+    { name: 'ask', x: 96, y: 24, w: 456, h: 32 },
+    { name: 'terms', x: 96, y: 56, w: 456, h: 64 },
+    { name: 'opt1', x: 16, y: 152, w: 544, h: 32, capture: true },
+    { name: 'opt2', x: 16, y: 184, w: 544, h: 32 },
+    HINT,
+  ],
+}
+const ICON_AT: Partial<Record<Layout, { x: number; y: number }>> = { alert: { x: 32, y: 40 }, review: { x: 32, y: 48 } }
+const ICON = { id: 21, name: 'icon', px: 48 }
+const PAD = 2
+const FRAME_COLOR = 11 // brightness 3 of 4 on the border's 0–15 scale, like the text it holds
 const MENU_PAUSE = 1
 const MENU_SPEAK = 2
 const MENU_PROTECT = 3
 const MENU_LOCK = 4
-const idOf = (name: string) => (name === 'frame' ? FRAME_ID : 2 + BOXES.findIndex(b => b.name === name)) // 1 is the gesture box
-const tone = (sc: Screen, name: string) => (sc.dim.includes(name) ? DIM : BRIGHT)
+const NAMES = Object.values(LAYOUTS).flat().map(b => b.name).filter((n, i, all) => all.indexOf(n) === i)
+const idOf = (name: string) => 1 + NAMES.indexOf(name)
 
 /** While the mic is open, a bar counts down the seconds left; otherwise the latest voice or menu note. */
 function voiceText(): string {
   if (mic === 'on') {
     const left = Math.max(0, Math.ceil((listenEnds - Date.now()) / 1000))
-    return `● Listening  ${'━'.repeat(left)}${'─'.repeat(LISTEN_MS / 1000 - left)}  Tap to send`
+    return `● Listening  ${'━'.repeat(left)}${'─'.repeat(LISTEN_MS / 1000 - left)}  tap to send`
   }
   return Date.now() < voiceNote.until ? voiceNote.text : ''
 }
 
-const current = () => screen(state, { offline, voice: voiceText(), pausedMin: pausedMin(), page: pageNo, needToken, hints: Date.now() < hintsUntil })
-const isCard = (sc: Screen) => sc.items.length > 0
-/** A new key needs a rebuild: list items can't be updated in place, and a rebuild is the only way to set the menu. */
-const pageKey = (sc: Screen) => `${isCard(sc) ? `card:${state?.card?.id}` : 'table'}:${pausedMin() > 0 ? 'paused' : ''}${noVoice() ? ':novoice' : ''}`
+const current = () => screen(state, {
+  offline, voice: voiceText(), pausedMin: pausedMin(), page: pageNo, needToken, hints: Date.now() < hintsUntil, now: Date.now(),
+  outcome: outcome ?? undefined, review, hide, cursor,
+})
+/** A new key needs a rebuild: another layout or card, and a rebuild is the only way to set the menu. */
+const pageKey = (sc: Screen) => `${sc.key}:${pausedMin() > 0 ? 'paused' : ''}${noVoice() ? ':novoice' : ''}`
 
 /** Container name → content. A blank is ' ': an empty string is not a safe update. */
 function boxText(sc: Screen): Record<string, string> {
-  const t: Record<string, string> = { head: sc.head, c0: sc.cols[0], c1: sc.cols[1], c2: sc.cols[2], c3: sc.cols[3], main: sc.main, foot: sc.foot, frame: ' ' }
-  for (const k in t) t[k] ||= ' '
-  return t
+  return Object.fromEntries(LAYOUTS[sc.layout].map(b => [b.name, sc.text[b.name] || ' ']))
 }
 
 /** Tap then long press opens this menu (Even Hub docs, Contextual Menu). Labels stay under 16 characters, verbs first (Even Hub docs). */
@@ -139,56 +162,39 @@ const menu = () => new MenuContainerProperty({
   ],
 })
 
-/** Hard on/off blink of a new card's title: the glasses have no speaker, and this is what catches the eye (matic-even H1). */
-async function blink(head: string) {
+/** Hard on/off blink of a new alert's first line: the glasses have no speaker, and this is what catches the eye (matic-even H1). */
+async function blink(who: string) {
   const set = (textColor: number) =>
-    bridge!.textContainerUpgrade(new TextContainerUpgrade({ containerID: idOf('head'), containerName: 'head', content: head, textColor }))
+    timed(bridge!.textContainerUpgrade(new TextContainerUpgrade({ containerID: idOf('who'), containerName: 'who', content: who, textColor })))
   try {
     for (let i = 0; i < 2; i++) { await set(0); await sleep(BLINK_MS); await set(4); await sleep(BLINK_MS) }
   } catch {
-    await set(4).catch(() => {}) // never leave the title dark
+    await set(4).catch(() => {}) // never leave the line dark
   }
 }
 
 /** The whole page with its text already in it: rebuilding and then updating would show two jumps. */
 function layout(sc: Screen, text: Record<string, string>) {
-  const box = (b: Box) => new TextContainerProperty({
-    xPosition: b.x, yPosition: b.y, width: b.w, height: b.h, paddingLength: 2,
-    ...(b.name === 'frame' ? { borderWidth: 1, borderColor: 4, borderRadius: 8 } : { borderWidth: 0 }),
-    containerID: idOf(b.name), containerName: b.name, content: text[b.name], isEventCapture: 0, textColor: tone(sc, b.name),
-  })
-  if (!isCard(sc)) {
-    return {
-      containerTotalNum: 1 + BOXES.length,
-      textObject: [
-        // Blank, full screen and declared first (so behind): it takes every gesture, and the text never scrolls under a swipe.
-        new TextContainerProperty({
-          xPosition: 0, yPosition: 0, width: 576, height: 288, borderWidth: 0, paddingLength: 0,
-          containerID: 1, containerName: 'evt', content: ' ', isEventCapture: 1,
-        }),
-        ...BOXES.map(box),
-      ],
-      menuObject: menu(),
-    }
-  }
+  const boxes = LAYOUTS[sc.layout]
+  const at = ICON_AT[sc.layout]
   return {
-    containerTotalNum: CARD_BOXES.length + 2,
-    textObject: CARD_BOXES.map(box),
-    imageObject: [new ImageContainerProperty({ xPosition: ICON.x, yPosition: ICON.y, width: ICON.w, height: ICON.h, containerID: ICON.id, containerName: ICON.name })],
-    listObject: [new ListContainerProperty({
-      xPosition: LIST.x, yPosition: LIST.y, width: LIST.w, height: LIST.h, borderWidth: 0, paddingLength: 4,
-      containerID: LIST.id, containerName: LIST.name, isEventCapture: 1,
-      itemContainer: new ListItemContainerProperty({ itemCount: 2, itemWidth: LIST.w - 8, isItemSelectBorderEn: 1, itemName: sc.items }),
-    })],
+    containerTotalNum: boxes.length + (at ? 1 : 0),
+    textObject: boxes.map(b => new TextContainerProperty({
+      xPosition: b.x, yPosition: b.y, width: b.w, height: b.h, paddingLength: PAD,
+      ...(b.name === 'frame' ? { borderWidth: 2, borderColor: FRAME_COLOR, borderRadius: 4 } : { borderWidth: 0 }),
+      containerID: idOf(b.name), containerName: b.name, content: text[b.name], isEventCapture: b.capture ? 1 : 0, textColor: sc.tone[b.name],
+    })),
+    ...(at && { imageObject: [new ImageContainerProperty({ xPosition: at.x, yPosition: at.y, width: ICON.px, height: ICON.px, containerID: ICON.id, containerName: ICON.name })] }),
     menuObject: menu(),
   }
 }
 
-/** Draws the card's icon into its image container. Failing quietly is fine: the card says everything in words. */
+/** Draws the icon into its image container, once: a failed transfer leaves a complete alert, which says everything in words. */
 async function sendIcon(name: IconName) {
+  shownIcon = name
   try {
-    const imageData = await png(name, ICON.w)
-    await Promise.race([bridge!.updateImageRawData(new ImageRawDataUpdate({ containerID: ICON.id, containerName: ICON.name, imageData })), sleep(ICON_TIMEOUT_MS)])
+    const imageData = await png(name, ICON.px)
+    await timed(bridge!.updateImageRawData(new ImageRawDataUpdate({ containerID: ICON.id, containerName: ICON.name, imageData })))
   } catch { /* the placeholder stays empty */ }
 }
 
@@ -210,31 +216,29 @@ async function draw() {
       const key = pageKey(sc)
       if (key !== page) {
         page = '-' // unknown while it is being sent; a failed rebuild is retried on the next poll
-        if (!(await bridge.rebuildPageContainer(new RebuildPageContainer(layout(sc, want))))) continue
+        if (!(await timed(bridge.rebuildPageContainer(new RebuildPageContainer(layout(sc, want)))))) continue
         page = key
         shown = want
-        shownDim = sc.dim
-        if (isCard(sc)) {
-          cardSince = Date.now() // the list just reached the lens, on Skip
-          if (sc.icon) await sendIcon(sc.icon)
-          const id = state?.card?.id ?? ''
-          if (id !== blinked) { blinked = id; await blink(want.head) } // once per card, not on every redraw
-        }
+        shownTone = { ...sc.tone }
+        shownIcon = '' // a rebuild empties image containers
+        pageSince = Date.now() // the page just reached the lens, with `>` on Dismiss
+        if (sc.icon) await sendIcon(sc.icon)
+        if (sc.layout === 'alert' && sc.card && sc.card.id !== blinked) { blinked = sc.card.id; await blink(want.who) } // once per alert
         continue
       }
-      // Blanks first: the table and a message never overlap, even for one update.
-      const dimmed = (d: string[], n: string) => d.includes(n)
-      const changed = (isCard(sc) ? CARD_BOXES : BOXES).map(b => b.name)
-        .filter(n => shown[n] !== want[n] || dimmed(shownDim, n) !== dimmed(sc.dim, n))
+      // Blanks first: a row that moves between the loss and gain boxes never shows twice, even for one update.
+      const changed = LAYOUTS[sc.layout].map(b => b.name)
+        .filter(n => shown[n] !== want[n] || shownTone[n] !== sc.tone[n])
         .sort((a, b) => Number(want[b] === ' ') - Number(want[a] === ' '))
       for (const name of changed) {
-        await bridge.textContainerUpgrade(new TextContainerUpgrade({ containerID: idOf(name), containerName: name, content: want[name], textColor: tone(sc, name) }))
+        await timed(bridge.textContainerUpgrade(new TextContainerUpgrade({ containerID: idOf(name), containerName: name, content: want[name], textColor: sc.tone[name] })))
         shown[name] = want[name]
-        shownDim = dimmed(sc.dim, name) ? [...shownDim.filter(n => n !== name), name] : shownDim.filter(n => n !== name)
+        shownTone[name] = sc.tone[name]
       }
+      if (sc.icon && sc.icon !== shownIcon) await sendIcon(sc.icon) // the picture last, so text never waits on it
     } while (redraw)
   } catch {
-    // a failed BLE call: `shown` and `page` keep what is known, so the next poll sends the rest again
+    // a failed or unanswered BLE call: `shown` and `page` keep what is known, so the next poll sends the rest again
   } finally {
     drawing = false
   }
@@ -245,6 +249,7 @@ async function poll() {
   await settingsReady
   if (polling) return
   polling = true
+  const was = current().card // the alert on the lens before this state
   try {
     state = await api.getState()
     offline = false
@@ -255,6 +260,16 @@ async function poll() {
   } finally {
     polling = false
   }
+  // It left the queue unanswered and not for a newer version of itself: its time ran out.
+  if (was && !outcome && state && state.card?.id !== was.id && state.card?.supersedes !== was.id && was.id !== hide &&
+    was.expiresAt <= state.updatedAt + EXPIRY_SLACK_MS) outcome = { card: was, expired: true }
+  const o = outcome
+  if (o && execId && !FINAL.includes(o.execution?.status as ExecutionStatus)) {
+    try {
+      o.execution = await api.getExecution(execId)
+      if (DONE.includes(o.execution.status)) setTimeout(() => { if (outcome === o) void closeOutcome() }, NOTE_MS) // back to Main in 5 s
+    } catch { /* the next poll asks again */ }
+  }
   const n = state?.positions.length ?? 0
   $('source').textContent = needToken || offline ? 'Not connected'
     : [state?.source, `${n} position${n === 1 ? '' : 's'}`, noVoice() ? 'Voice off' : ''].filter(Boolean).join(' · ')
@@ -263,14 +278,14 @@ async function poll() {
   await draw()
 }
 
-// ── voice: tap on the session screen, speak, tap again (or wait 5 s) ──
+// ── voice: tap on Main, speak, tap again (or wait 5 s) ──
 
 async function startListening() {
   if (!bridge || mic !== 'off') return
   if (noVoice()) { note('Voice is off on the server'); return draw() } // no 5 s of talking into nothing
   mic = 'starting'
   audio = []
-  const ok = await bridge.audioControl(true, AudioInputSource.Glasses)
+  const ok = await timed(bridge.audioControl(true, AudioInputSource.Glasses)).catch(() => false) // a lost reply must not leave the mic 'starting' for good
   mic = ok ? 'on' : 'off'
   if (!ok) note('Microphone unavailable')
   if (ok) {
@@ -284,7 +299,7 @@ async function sendVoice() {
   if (mic !== 'on') return
   mic = 'sending'
   clearTimeout(listenTimer)
-  await bridge?.audioControl(false)
+  if (bridge) await timed(bridge.audioControl(false)).catch(() => {})
   const pcm = new Uint8Array(audio.reduce((n, c) => n + c.length, 0))
   let at = 0
   for (const c of audio) { pcm.set(c, at); at += c.length }
@@ -315,7 +330,7 @@ function eventTypeOf(envelope?: { eventType?: OsEventTypeList }): OsEventTypeLis
 async function onMenu(id?: number) {
   if (id === MENU_SPEAK) return startListening()
   if (id === MENU_PROTECT || id === MENU_LOCK) {
-    pausedUntil = 0 // you asked for these cards: show them
+    pausedUntil = 0 // you asked for these alerts: show them
     note('One moment…', Infinity)
     await draw()
     try {
@@ -336,8 +351,7 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
     return
   }
   if (event.menuItemClickEvent) return onMenu(event.menuItemClickEvent.itemID)
-  const pick = event.listEvent
-  const types = [eventTypeOf(event.sysEvent), eventTypeOf(event.textEvent), eventTypeOf(pick)]
+  const types = [eventTypeOf(event.sysEvent), eventTypeOf(event.textEvent)]
   const is = (t: OsEventTypeList) => types.includes(t)
 
   const life = LIFECYCLE.find(is)
@@ -354,54 +368,86 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
       hintsUntil = Date.now() + HINT_MS
       if (act === 'show') {
         shown = {}
-        page = '-' // rebuild from scratch: a card comes back on Skip with a fresh settle time
+        page = '-' // rebuild from scratch: an alert comes back on Dismiss with a fresh settle time
       }
       return poll() // `resume` only redraws what changed: opening the contextual menu sends ENTER, and a rebuild beneath it closes the menu
     }
   }
-  const card = pausedMin() > 0 || offline || needToken ? null : state?.card // the same rule as screen(): no card on the lens, none to answer
-  if (is(OsEventTypeList.DOUBLE_CLICK_EVENT)) {
-    // With a card pending a double tap says "Not now", so a stray one cannot close the app in the middle of a question.
-    // Exit is for the calm screen: a root-page double tap must open the host's exit dialogue (Even Hub review).
-    if (card) return answerable(card) ? answerCard(card, false) : undefined
-    if (exiting === 'asked') return // the dialogue is already on its way
-    if (mic !== 'off') void bridge?.audioControl(false)
-    exiting = 'asked'
-    setTimeout(() => { if (exiting === 'asked') exiting = 'none' }, EXIT_WAIT_MS)
-    bridge?.shutDownPageContainer(1).then(ok => { if (!ok) exiting = 'none' }, () => { exiting = 'none' })
-    return
-  }
   if (is(OsEventTypeList.CLICK_EVENT) && mic === 'on') return sendVoice()
-  if (!card) {
+  const swipe = is(OsEventTypeList.SCROLL_TOP_EVENT) ? 0 : is(OsEventTypeList.SCROLL_BOTTOM_EVENT) ? 1 : null
+  const sc = current()
+  if (sc.layout === 'main') {
+    if (is(OsEventTypeList.DOUBLE_CLICK_EVENT)) {
+      // Exit is for Main: a root-page double tap must open the host's exit dialogue (Even Hub review).
+      if (exiting === 'asked') return // the dialogue is already on its way
+      if (mic !== 'off') void bridge?.audioControl(false)
+      exiting = 'asked'
+      setTimeout(() => { if (exiting === 'asked') exiting = 'none' }, EXIT_WAIT_MS)
+      bridge?.shutDownPageContainer(1).then(ok => { if (!ok) exiting = 'none' }, () => { exiting = 'none' })
+      return
+    }
     if (is(OsEventTypeList.CLICK_EVENT)) return startListening()
-    if (is(OsEventTypeList.SCROLL_TOP_EVENT) || is(OsEventTypeList.SCROLL_BOTTOM_EVENT)) return turnPage(is(OsEventTypeList.SCROLL_BOTTOM_EVENT) ? 1 : -1)
+    if (swipe !== null) return turnPage(swipe ? 1 : -1)
     return
   }
-  // Only a tap on this card's own list answers it. Swipes only move the firmware's outline.
-  if (!pick || eventTypeOf(pick) !== OsEventTypeList.CLICK_EVENT || !answerable(card)) return
-  const items = current().items
-  // Index 0 arrives as undefined (protobuf), which is Skip. The name check also catches a stale list.
-  const yes = (pick.currentSelectItemIndex ?? 0) === 1 && (pick.currentSelectItemName ?? items[1]) === items[1]
-  return answerCard(card, yes)
+  // Only the page on the lens, once it has settled: a tap meant for the previous alert cannot answer a new one.
+  if (page !== pageKey(sc) || Date.now() - pageSince < CARD_SETTLE_MS) return
+  if (swipe !== null) {
+    if (sc.choices.length < 2 || Date.now() - lastSwipe < SWIPE_GATE_MS) return
+    lastSwipe = Date.now()
+    cursor = { key: sc.key, at: swipe } // up: Dismiss, down: the action
+    return draw()
+  }
+  if (is(OsEventTypeList.DOUBLE_CLICK_EVENT)) {
+    if (sc.layout === 'review') { review = ''; return draw() } // back to the alert
+    return act(sc, 0) // Dismiss, or OK on a result; nothing while it waits for Bybit
+  }
+  if (is(OsEventTypeList.CLICK_EVENT)) return act(sc, sc.at)
 }
 
-/** Input answers a card only when it is the one on the lens and has settled: a list that just replaced another may not be there yet. */
-const answerable = (card: { id: string }) => !answering && page.startsWith(`card:${card.id}:`) && Date.now() - cardSince >= CARD_SETTLE_MS
+/** Does the choice a tap landed on. */
+function act(sc: Screen, i: number) {
+  const choice = sc.choices[i]
+  const card = sc.card
+  if (choice === 'close') return closeOutcome()
+  if (!card) return
+  if (choice === 'dismiss') return dismissCard(card)
+  if (choice === 'review') { review = card.id; return draw() }
+  if (choice === 'confirm') return confirmCard(card)
+}
 
-async function answerCard(card: { id: string }, yes: boolean) {
-  answering = true
-  note(yes ? 'Sending…' : 'Skipping…', Infinity) // every gesture gets a visible answer, at once
+function closeOutcome() {
+  outcome = null
+  execId = ''
+  return draw()
+}
+
+async function dismissCard(card: Proposal) {
+  hide = card.id // gone at once: every gesture gets a visible answer
+  review = ''
   await draw()
-  let result = '' // empty: the server's own toast says what happened
   try {
-    const r = await api.answer(card.id, yes)
-    if (!r.ok) result = r.message // "Card is gone" and "Card expired" have no server toast; a refusal repeats the one it has
-  } catch (e) {
-    // A failed request may still have reached the exchange, so never say "not sent".
-    result = (e as { status?: number }).status ? `Server error: ${(e as Error).message}` : 'No reply from the server. Check the exchange.'
-  } finally {
-    answering = false
-    note(result, result ? NOTE_MS : 0)
+    await api.dismiss(card.id, 'glasses')
+  } catch {
+    hide = ''
+    note('No reply from the server · try again')
+  }
+  return poll()
+}
+
+async function confirmCard(card: Proposal) {
+  const o: Outcome = { card } // Sent, until the server answers
+  outcome = o
+  execId = ''
+  review = ''
+  await draw()
+  try {
+    // One key per card: a second tap after a lost reply gets the same execution back, never a second order.
+    const r = await api.confirm(card.id, `lens:${card.id}`)
+    if (r.executionId) execId = r.executionId
+    else o.message = r.message // "Expired, nothing sent", "Replaced by a newer proposal, nothing sent"
+  } catch {
+    o.lost = true
   }
   return poll()
 }
@@ -431,108 +477,23 @@ async function startGlasses() {
   hintsUntil = Date.now() + HINT_MS
   const sc = current()
   shown = boxText(sc)
-  shownDim = sc.dim
-  let result = await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(layout(sc, shown)))
+  shownTone = { ...sc.tone }
+  let result = await timed(bridge.createStartUpPageContainer(new CreateStartUpPageContainer(layout(sc, shown)))).catch(() => null)
   // The start-up page exists once per session. After a WebView reload the host answers 1 (invalid) and the lens would keep
   // the old page for good, so rebuild the existing one instead.
-  if (result === 1 && (await bridge.rebuildPageContainer(new RebuildPageContainer(layout(sc, shown))))) result = 0
+  if (result === 1 && (await timed(bridge.rebuildPageContainer(new RebuildPageContainer(layout(sc, shown)))).catch(() => false))) result = 0
   if (result === 0) {
     page = pageKey(sc)
-    if (isCard(sc)) cardSince = Date.now()
+    pageSince = Date.now()
     if (sc.icon) await sendIcon(sc.icon)
   }
-  $('glasses').textContent = result === 0 ? 'Glasses connected' : `Glasses not connected (code ${result})` // a plain browser lands here too
+  if (result === null) page = '-' // no reply: the page may exist, so the next draw rebuilds it
+  $('glasses').textContent = result === 0 ? 'Glasses connected' : result === null ? 'Glasses not answering' : `Glasses not connected (code ${result})` // a plain browser lands here too
   bridge.onEvenHubEvent(e => void onEvent(e))
 }
 
-// ── phone page ─────────────────────────────────────────────
-
-const NUMBERS = ['dailyLossLimitUsd', 'maxActionUsd', 'liqWarnPct', 'marginTopUpUsd', 'stopLossPct', 'lockProfitPct', 'noStopGraceSec'] as const
-
-function fillForm(c: Config) {
-  for (const k of NUMBERS) $<HTMLInputElement>(k).value = String(c[k])
-  $<HTMLTextAreaElement>('alerts').value = c.alerts.map(alertLine).join('\n')
-  $<HTMLTextAreaElement>('shortcuts').value = c.shortcuts.map(shortcutLine).join('\n')
-  readBack()
-}
-
-/** Each line of the two text boxes, read back in words as you type: a typo shows here, not on the lens. */
-function readBack() {
-  const lists = [['alerts', 'bell', (l: string) => describeAlert(parseAlerts(l)[0])], ['shortcuts', 'mic', (l: string) => describeShortcut(parseShortcuts(l)[0])]] as const
-  for (const [id, icon, describe] of lists) {
-    const lines = $<HTMLTextAreaElement>(id).value.split('\n').map(l => l.trim()).filter(Boolean)
-    $(`${id}-read`).replaceChildren(...lines.map(line => {
-      const li = document.createElement('li')
-      let text: string
-      try {
-        text = describe(line)
-        li.innerHTML = svg(icon)
-      } catch {
-        text = `Can’t read “${line}”`
-        li.innerHTML = svg('warn')
-        li.className = 'bad'
-      }
-      li.append(text) // a text node: the line is the user's own words, never markup
-      return li
-    }))
-  }
-}
-
-let toastTimer: ReturnType<typeof setTimeout> | undefined
-/** The floating pill at the bottom. `ms` 0 keeps it up: an error stays until the next change. */
-function msg(text: string, ms = 2000) {
-  const el = $('message')
-  el.textContent = text
-  el.classList.toggle('show', !!text)
-  clearTimeout(toastTimer)
-  if (text && ms) toastTimer = setTimeout(() => el.classList.remove('show'), ms)
-}
-
-/** Saved on every change, like a settings screen: there is no Save button to forget. */
-async function save() {
-  for (const k of NUMBERS) $(k).removeAttribute('aria-invalid')
-  const bad = NUMBERS.find(k => !$<HTMLInputElement>(k).checkValidity() || !(Number($<HTMLInputElement>(k).value) > 0))
-  if (bad) {
-    $(bad).setAttribute('aria-invalid', 'true')
-    return msg('Check the highlighted number', 0)
-  }
-  try {
-    const c = { alerts: parseAlerts($<HTMLTextAreaElement>('alerts').value), shortcuts: parseShortcuts($<HTMLTextAreaElement>('shortcuts').value) } as Config
-    for (const k of NUMBERS) c[k] = Number($<HTMLInputElement>(k).value)
-    await api.putConfig(c) // the form is not refilled: you may already be typing in the next field
-    msg('Saved')
-  } catch (e) {
-    msg((e as Error).message, 0)
-  }
-}
-
-async function startPhonePage() {
-  for (const el of document.querySelectorAll<HTMLElement>('[data-icon]')) el.innerHTML = svg(el.dataset.icon as IconName)
-  await settingsReady
-  const s = api.getSettings()
-  $<HTMLInputElement>('server').value = s.server
-  $<HTMLInputElement>('token').value = s.token
-
-  $('connect').addEventListener('click', async () => {
-    api.saveSettings($<HTMLInputElement>('server').value.trim(), $<HTMLInputElement>('token').value.trim())
-    try {
-      fillForm(await api.getConfig())
-      msg('Connected')
-    } catch (e) {
-      msg(`Can’t connect: ${(e as Error).message}`, 0)
-    }
-    void poll()
-  })
-
-  const rules = $('rules')
-  rules.addEventListener('change', () => void save()) // inputs fire on commit (blur, Enter), not on every keystroke
-  rules.addEventListener('input', readBack)
-
-  try { fillForm(await api.getConfig()) } catch { /* the Connection row opens itself and says why */ }
-}
-
 window.addEventListener('beforeunload', () => { if (mic !== 'off') void bridge?.audioControl(false) })
-void startPhonePage()
+startPhonePage({ root: $('phone'), settingsReady, onConnect: () => void poll() })
 void startGlasses()
 void poll()
 setInterval(poll, POLL_MS)

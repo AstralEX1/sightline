@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
-import type { Config, ServerState } from '../../server/src/types.ts'
+import type { AlertRecord, Execution, ExecutionStatus, Order, Position, ServerState, Settings } from '../../server/src/types.ts'
+import type { catalog, ShortcutRule, Template } from '../../server/src/registry.ts'
+import type { EditableShortcut, Validation } from '../../server/src/validate.ts'
 import { createStorage } from './storage.ts'
 
 /** Empty = this page's own origin: the Vite dev server forwards /api to the trading server. */
@@ -22,6 +24,9 @@ export function saveSettings(server: string, token: string) {
   store.set('gt.token', token)
 }
 
+/** A failed call: `status` is the HTTP status, `body` the server's answer (`issues` for an invalid shortcut). */
+export type ApiError = Error & { status?: number; body?: { error?: string; issues?: Validation['issues'] } }
+
 async function request<T>(method: string, path: string, body?: unknown, timeoutMs = TIMEOUT_MS): Promise<T> {
   const { server, token } = getSettings()
   const raw = body instanceof Uint8Array
@@ -32,15 +37,58 @@ async function request<T>(method: string, path: string, body?: unknown, timeoutM
     signal: AbortSignal.timeout(timeoutMs),
   })
   const json = await res.json().catch(() => ({}))
-  if (!res.ok) throw Object.assign(new Error(json.error ?? `HTTP ${res.status}`), { status: res.status })
+  if (!res.ok) throw Object.assign(new Error(json.error ?? `HTTP ${res.status}`), { status: res.status, body: json })
   return json as T
 }
 
+const id = (s: string) => encodeURIComponent(s)
+type Reply = { ok: boolean; message: string }
+
+// ── lens ──────────────────────────────────────────────────
 export const getState = () => request<ServerState>('GET', '/api/state')
-export const answer = (cardId: string, yes: boolean) => request<{ ok: boolean; message: string }>('POST', '/api/answer', { cardId, yes })
-export const getConfig = () => request<Config>('GET', '/api/config')
-export const putConfig = (c: Config) => request<Config>('PUT', '/api/config', c)
-/** Glasses menu: queue stop cards for every position (`stop`) or entry stops for those in profit (`lock`). */
-export const command = (kind: 'stop' | 'lock') => request<{ ok: boolean; message: string }>('POST', '/api/command', { command: kind })
-export const voice = (pcm: Uint8Array) =>
-  request<{ heard: string; ok: boolean; message: string }>('POST', '/api/voice', pcm, VOICE_TIMEOUT_MS)
+/** The only call that trades. A resend with the same key gets the same execution back, never a second order. */
+export const confirm = (proposalId: string, idempotencyKey: string) =>
+  request<Reply & { executionId?: string; status?: ExecutionStatus }>('POST', `/api/proposals/${id(proposalId)}/confirm`, { idempotencyKey })
+export const dismiss = (proposalId: string, by: 'glasses' | 'app' = 'glasses') => request<Reply>('POST', `/api/proposals/${id(proposalId)}/dismiss`, { by })
+/** Until the lens moves to confirm/dismiss: a tap on the card's action, or on its safe choice. One key per card. */
+export const answer = (cardId: string, yes: boolean) => (yes ? confirm(cardId, `lens:${cardId}`) : dismiss(cardId, 'glasses'))
+export const getExecution = (executionId: string) => request<Execution>('GET', `/api/executions/${id(executionId)}`)
+/** Glasses menu: raise the seeded "protect all" (`stop`) or "lock profits" (`lock`) shortcut. */
+export const command = (kind: 'stop' | 'lock') => request<Reply>('POST', '/api/command', { command: kind })
+export const voice = (pcm: Uint8Array) => request<Reply & { heard: string }>('POST', '/api/voice', pcm, VOICE_TIMEOUT_MS)
+
+// ── phone: shortcuts, editor, history, settings ───────────
+export type Catalog = ReturnType<typeof catalog>
+/** A Shortcuts tile: the rule plus its derived title and one-line summary. */
+export type Tile = ShortcutRule & { title: string; summary: string }
+export type Preview = { key: string; label: string; values: Record<string, number | null> }
+export type SettingsPage = {
+  settings: Settings
+  bybit: { source: string; status: string; apiKey: { readOnly: boolean; trade: boolean; withdraw: boolean } | null; apiKeyError?: string; liveTrading: false }
+  telegram: { configured: boolean; linked: boolean; name?: string }
+}
+
+export const getCatalog = () => request<Catalog>('GET', '/api/catalog')
+export const getTemplates = () => request<Template[]>('GET', '/api/templates')
+export const listShortcuts = () => request<Tile[]>('GET', '/api/shortcuts')
+/** Issues for the editor, plus the targets it matches now and each condition's value on them. `id` when editing. */
+export const validate = (draft: EditableShortcut & { id?: string }) => request<Validation & { targets?: Preview[] }>('POST', '/api/shortcuts/validate', draft)
+export const createShortcut = (draft: EditableShortcut & { enabled?: boolean }) => request<Tile>('POST', '/api/shortcuts', draft)
+/** Fails with 409 when someone saved a newer version meanwhile. */
+export const updateShortcut = (shortcutId: string, draft: EditableShortcut, version: number) => request<Tile>('PUT', `/api/shortcuts/${id(shortcutId)}`, { ...draft, version })
+export const deleteShortcut = (shortcutId: string, version: number) => request<null>('DELETE', `/api/shortcuts/${id(shortcutId)}?version=${version}`)
+export const setEnabled = (shortcutId: string, enabled: boolean, version: number) =>
+  request<Tile>('POST', `/api/shortcuts/${id(shortcutId)}/${enabled ? 'enable' : 'pause'}`, { version })
+/** A simulated alert and proposal: confirming it never reaches the exchange. */
+export const testShortcut = (shortcutId: string) => request<Reply & { alertId?: string; proposalId?: string }>('POST', `/api/shortcuts/${id(shortcutId)}/test`, {})
+export const getPositions = () => request<(Position & { epoch: string })[]>('GET', '/api/positions')
+export const getOpenOrders = () => request<Order[]>('GET', '/api/orders/open')
+/** Newest first; pass the last line's createdAt for the next page. */
+export const getHistory = (before?: number) => request<AlertRecord[]>('GET', `/api/history${before ? `?before=${before}` : ''}`)
+/** New alerts for the in-app banner; polling it also tells the server the app is open. */
+export const getNotifications = (after: number) => request<AlertRecord[]>('GET', `/api/notifications?after=${after}`)
+export const getAccountSettings = () => request<SettingsPage>('GET', '/api/settings')
+export const putAccountSettings = (s: Settings) => request<Settings>('PUT', '/api/settings', s)
+/** A one-time code and the bot link t.me/<bot>?start=<code>. */
+export const linkTelegram = () => request<{ code: string; url: string }>('POST', '/api/settings/telegram', {})
+export const unlinkTelegram = () => request<null>('DELETE', '/api/settings/telegram')

@@ -1,6 +1,5 @@
-import { createHmac, randomUUID } from 'node:crypto'
-import type { Exchange, Fill, Position, Side } from './types.ts'
-import { coin } from './format.ts'
+import { createHmac } from 'node:crypto'
+import type { Exchange, Fill, Instrument, Order, Position, Side } from './types.ts'
 
 const RECV_WINDOW = '5000'
 const TIMEOUT_MS = 8000
@@ -17,16 +16,14 @@ export function assertTestnet(base: string): void {
   if (!TESTNET_HOSTS.includes(host)) throw new Error(`Refusing non-testnet Bybit host ${host}`)
 }
 
-/** Steps stay strings as the API sends them: String(1e-7) would be "1e-7" and lose the decimals. */
-type Instrument = { tickSize: string; qtyStep: string; minOrderQty: number }
-type Row = Record<string, string | number>
+type Params = Record<string, string | number | boolean>
+type Row = Record<string, string | number | boolean>
 
 // Bybit's own server errors leave the result unknown; every other non-zero code is a clear "no".
 const UNKNOWN_CODES = [10000, 10016]
-/** Codes seen on testnet (110007, 110076, 131212) or documented for the key and rate checks. */
+/** Codes seen on testnet (110007, 110076) or documented for the key and rate checks. */
 const FRIENDLY: Record<number, string> = {
   110004: 'Not enough balance', 110007: 'Not enough balance', 110012: 'Not enough balance',
-  131212: 'Not enough in Funding',
   110076: 'Add margin works on isolated margin only',
   10003: 'API key is invalid', 10005: 'API key lacks this permission', 10010: 'This IP is not allowed for the API key',
   10006: 'Too many requests, try again shortly',
@@ -41,9 +38,11 @@ const RATE_LIMIT_WAITS_MS = [250, 750]
 const RATE_LIMITED_HTTP = [403, 429]
 const RATE_LIMITED_CODE = 10006
 
+const KLINE_PATHS = { LAST: '/v5/market/kline', MARK: '/v5/market/mark-price-kline', INDEX: '/v5/market/index-price-kline' }
+
 const num = (v: unknown) => Number(v) || 0
 /** Rounds to a step and prints without float noise: 0.003, 60760 */
-const toStep = (v: number, step: string, round: (x: number) => number) => {
+export const toStep = (v: number, step: string, round: (x: number) => number) => {
   const decimals = (step.split('.')[1] ?? '').length
   const steps = round(Number((v / Number(step)).toFixed(9))) // toFixed(9) drops noise like 2.9999999999999996
   const out = (steps * Number(step)).toFixed(decimals)
@@ -60,9 +59,9 @@ export function createBybit(o: {
   const instruments = new Map<string, Instrument>()
   let marginMode: { value: string; at: number } | null = null
 
-  async function call<T>(method: 'GET' | 'POST', path: string, params: Record<string, string | number>): Promise<T> {
+  async function call<T>(method: 'GET' | 'POST', path: string, params: Params): Promise<T> {
     const query = method === 'GET' ? new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString() : ''
-    // Built once: a resend carries the same orderLinkId or transferId, so Bybit cannot run it twice.
+    // Built once: a resend carries the same orderLinkId, so Bybit cannot run it twice.
     const body = method === 'POST' ? JSON.stringify(params) : undefined
     for (let attempt = 0; ; attempt++) {
       const ts = String(now())
@@ -98,25 +97,27 @@ export function createBybit(o: {
     }
   }
 
-  const list = async (path: string, params: Record<string, string | number>) =>
+  const list = async (path: string, params: Params) =>
     (await call<{ list: Row[] }>('GET', path, { category: 'linear', ...params })).list
 
   async function instrument(symbol: string): Promise<Instrument> {
     const cached = instruments.get(symbol)
     if (cached) return cached
     const [row] = (await list('/v5/market/instruments-info', { symbol })) as unknown as {
-      priceFilter: { tickSize: string }; lotSizeFilter: { qtyStep: string; minOrderQty: string }
+      priceFilter: { tickSize: string }; lotSizeFilter: { qtyStep: string; minOrderQty: string; maxMktOrderQty: string; minNotionalValue?: string }
     }[]
     if (!row) throw rejected(`Unknown symbol ${symbol}`)
-    const info = { tickSize: row.priceFilter.tickSize, qtyStep: row.lotSizeFilter.qtyStep, minOrderQty: num(row.lotSizeFilter.minOrderQty) }
+    const f = row.lotSizeFilter
+    const info = { tickSize: row.priceFilter.tickSize, qtyStep: f.qtyStep, minOrderQty: num(f.minOrderQty), maxMktOrderQty: num(f.maxMktOrderQty), minNotionalValue: num(f.minNotionalValue) }
     instruments.set(symbol, info)
     return info
   }
 
-  async function lastPrice(symbol: string) {
-    const [row] = await list('/v5/market/tickers', { symbol })
-    if (!row) throw rejected(`Unknown symbol ${symbol}`)
-    return num(row.lastPrice)
+  /** A stop or take-profit price on the tick; "0" would cancel it, so it never leaves here. */
+  async function tickPrice(symbol: string, price: number, what: string) {
+    const out = toStep(price, (await instrument(symbol)).tickSize, Math.round)
+    if (!(Number(out) > 0)) throw rejected(`Bad ${what} price`)
+    return out
   }
 
   return {
@@ -142,11 +143,35 @@ export function createBybit(o: {
         liqPrice: num(r.liqPrice),
         unrealisedPnl: num(r.unrealisedPnl),
         stopLoss: num(r.stopLoss),
+        takeProfit: num(r.takeProfit),
+        positionIM: num(r.positionIM),
+        leverage: num(r.leverage),
         isolated: accountIsolated || Number(r.tradeMode) === 1,
         positionIdx: Number(r.positionIdx),
         // Not createdTime: that belongs to the position slot and stays from the symbol's first ever trade (seen live: 16 min stale
         // on a position opened 2 s ago). updatedTime moves on every open, add and stop change, so the no-stop grace counts from it.
         openedAt: num(r.updatedTime),
+      }))
+    },
+
+    async openOrders(): Promise<Order[]> {
+      // shortcut: first page only (50 orders), page with the cursor if a trader keeps more open
+      const rows = await list('/v5/order/realtime', { settleCoin: 'USDT', limit: 50 })
+      return rows.map(r => ({
+        orderId: String(r.orderId),
+        orderLinkId: String(r.orderLinkId ?? ''),
+        symbol: String(r.symbol),
+        side: r.side as Side,
+        orderType: String(r.orderType),
+        price: num(r.price),
+        qty: num(r.qty),
+        leavesQty: num(r.leavesQty),
+        reduceOnly: r.reduceOnly === true,
+        stopOrderType: String(r.stopOrderType ?? ''),
+        triggerBy: String(r.triggerBy ?? ''),
+        triggerPrice: num(r.triggerPrice),
+        positionIdx: Number(r.positionIdx),
+        status: String(r.orderStatus),
       }))
     },
 
@@ -159,32 +184,66 @@ export function createBybit(o: {
     async fillsSince(ms): Promise<Fill[]> {
       const rows = await list('/v5/execution/list', { startTime: ms })
       // Funding payments are listed too; liquidation (BustTrade) and ADL fills stay, the trader must see those.
-      return rows.filter(r => r.execType !== 'Funding').map(r => ({ id: String(r.execId), symbol: String(r.symbol), side: r.side as Side, qty: num(r.execQty), price: num(r.execPrice), time: num(r.execTime) }))
+      return rows.filter(r => r.execType !== 'Funding').map(r => ({
+        id: String(r.execId), orderId: String(r.orderId), orderLinkId: String(r.orderLinkId ?? ''), symbol: String(r.symbol), side: r.side as Side,
+        qty: num(r.execQty), price: num(r.execPrice), leavesQty: num(r.leavesQty), time: num(r.execTime),
+      }))
     },
 
-    lastPrice,
+    async ticker(symbol) {
+      const [row] = await list('/v5/market/tickers', { symbol })
+      if (!row) throw rejected(`Unknown symbol ${symbol}`)
+      return { last: num(row.lastPrice), mark: num(row.markPrice), index: num(row.indexPrice) }
+    },
+
+    async kline(symbol, source, limit) {
+      const res = await call<{ list: string[][] }>('GET', KLINE_PATHS[source], { category: 'linear', symbol, interval: '1', limit: Math.min(limit, 1000) })
+      return res.list.map(r => ({ start: Number(r[0]), close: Number(r[4]) })) // [startTime, open, high, low, close, ...]
+    },
+
+    instrument,
+
+    async slots(symbol) {
+      // Flat slots too: leverage is set per slot, and hedge mode shows as positionIdx 1 and 2.
+      const rows = await list('/v5/position/list', { symbol })
+      return rows.map(r => ({ positionIdx: Number(r.positionIdx), leverage: num(r.leverage), size: num(r.size) }))
+    },
+
+    async apiKeyInfo() {
+      const r = await call<{ readOnly?: number; permissions?: Record<string, string[]> }>('GET', '/v5/user/query-api', {})
+      return { readOnly: r.readOnly === 1, permissions: r.permissions ?? {} }
+    },
 
     async setStop(symbol, positionIdx, price) {
-      const { tickSize } = await instrument(symbol)
-      const stopLoss = toStep(price, tickSize, Math.round)
-      if (!(Number(stopLoss) > 0)) throw rejected('Bad stop price') // "0" would cancel the stop
+      const stopLoss = await tickPrice(symbol, price, 'stop')
       await call('POST', '/v5/position/trading-stop', { category: 'linear', symbol, stopLoss, tpslMode: 'Full', positionIdx })
+    },
+
+    async setTakeProfit(symbol, positionIdx, price) {
+      const takeProfit = await tickPrice(symbol, price, 'take profit')
+      // No stopLoss field: Bybit keeps the stop as it is.
+      await call('POST', '/v5/position/trading-stop', { category: 'linear', symbol, takeProfit, tpslMode: 'Full', positionIdx })
     },
 
     async addMargin(symbol, positionIdx, usd) {
       await call('POST', '/v5/position/add-margin', { category: 'linear', symbol, margin: String(usd), positionIdx })
     },
 
-    async transferToTrading(usd) {
-      await call('POST', '/v5/asset/transfer/inter-transfer', { transferId: randomUUID(), coin: 'USDT', amount: String(usd), fromAccountType: 'FUND', toAccountType: 'UNIFIED' })
+    async placeOrder(r) {
+      // Sent exactly as authorized: "0" with reduceOnly could close the whole position.
+      if (!(Number(r.qty) > 0)) throw rejected(`Bad order qty ${r.qty}`)
+      const { orderId } = await call<{ orderId: string }>('POST', '/v5/order/create', {
+        category: 'linear', symbol: r.symbol, side: r.side, orderType: 'Market', qty: r.qty, positionIdx: r.positionIdx, reduceOnly: r.reduceOnly,
+        // A resend after a rate limit is refused as a duplicate (110072) instead of opening a second order.
+        orderLinkId: r.orderLinkId,
+        ...(r.stopLoss ? { stopLoss: await tickPrice(r.symbol, r.stopLoss, 'stop') } : {}),
+        ...(r.takeProfit ? { takeProfit: await tickPrice(r.symbol, r.takeProfit, 'take profit') } : {}),
+      })
+      return { orderId }
     },
 
-    async marketOrder(symbol, side, usd) {
-      const [{ qtyStep, minOrderQty }, px] = await Promise.all([instrument(symbol), lastPrice(symbol)])
-      const qty = toStep(usd / px, qtyStep, Math.floor)
-      if (Number(qty) < minOrderQty) throw rejected(`Amount too small: min ${minOrderQty} ${coin(symbol)} is about $${Math.ceil(minOrderQty * px)}`)
-      // orderLinkId: a resend after a rate limit is refused as a duplicate (110072) instead of opening a second order.
-      await call('POST', '/v5/order/create', { category: 'linear', symbol, side, orderType: 'Market', qty, orderLinkId: randomUUID() })
+    async cancelOrder(symbol, orderId) {
+      await call('POST', '/v5/order/cancel', { category: 'linear', symbol, orderId })
     },
   }
 }

@@ -7,7 +7,7 @@
   "min_sdk_version": "0.0.16",
   "tagline": "Your trading rules, in your line of sight.",
   "entrypoint": "index.html",
-  "description": "Trading session on your G2: day PnL, positions, and one-tap Yes / No cards from rules you set. Bybit testnet.",
+  "description": "Bybit Shortcuts on your G2: rules you build on the phone (one scope, conditions joined by and/or, one action) watch your positions and raise exact proposals on the lens. Every trade needs your tap on the glasses. Bybit demo/testnet only.",
   "permissions": [
     {
       "name": "network",

@@ -2,7 +2,9 @@ import { fileURLToPath } from 'node:url'
 import type { Exchange } from './types.ts'
 import { createSession } from './session.ts'
 import { createServer } from './http.ts'
-import { loadConfig, saveConfig, tokenProblem } from './config.ts'
+import { createStore } from './store.ts'
+import { createNotifier } from './notify.ts'
+import { tokenProblem } from './config.ts'
 import { assertTestnet, createBybit } from './bybit.ts'
 import { demoExchange } from './fake-exchange.ts'
 import { transcribe } from './stt.ts'
@@ -38,9 +40,11 @@ if (mode === 'bybit') {
   ex = demoExchange(Date.now()).ex
 }
 
-const configFile = fileURLToPath(new URL('../data/config.json', import.meta.url))
-let config = loadConfig(configFile)
-const session = createSession(ex, () => config)
+// One file per exchange mode, so demo shortcuts and alerts never mix with a real account's.
+const store = createStore(fileURLToPath(new URL(`../data/${mode}.db`, import.meta.url)))
+store.seed()
+const notifier = createNotifier({ store, token: env.TELEGRAM_BOT_TOKEN || undefined })
+const session = createSession(ex, store, Date.now, notifier.route)
 
 let busy = false
 async function tick() {
@@ -57,11 +61,31 @@ async function tick() {
 void tick()
 setInterval(tick, TICK_MS)
 
+// Telegram has its own loop: a slow or unreachable Telegram must never delay the poll, or crossings and liquidations wait with it.
+let flushing = false
+setInterval(() => {
+  if (flushing) return
+  flushing = true
+  notifier.flush().catch(e => console.error('telegram flush failed', (e as Error).message)).finally(() => { flushing = false })
+}, TICK_MS)
+
+// Telegram linking: /start <code> arrives by long polling, so no webhook and no public URL (§2).
+if (env.TELEGRAM_BOT_TOKEN) {
+  void (async () => {
+    for (;;) {
+      try {
+        await notifier.pollUpdates()
+      } catch (e) {
+        console.error((e as Error).message) // never the token: notify.ts keeps it out of its errors
+        await new Promise(r => setTimeout(r, 5000))
+      }
+    }
+  })()
+}
+
 const openaiKey = env.OPENAI_API_KEY
 createServer({
-  session, token,
-  source,
-  getConfig: () => config,
-  setConfig: c => { config = c; saveConfig(configFile, c) },
+  session, store, token, notifier, source,
+  apiKeyInfo: () => ex.apiKeyInfo(),
   transcribe: openaiKey ? (pcm, hint) => transcribe(pcm, openaiKey, hint) : undefined,
-}).listen(port, host, () => console.log(`Sightline server on http://${host}:${port} (exchange: ${mode}, voice: ${openaiKey ? 'on' : 'off'})`))
+}).listen(port, host, () => console.log(`Sightline server on http://${host}:${port} (exchange: ${mode}, voice: ${openaiKey ? 'on' : 'off'}, telegram: ${env.TELEGRAM_BOT_TOKEN ? 'on' : 'off'})`))

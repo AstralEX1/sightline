@@ -1,16 +1,38 @@
-import type { Action, Exchange, Fill, Position, Side } from './types.ts'
+import type { Candle, Exchange, Fill, Instrument, Order, OrderRequest, Position, Terms } from './types.ts'
+import type { PriceSource } from './registry.ts'
+import { toStep } from './bybit.ts'
+
+const rejected = (message: string) => Object.assign(new Error(message), { name: 'ExchangeRejected' })
+const INSTRUMENT: Instrument = { tickSize: '0.1', qtyStep: '0.001', minOrderQty: 0.001, maxMktOrderQty: 100, minNotionalValue: 5 }
+const LEVERAGE = 10
 
 /** In-memory exchange for tests, local work without keys and the demo video. */
 export class FakeExchange implements Exchange {
   list: Position[] = []
   closed = 0
   fills: Fill[] = []
+  /** Open orders, plain and conditional */
+  orders: Order[] = []
+  /** Last prices; a position's mark stands in when missing */
   prices: Record<string, number> = {}
-  calls: Action[] = []
+  /** Index prices; the mark when missing */
+  index: Record<string, number> = {}
+  /** Leverage of new positions per symbol, 10 when missing */
+  leverage: Record<string, number> = {}
+  /** Instrument rules per symbol, INSTRUMENT when missing */
+  instruments: Record<string, Instrument> = {}
+  /** 1-minute candles per symbol, the same for every price source */
+  candles: Record<string, Candle[]> = {}
+  /** What was written, in order */
+  calls: Terms[] = []
   /** The next write throws: a string is a clear exchange rejection, an Error is thrown as is. */
   failNext: string | Error | null = null
   /** Every read throws with this message while set. */
   failReads: string | null = null
+  now: () => number = Date.now
+
+  equity = 10_000
+  available = 8_000
 
   setMark(symbol: string, mark: number): void {
     for (const p of this.list.filter(p => p.symbol === symbol)) {
@@ -23,55 +45,106 @@ export class FakeExchange implements Exchange {
     return this.failReads ? Promise.reject(new Error(this.failReads)) : Promise.resolve(structuredClone(value))
   }
 
-  private write(a: Action): void {
+  private fail(): void {
     const fail = this.failNext
     this.failNext = null
-    if (fail) throw typeof fail === 'string' ? Object.assign(new Error(fail), { name: 'ExchangeRejected' }) : fail
-    this.calls.push(a)
+    if (fail) throw typeof fail === 'string' ? rejected(fail) : fail
   }
 
-  private find(symbol: string): Position | undefined {
-    return this.list.find(p => p.symbol === symbol)
+  private find(symbol: string, positionIdx: number): Position | undefined {
+    return this.list.find(p => p.symbol === symbol && p.positionIdx === positionIdx)
   }
 
-  equity = 10_000
-  available = 8_000
+  private last(symbol: string): number {
+    const px = this.prices[symbol] ?? this.list.find(p => p.symbol === symbol)?.markPrice
+    if (px === undefined) throw rejected(`Unknown symbol ${symbol}`)
+    return px
+  }
 
   async balance() { return this.read({ equity: this.equity, available: this.available }) }
   async positions() { return this.read(this.list) }
+  async openOrders() { return this.read(this.orders) }
   async closedPnlSince(_ms: number) { return this.read(this.closed) }
   async fillsSince(ms: number) { return this.read(this.fills.filter(f => f.time > ms)) }
 
-  async lastPrice(symbol: string) {
-    const px = this.find(symbol)?.markPrice ?? this.prices[symbol]
-    if (px === undefined) throw new Error(`Unknown symbol ${symbol}`)
-    return this.read(px)
+  async ticker(symbol: string) {
+    const last = this.last(symbol)
+    const mark = this.list.find(p => p.symbol === symbol)?.markPrice ?? last
+    return this.read({ last, mark, index: this.index[symbol] ?? mark })
   }
 
+  async kline(symbol: string, _source: PriceSource, limit: number) { return this.read((this.candles[symbol] ?? []).slice(-limit)) }
+  async instrument(symbol: string) { return this.read(this.instruments[symbol] ?? INSTRUMENT) }
+
+  async slots(symbol: string) {
+    const own = this.list.filter(p => p.symbol === symbol).map(p => ({ positionIdx: p.positionIdx, leverage: p.leverage, size: p.size }))
+    // shortcut: a flat symbol is one one-way slot, no empty hedge slots; add a hedge flag when a test needs one
+    return this.read(own.length ? own : [{ positionIdx: 0, leverage: this.leverage[symbol] ?? LEVERAGE, size: 0 }])
+  }
+
+  async apiKeyInfo() { return this.read({ readOnly: false, permissions: { ContractTrade: ['Order', 'Position'], Wallet: [] } }) }
+
   async setStop(symbol: string, positionIdx: number, price: number) {
-    this.write({ type: 'setStop', symbol, positionIdx, price })
-    const p = this.find(symbol)
+    this.fail()
+    this.calls.push({ type: 'setStop', symbol, positionIdx, price })
+    const p = this.find(symbol, positionIdx)
     if (p) p.stopLoss = price
   }
 
+  async setTakeProfit(symbol: string, positionIdx: number, price: number) {
+    this.fail()
+    this.calls.push({ type: 'setTakeProfit', symbol, positionIdx, price })
+    const p = this.find(symbol, positionIdx)
+    if (p) p.takeProfit = price
+  }
+
   async addMargin(symbol: string, positionIdx: number, usd: number) {
-    this.write({ type: 'addMargin', symbol, positionIdx, usd })
-    const p = this.find(symbol)
+    this.fail()
+    this.calls.push({ type: 'addMargin', symbol, positionIdx, usd })
+    const p = this.find(symbol, positionIdx)
     if (p) p.liqPrice += ((p.side === 'Buy' ? -1 : 1) * usd) / p.size
   }
 
-  async transferToTrading(usd: number) {
-    this.write({ type: 'transfer', usd })
+  async placeOrder(o: OrderRequest) {
+    this.fail()
+    if (this.fills.some(f => f.orderLinkId === o.orderLinkId)) throw rejected('Duplicate orderLinkId (Bybit 110072)')
+    const qty = Number(o.qty)
+    if (!(qty > 0)) throw rejected(`Bad order qty ${o.qty}`)
+    const p = this.find(o.symbol, o.positionIdx)
+    if (o.reduceOnly && (!p || p.side === o.side || qty > p.size)) throw rejected('Reduce-only order would not reduce the position (Bybit 110017)')
+    // shortcut: an opposite order without reduceOnly (one-way netting) is not modelled; add it when the server sends one
+    if (!o.reduceOnly && p && p.side !== o.side) throw new Error('FakeExchange: opposite order without reduceOnly')
+    const price = this.last(o.symbol)
+    this.calls.push({ type: 'order', ...o })
+    const orderId = crypto.randomUUID()
+    this.fills.push({ id: crypto.randomUUID(), orderId, orderLinkId: o.orderLinkId, symbol: o.symbol, side: o.side, qty, price, leavesQty: 0, time: this.now() })
+
+    if (p && o.reduceOnly) {
+      this.closed += (price - p.entryPrice) * qty * (p.side === 'Buy' ? 1 : -1)
+      const size = Number(toStep(p.size - qty, (this.instruments[o.symbol] ?? INSTRUMENT).qtyStep, Math.round)) // no 1e-17 leftovers
+      if (size === 0) this.list.splice(this.list.indexOf(p), 1)
+      else Object.assign(p, { positionIM: (p.positionIM * size) / p.size, size })
+    } else if (p) {
+      Object.assign(p, { entryPrice: (p.entryPrice * p.size + price * qty) / (p.size + qty), size: p.size + qty, positionIM: p.positionIM + (qty * price) / p.leverage })
+    } else {
+      const leverage = this.leverage[o.symbol] ?? LEVERAGE
+      this.list.push({
+        symbol: o.symbol, side: o.side, size: qty, entryPrice: price, markPrice: price, liqPrice: 0, unrealisedPnl: 0,
+        stopLoss: o.stopLoss ?? 0, takeProfit: o.takeProfit ?? 0, positionIM: (qty * price) / leverage, leverage,
+        isolated: false, positionIdx: o.positionIdx, openedAt: this.now(),
+      })
+    }
+    const after = this.find(o.symbol, o.positionIdx)
+    if (after) this.setMark(o.symbol, after.markPrice)
+    return { orderId }
   }
 
-  async marketOrder(symbol: string, side: Side, usd: number) {
-    this.write({ type: 'order', symbol, side, usd })
-    const px = this.find(symbol)?.markPrice ?? this.prices[symbol]
-    const qty = Math.round((usd / px) * 1000) / 1000
-    this.fills.push({ id: crypto.randomUUID(), symbol, side, qty, price: px, time: Date.now() })
-    if (!this.find(symbol)) {
-      this.list.push({ symbol, side, size: qty, entryPrice: px, markPrice: px, liqPrice: 0, unrealisedPnl: 0, stopLoss: 0, isolated: false, positionIdx: 0, openedAt: Date.now() })
-    }
+  async cancelOrder(symbol: string, orderId: string) {
+    this.fail()
+    const i = this.orders.findIndex(x => x.symbol === symbol && x.orderId === orderId)
+    if (i < 0) throw rejected('Order does not exist (Bybit 110001)')
+    this.calls.push({ type: 'cancel', symbol, orderId })
+    this.orders.splice(i, 1)
   }
 }
 
@@ -81,13 +154,16 @@ export function demoExchange(now: number): { ex: FakeExchange; stop: () => void 
   ex.closed = -40
   ex.prices = { BTCUSDT: 61800, ETHUSDT: 3080, SOLUSDT: 145 }
   ex.list = [
-    { symbol: 'BTCUSDT', side: 'Buy', size: 0.05, entryPrice: 62000, markPrice: 61800, liqPrice: 59500, unrealisedPnl: -10, stopLoss: 0, isolated: true, positionIdx: 0, openedAt: now - 30_000 },
-    { symbol: 'ETHUSDT', side: 'Sell', size: 1.2, entryPrice: 3100, markPrice: 3080, liqPrice: 3600, unrealisedPnl: 24, stopLoss: 0, isolated: false, positionIdx: 0, openedAt: now - 70_000 },
-    { symbol: 'SOLUSDT', side: 'Buy', size: 10, entryPrice: 140, markPrice: 145, liqPrice: 112, unrealisedPnl: 50, stopLoss: 135, isolated: false, positionIdx: 0, openedAt: now - 600_000 },
+    { symbol: 'BTCUSDT', side: 'Buy', size: 0.05, entryPrice: 62000, markPrice: 61800, liqPrice: 59500, unrealisedPnl: -10, stopLoss: 0, takeProfit: 0, positionIM: 310, leverage: 10, isolated: true, positionIdx: 0, openedAt: now - 30_000 },
+    { symbol: 'ETHUSDT', side: 'Sell', size: 1.2, entryPrice: 3100, markPrice: 3080, liqPrice: 3600, unrealisedPnl: 24, stopLoss: 0, takeProfit: 0, positionIM: 372, leverage: 10, isolated: false, positionIdx: 0, openedAt: now - 70_000 },
+    { symbol: 'SOLUSDT', side: 'Buy', size: 10, entryPrice: 140, markPrice: 145, liqPrice: 112, unrealisedPnl: 50, stopLoss: 135, takeProfit: 0, positionIM: 140, leverage: 10, isolated: false, positionIdx: 0, openedAt: now - 600_000 },
   ]
   const timer = setInterval(() => {
     const btc = ex.list.find(p => p.symbol === 'BTCUSDT')
-    if (btc) ex.setMark('BTCUSDT', Math.max(59700, btc.markPrice - 40))
+    if (!btc) return
+    // Last price slides with the mark, so LAST and MARK conditions both see it.
+    ex.prices.BTCUSDT = Math.max(59700, btc.markPrice - 40)
+    ex.setMark('BTCUSDT', ex.prices.BTCUSDT)
   }, 2000)
   return { ex, stop: () => clearInterval(timer) }
 }
