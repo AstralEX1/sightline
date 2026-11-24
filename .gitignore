@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+server/data/
+references/repos/
+*.ehpk
+.superpowers/
+.DS_Store

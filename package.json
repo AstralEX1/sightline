@@ -1,0 +1,29 @@
+{
+  "name": "sightline",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "server": "node --env-file-if-exists=.env server/src/main.ts",
+    "dev": "vite --config app/vite.config.ts",
+    "sim": "evenhub-simulator http://localhost:5173",
+    "qr": "evenhub qr --http --ip $(ipconfig getifaddr en0 || ipconfig getifaddr en1) --port 5173 --path /",
+    "test": "node --test server/test/*.test.ts app/test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "vite build --config app/vite.config.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "@evenrealities/even_hub_sdk": "^0.0.16",
+    "@evenrealities/pretext": "^0.1.4"
+  },
+  "devDependencies": {
+    "@evenrealities/evenhub-cli": "^0.2.0",
+    "@evenrealities/evenhub-simulator": "^0.9.5",
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vite": "^5.4.21"
+  }
+}
