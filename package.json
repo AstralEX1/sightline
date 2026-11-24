@@ -10,7 +10,8 @@
     "qr": "evenhub qr --http --ip $(ipconfig getifaddr en0 || ipconfig getifaddr en1) --port 5173 --path /",
     "test": "node --test server/test/*.test.ts app/test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "build": "vite build --config app/vite.config.ts"
+    "build": "vite build --config app/vite.config.ts",
+    "pack": "npm run build && evenhub pack app/app.json app/dist --sdk-ver 0.0.16 -o sightline.ehpk"
   },
   "engines": {
     "node": ">=22.18"
