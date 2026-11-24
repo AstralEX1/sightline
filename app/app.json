@@ -1,0 +1,23 @@
+{
+  "package_id": "com.sightline.g2",
+  "edition": "202601",
+  "name": "Sightline",
+  "version": "0.1.0",
+  "min_app_version": "2.2.10",
+  "min_sdk_version": "0.0.16",
+  "tagline": "Your trading rules, in your line of sight.",
+  "entrypoint": "index.html",
+  "description": "Trading session on your G2: day PnL, positions, and one-tap Yes / No cards from rules you set. Bybit testnet.",
+  "permissions": [
+    {
+      "name": "network",
+      "desc": "Talks to your own Sightline server, which holds the exchange keys.",
+      "whitelist": ["http://localhost:8787"]
+    },
+    {
+      "name": "g2-microphone",
+      "desc": "Voice shortcuts. Listens only after you tap, for up to 5 seconds. The audio goes to your Sightline server, which sends it to OpenAI for transcription."
+    }
+  ],
+  "supported_languages": ["en"]
+}
