@@ -1,6 +1,7 @@
 // Base UI islands. Each one reads its content from the static HTML, then swaps that markup for a Base UI component.
 // Build: npm run build  ->  js/islands.js
 import { useEffect, useRef, useState } from 'react';
+import { ShortcutBuilder } from './shortcut-builder.jsx';
 import { createRoot } from 'react-dom/client';
 import { Accordion } from '@base-ui/react/accordion';
 import { Toggle } from '@base-ui/react/toggle';
@@ -107,3 +108,6 @@ if (qa) {
   const items = $$('details', qa).map((d) => ({ q: $('summary', d).textContent, a: $('p', d).innerHTML }));
   mount(qa, <Faq items={items} />);
 }
+
+const builder = $('#shortcut-builder');
+if (builder) createRoot(builder).render(<ShortcutBuilder />);

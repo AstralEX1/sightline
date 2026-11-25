@@ -63,6 +63,24 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
 /* stats row: 6 cells, 3 columns on desktop, 2 on mobile */
 .sl .nums{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media (max-width:760px){.sl .nums div:nth-child(3){border-top:0;border-left:1px solid var(--line);padding-left:16px}}
+.sl .proof .build-demo{grid-template-areas:"copy phone" "lens phone";row-gap:28px}
+.sl .build-copy{grid-area:copy;align-self:end}
+.sl .build-phone{grid-area:phone;display:grid;justify-items:center;gap:18px}
+.sl .build-phone .phone{width:min(100% - 16px,350px)}
+.sl .builder-form{background:#fafafa;color:#171717;border:7px solid #141414;border-radius:36px;padding:28px 18px 16px;display:grid;gap:14px;text-align:left}
+.sl .builder-form h3{font-size:24px;letter-spacing:-.04em}
+.sl .builder-form label,.sl .builder-form legend{font-weight:650;font-size:14px}
+.sl .builder-form fieldset{display:grid;gap:8px;border:0;min-width:0}
+.sl .builder-form label{display:grid;gap:4px}
+.sl .builder-form input,.sl .builder-form select{width:100%;min-width:0;height:44px;padding:0 10px;border:1px solid #bfc8c1;border-radius:9px;background:white;color:#171717;font:400 16px system-ui}
+.sl .builder-form button{min-height:44px;background:var(--accent);color:white;border:0;border-radius:12px;font:600 15px system-ui;cursor:pointer}
+.sl .builder-form button:disabled{opacity:.55;cursor:default}
+.sl .builder-status{font-size:13px;min-height:1.4em}
+.sl .build-result{grid-area:lens;align-self:start;width:100%;max-width:420px}
+.sl .build-result figcaption{margin-bottom:8px;font-size:14px;font-weight:600;color:var(--ink-2)}
+.sl .builder-lens{display:grid;gap:8px;padding:22px 24px;background:#070b08;color:#91f18b;border-radius:16px;font:15px/1.45 ui-monospace,monospace;overflow-wrap:anywhere}
+.sl .builder-lens strong{font-size:18px}
+@media(max-width:760px){.sl .proof .build-demo{grid-template-areas:"copy" "phone" "lens"}.sl .build-result{width:min(100%,380px);justify-self:center}}
 </style>
 </head>
 <body data-theme="light" class="antialiased bg-bg text-ink">
@@ -97,13 +115,13 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
 <section class="pos" id="shortcuts">
   <div class="wrap sc">
     <div class="duo">
-      <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/home.jpg" alt="Phone app: your shortcuts as tiles, each with its own on and off switch"></div></div>
-      <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/templates.jpg" alt="Phone app: templates such as Close Position, near liquidation, half"></div></div>
+      <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/home.jpg" alt="Eight personal shortcuts, including Price Alert, Volume Spike, Funding Rate and Close Half"></div></div>
+      <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/templates.jpg" alt="Shortcut templates for alerts, stops, fills, margin and old orders"></div></div>
     </div>
     <div>
       <span class="kick">Your shortcuts</span>
       <h2>Every rule you trade by, <em>one switch away.</em></h2>
-      <p class="plede">Shortcuts live in the Even app on your phone. Each one is a tile: switch it on, pause it, tap it to change it. Start from 25 templates and edit any of them.</p>
+      <p class="plede">Get a heads-up when volume spikes or funding is high. For actions like adding a stop or closing half a position, your glasses show the trade for you to confirm. Tap any tile on your phone to edit it.</p>
       <div class="pf-foot"><a href="#alerts">See the alerts they send <span>↓</span></a></div>
     </div>
   </div>
@@ -209,27 +227,19 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
 <!-- YOUR TAP, OR NOTHING -->
 <section class="proof" id="proof">
   <div class="wrap">
-    <div class="top">
-      <div>
-        <span class="kick">Make your own</span>
-        <h2>Build a shortcut. <em>Apply to, when, do.</em></h2>
-        <p class="lead">No code, no scripts. Choose the positions it watches, add one or more conditions, pick the action. Nothing reaches Bybit until you tap that action on your glasses. Demo and testnet only for now.</p>
-      </div>
-      <div class="duo">
-        <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/cond.jpg" alt="Phone app: Add condition, from price change and funding rate to a missing stop loss"></div></div>
-        <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/edit.jpg" alt="Phone app: a finished shortcut. When liquidation distance is below 3%, close position by 50%"></div></div>
-      </div>
+    <div class="top build-demo" id="shortcut-builder">
+      <div class="build-copy"><h2>Build a shortcut.</h2><p class="lead">Enable JavaScript to try the interactive editor.</p></div>
     </div>
     <div class="nums">
       <div><b>900+</b><span>possible combinations</span></div>
-      <div><b>25</b><span>battle-tested templates</span></div>
+      <div><b>25</b><span>shortcut templates</span></div>
       <div><b>2 s</b><span>between checks of your Bybit account</span></div>
     </div>
     <div class="protos" id="templates">
-      <div class="protos-h"><p>25 templates, ready to switch on</p><a href="#">See all templates <span>→</span></a></div>
-      <div class="mq r1"><div class="mq-t" data-mq="move:Move Stop Loss · ROI above 30%|close:Close Position · ROI above 30% · half|close:Close Position · Profit above 100 USDT|close:Close Position · Near take profit · half|close:Close Position · ROI below −20% · all|close:Close Position · Near liquidation · half|margin:Add Margin · Near liquidation|stop:Set Stop Loss · No stop loss"></div></div>
-      <div class="mq r2 rev"><div class="mq-t" data-mq="close:Close Position · Near stop loss · half|notify:Notify · Price crosses a level|notify:Notify · Price falls 3% in 5 min|notify:Notify · Price rises 3% in 5 min|open:Open Position · Price crosses a level|tp:Set Take Profit · Order filled|cancel:Cancel Order · Order partly filled"></div></div>
-      <div class="mq r3"><div class="mq-t" data-mq="move:Move Stop Loss · ROI above 30%|close:Close Position · Near liquidation · half|margin:Add Margin · Near liquidation|stop:Set Stop Loss · No stop loss|notify:Notify · Price crosses a level|open:Open Position · Price crosses a level|tp:Set Take Profit · Order filled|cancel:Cancel Order · Order partly filled"></div></div>
+      <div class="protos-h"><p>Start with a template</p></div>
+      <div class="mq r1"><div class="mq-t" data-mq="cancel:Cancel Old Orders · Open over 1 hour|notify:Price Alert · Crosses your level|stop:Add Stops · No stop loss|close:Take Profit · Close 25%|notify:Volume Spike · 3× in 5 min|margin:Add Margin · Near liquidation"></div></div>
+      <div class="mq r2 rev"><div class="mq-t" data-mq="move:Move Stop to Breakeven · ROI above 20%|notify:Funding Rate · Above 0.05%|tp:Set Take Profit · After a fill|close:Close Half · Near liquidation|open:Open a Position · Price crosses above|cancel:Cancel the Rest · After a partial fill"></div></div>
+      <div class="mq r3"><div class="mq-t" data-mq="notify:Price Drop · Down 2% in 5 min|close:Take Profit · Profit above 100 USDT|notify:Stop Alert · Within 0.5% of stop|move:Move Stop to Breakeven · Volume spikes 5×|notify:Order Reminder · Open over 15 min"></div></div>
     </div>
   </div>
 </section>
@@ -339,6 +349,6 @@ var RM=matchMedia("(prefers-reduced-motion: reduce)").matches, $=function(s){ret
 
 })();
 </script>
-<script type="module" src="js/islands.js"></script>
+<script defer src="js/islands.js"></script>
 </body>
 </html>

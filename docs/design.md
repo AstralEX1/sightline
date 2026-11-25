@@ -13,7 +13,7 @@ Set the rule. Tap the trade. The glasses stay quiet while you are fine. When one
 ## Principles, and where they live
 1. **Quiet by default.** Extra navigation tips default on while the stored launch count is below three. Settings → Gesture tips overrides that default. Exit and Back remain visible. Main shows positions and a flag only when something is wrong (`liq …%`, `no stop`); there is no dollar day-PnL on the lens.
 2. **One question at a time, the safe answer first.** `Dismiss` is item 0, because the firmware highlights item 0 on every rebuild. The other choice names its outcome ("Add 100 USDT margin to BTC"), never "Yes".
-3. **Say what it costs.** Detail shows unrealized PnL as a big dotted numeral; a stop action names the price you confirm. Before fees and slippage.
+3. **Say what it costs.** Detail shows unrealized PnL next to the coin; a stop action names the price you confirm. Before fees and slippage.
 4. **Your rules, not advice.** The alert's `why` is the condition you wrote. Nothing reaches the exchange without a tap.
 5. **The same words everywhere.** "BTC long" on rows and cards, "stop" (never "SL"), "Lock profits" in the menu and as the voice phrase.
 6. **It just works.** Demo data out of the box. The editor keeps a local copy. Leaving saves valid changes against the version that was opened. Invalid edits open the discard dialog. The server row folds away once connected and opens itself when something is wrong.

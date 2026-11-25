@@ -235,9 +235,10 @@ function main(s: ServerState | null, v: View): Screen {
 }
 
 /** Signed distance from the mark price to a level, as `−1.9%` / `+3.3%`. */
-function away(level: number, mark: number): string {
+function away(level: number, mark: number, dp: number): string {
   const d = (100 * (level - mark)) / mark
-  return `${d < 0 ? '−' : '+'}${Math.abs(d).toFixed(1)}%`
+  const t = Math.abs(d).toFixed(dp)
+  return Number(t) === 0 ? '0%' : `${d < 0 ? '−' : '+'}${t}%`
 }
 
 /**
@@ -245,8 +246,10 @@ function away(level: number, mark: number): string {
  * stop and liquidation distances under it; the last hour across the bottom (glasses-shortcuts §4).
  */
 function detail(p: Position, at: number, total: number, v: View): Screen {
-  const stop = p.stopLoss ? `stop ${away(p.stopLoss, p.markPrice)}` : ''
-  const liq = p.liqPrice > 0 ? `liq ${away(p.liqPrice, p.markPrice)}` : ''
+  // Under 1% a tenth hides what matters; both distances then take two decimals, so the line reads evenly.
+  const dp = [p.stopLoss, p.liqPrice].some(v => v > 0 && Math.abs(v - p.markPrice) / p.markPrice < 0.01) ? 2 : 1
+  const stop = p.stopLoss ? `stop ${away(p.stopLoss, p.markPrice, dp)}` : ''
+  const liq = p.liqPrice > 0 ? `liq ${away(p.liqPrice, p.markPrice, dp)}` : ''
   const table = [stop, liq].filter(Boolean).join(' · ')
   const hint = fit(total > 1 && v.hints ? 'swipe: next position · double tap: back' : 'double tap: back', INNER_PX.hint - 60)
   const place = total > 1 ? `${at + 1}/${total}` : ''
@@ -336,20 +339,18 @@ function told(o: Outcome): [IconName, string, string?] {
 
 function result(o: Outcome, v: View): Screen {
   const [icon, why, label] = told(o)
-  const sc = framed({
-    layout: 'alert', key: `alert:${o.card.id}`, card: null, icon, head: { who: o.card.who, why, queue: '' },
-    labels: label ? [label] : [], choices: label ? ['close'] : [],
-    hint: () => (label ? `tap: ${label === 'OK' ? label : label.toLowerCase()}` : 'waiting for Bybit · double tap: hide'),
-  }, v)
-  // The second row, under OK, is free: a receipt arrives a poll later and nothing on screen moves for it; a rejection's
-  // reason is too long for the frame. Dimmer than a choice, so it never reads as one.
   const e = o.execution
+  // What changed on the position (a receipt, a poll later) or why Bybit refused is part of the result, so it goes in the frame:
+  // the taller review frame takes it as a second line. Under the frame there are only choices.
   const extra = e?.status === 'REJECTED' ? e.message : label ? e?.receipt : ''
-  if (extra) {
-    sc.text.opt2 = fit(`${UNMARKED}${extra}`, INNER_PX.opt2)
-    sc.tone.opt2 = e?.status === 'REJECTED' ? 3 : 2
+  const rest = {
+    key: `alert:${o.card.id}`, card: null, icon,
+    labels: label ? [label] : [], choices: label ? ['close' as const] : [],
+    hint: () => (label ? `tap: ${label === 'OK' ? label : label.toLowerCase()}` : 'waiting for Bybit · double tap: hide'),
   }
-  return sc
+  return extra
+    ? framed({ ...rest, layout: 'review', head: { ask: o.card.who, terms: `${why}\n${extra}` } }, v)
+    : framed({ ...rest, layout: 'alert', head: { who: o.card.who, why, queue: '' } }, v)
 }
 
 /** The whole glasses screen. Pure, so it is tested without the SDK. */

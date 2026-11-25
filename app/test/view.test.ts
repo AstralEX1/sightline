@@ -211,6 +211,10 @@ test('detail: big coin and side, leverage under it, PnL with stop and liq distan
   assert.equal(sc.icon, '')
 })
 
+test('detail: distances under 1% keep two decimals, and zero has no sign', () => {
+  assert.equal(screen(st({ positions: [pos({ stopLoss: 61240 * 0.995, liqPrice: 61240 })] }), { detail: true }).text.table, 'stop −0.50% · liq 0%') // both two decimals
+})
+
 test('detail: no stop says nothing; place in the queue; swipe hint with several', () => {
   const eth = pos({ symbol: 'ETHUSDT', side: 'Sell', stopLoss: 0, markPrice: 3198, liqPrice: 4000, unrealisedPnl: 89.28, positionIM: 372, leverage: 15 })
   const sc = screen(st({ positions: [pos(), eth] }), { detail: true, focus: 1, hints: true })
@@ -378,20 +382,16 @@ test('result: the exchange status, then OK', () => {
   ]
   for (const [o, icon, why] of cases) {
     const sc = result(o)
-    assert.equal(sc.layout, 'alert')
-    assert.equal(sc.text.who, 'BTC long')
-    assert.equal(sc.text.why, why)
+    const framedLines = sc.layout === 'review' ? [sc.text.ask, sc.text.terms.split('\n')[0]] : [sc.text.who, sc.text.why]
+    assert.deepEqual(framedLines, ['BTC long', why])
     assert.equal(sc.icon, icon, why)
     assert.equal(sc.text.opt1, '> OK')
     assert.deepEqual(sc.choices, ['close'])
     assert.equal(sc.text.hint, 'tap: OK')
-    assert.equal(sc.text.queue, '')
     assert.equal(sc.card, null) // a tap on a result answers no proposal
   }
   const rejected = result({ execution: exec('REJECTED', { message: 'below 0.001 BTC' }) })
-  assert.equal(rejected.text.opt2, '   below 0.001 BTC') // the reason, whole, on the free row under OK
-  assert.equal(rejected.tone.opt2, 3)
-  assert.equal(result({ execution: exec('FILLED', { receipt: 'BTC long 0.025 left' }) }).tone.opt2, 2) // a receipt never reads as a choice
+  assert.deepEqual([rejected.layout, rejected.text.terms, rejected.text.opt2], ['review', 'Rejected by Bybit\nbelow 0.001 BTC', '']) // the reason in the frame
 })
 
 test('result: Expired, nothing sent, and Dismiss is the only choice', () => {
@@ -410,13 +410,14 @@ test('result: stays on the same page as its alert, so the lens only updates text
   assert.equal(sc.at, 0)
 })
 
-test('result: the receipt sits under OK once the server has it, and nothing above it moves', () => {
+test('result: the receipt joins the frame once the server has it; under the frame only OK', () => {
   const filled = { filledQty: 0.025, avgPrice: 61180 }
   const sc = result({ execution: exec('FILLED', { ...filled, receipt: '0.05 → 0.025 BTC · liq 2.5% → 4.1%' }) })
-  assert.deepEqual([sc.text.why, sc.text.opt1, sc.text.opt2], ['Closed 0.025 BTC · avg 61,180', '> OK', '   0.05 → 0.025 BTC · liq 2.5% → 4.1%'])
+  assert.deepEqual([sc.layout, sc.text.ask, sc.text.terms], ['review', 'BTC long', 'Closed 0.025 BTC · avg 61,180\n0.05 → 0.025 BTC · liq 2.5% → 4.1%'])
+  assert.deepEqual([sc.text.opt1, sc.text.opt2], ['> OK', ''])
   assert.deepEqual(sc.choices, ['close']) // a line, not a second choice
-  assert.equal(sc.key, result({ execution: exec('FILLED', filled) }).key) // same page: the receipt is a text update
-  assert.equal(result({ execution: exec('FILLED', filled) }).text.opt2, '')
+  assert.equal(sc.key, result({ execution: exec('FILLED', filled) }).key) // same key: the cursor stays on OK
+  assert.equal(result({ execution: exec('FILLED', filled) }).layout, 'alert')
   assert.equal(result({ execution: exec('SUBMITTING', { receipt: 'x' }) }).text.opt2, '') // Sent has no row at all
   const long = result({ execution: exec('FILLED', { ...filled, receipt: `123,456,789 → 0 1000PEPE${'X'.repeat(60)} · position closed` }) })
   assert.ok(getTextWidth(long.text.opt2) <= INNER_PX.opt2)

@@ -11,9 +11,10 @@ import { fileURLToPath } from 'node:url'
 import { createServer } from 'vite'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
-const SERVER_PORT = 8790
-const VITE_PORT = 5199
-const AUTOMATION = 'http://127.0.0.1:9898'
+const SERVER_PORT = 8794
+const VITE_PORT = 5198
+const AUTOMATION_PORT = 9897
+const AUTOMATION = `http://127.0.0.1:${AUTOMATION_PORT}`
 /** Long enough for a page and its images over the simulator's bridge. */
 const SETTLE_MS = 5000
 
@@ -51,7 +52,7 @@ const vite = await createServer({
   server: { port: VITE_PORT, strictPort: true, proxy: { '/api': `http://127.0.0.1:${SERVER_PORT}` } },
 })
 await vite.listen()
-const sim = start('node_modules/.bin/evenhub-simulator', [`http://localhost:${VITE_PORT}`, '--automation-port', '9898'])
+const sim = start('node_modules/.bin/evenhub-simulator', [`http://localhost:${VITE_PORT}`, '--automation-port', String(AUTOMATION_PORT)])
 
 async function automation(path: string, body?: object) {
   const res = await fetch(AUTOMATION + path, body && { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })

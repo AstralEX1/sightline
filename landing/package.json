@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/islands.jsx --bundle --minify --format=esm --target=es2020 --jsx=automatic --define:process.env.NODE_ENV='\"production\"' --outfile=js/islands.js"
+    "build": "esbuild src/islands.jsx --bundle --minify --format=iife --target=es2020 --jsx=automatic --define:process.env.NODE_ENV='\"production\"' --outfile=js/islands.js"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",

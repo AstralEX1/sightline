@@ -6,8 +6,9 @@ export function money(n: number): string {
   return `${n < 0 ? '-' : '+'}$${fixed(Math.abs(n), 2)}`
 }
 
-/** Price: no decimals from 1,000, 2 from 1, else 4. */
+/** Price: no decimals from 1,000, 2 from 1, else 4 significant digits (0.5000, 0.01234, 0.00001234). */
 export function price(n: number): string {
+  if (n > 0 && n < 1) return n.toLocaleString('en-US', { minimumSignificantDigits: 4, maximumSignificantDigits: 4 })
   return fixed(n, n >= 1000 ? 0 : n >= 1 ? 2 : 4)
 }
 

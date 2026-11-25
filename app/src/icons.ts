@@ -1,4 +1,3 @@
-import { price } from '../../server/src/format.ts'
 import type { Candle } from '../../server/src/types.ts'
 import { encodePng4, gray4Levels } from './png.ts'
 
@@ -91,21 +90,48 @@ type Levels = { entry: number; stop: number; tp: number; liq: number }
 /** A stop or liquidation this close to the last price joins the scale, so it is drawn before it is hit. */
 const DANGER_PCT = 1
 
-/** The scale: the hour's closes, entry and stop always, liq once it is within DANGER_PCT of the last price. */
-export function chartRange(closes: number[], levels: Levels): { lo: number; hi: number } {
+/** A level may stretch the scale by this many hour-ranges each way; past that it is pinned to the edge with an arrow. */
+const STRETCH = 1.5
+
+/**
+ * The scale: the hour's closes, then entry and stop (liq only within DANGER_PCT of the last price) as far as STRETCH
+ * hour-ranges or DANGER_PCT allow, whichever is wider, so a far stop never flattens the hour into a line but a near one
+ * is always drawn. `pinned` are the levels left past the edge.
+ */
+export function chartRange(closes: number[], levels: Levels): { lo: number; hi: number; pinned: (keyof Levels)[] } {
   const now = closes[closes.length - 1]
-  const near = levels.liq > 0 && Math.abs(levels.liq - now) / now * 100 < DANGER_PCT ? [levels.liq] : []
-  const all = [...closes, ...[levels.entry, levels.stop].filter(v => v > 0), ...near]
+  const hourLo = Math.min(...closes), hourHi = Math.max(...closes)
+  const span = Math.max(hourHi - hourLo, hourHi * 0.002) // a flat hour still gets a range
+  const want = (['entry', 'stop', 'liq'] as const).filter(k => levels[k] > 0 && (k !== 'liq' || Math.abs(levels.liq - now) / now * 100 < DANGER_PCT))
+  const reach = Math.max(STRETCH * span, (now * DANGER_PCT) / 100)
+  const fits = (v: number) => v >= hourLo - reach && v <= hourHi + reach
+  const all = [hourLo, hourHi, ...want.filter(k => fits(levels[k])).map(k => levels[k])]
   const lo = Math.min(...all), hi = Math.max(...all)
-  const pad = Math.max(hi - lo, hi * 0.002) * 0.05 // a flat hour still shows as a line; nothing sits on the edge
-  return { lo: lo - pad, hi: hi + pad }
+  const pad = Math.max(hi - lo, span) * 0.06 // nothing sits on the edge
+  return { lo: lo - pad, hi: hi + pad, pinned: want.filter(k => !fits(levels[k])) }
 }
 
-/** Label centres pushed apart to at least `gap`, kept inside 0…max, in the order given (sorted by y). */
+/**
+ * Label centres at least `gap` apart, kept inside 0…max, given sorted by y. Crowded labels form a block centred on
+ * where they want to be, so a pile stays beside its lines instead of cascading away from them.
+ */
 export function spread(ys: number[], gap: number, max: number): number[] {
-  const out = ys.map(y => Math.min(max - gap / 2, Math.max(gap / 2, y)))
+  const blocks: { want: number; n: number }[] = [] // want: the sum of the targets; the block is centred on their mean
+  for (const y of ys) {
+    blocks.push({ want: y, n: 1 })
+    for (let b = blocks.length; b > 1; b = blocks.length) {
+      const [p, q] = [blocks[b - 2], blocks[b - 1]]
+      if (p.want / p.n + (p.n * gap) / 2 <= q.want / q.n - (q.n * gap) / 2) break
+      blocks.splice(b - 2, 2, { want: p.want + q.want, n: p.n + q.n })
+    }
+  }
+  const out: number[] = []
+  for (const { want, n } of blocks) {
+    const top = Math.min(max - n * gap, Math.max(0, want / n - (n * gap) / 2))
+    for (let i = 0; i < n; i++) out.push(top + gap / 2 + i * gap)
+  }
+  // Two blocks pushed into each other by the edges: one pass down keeps the gap.
   for (let i = 1; i < out.length; i++) out[i] = Math.max(out[i], out[i - 1] + gap)
-  for (let i = out.length - 1; i >= 0; i--) out[i] = Math.min(out[i], (i < out.length - 1 ? out[i + 1] - gap : max - gap / 2))
   return out
 }
 
@@ -118,23 +144,31 @@ const LABEL_PX = 15
  * The lens takes images up to 288 px wide, so the w-wide chart goes as slices: this is the one starting at `fromX`.
  */
 export const chartPng = (candles: Candle[], levels: Levels, w: number, h: number, fromX: number, sliceW: number) => draw(sliceW, h, g => {
+  if (candles.length < 2) return // black: nothing to draw yet
   g.translate(-fromX, 0)
   const closes = candles.map(c => c.close)
   const now = closes[closes.length - 1]
-  const { lo, hi } = chartRange(closes, levels)
+  const { lo, hi, pinned } = chartRange(closes, levels)
   g.font = `${LABEL_PX}px sans-serif`
   g.textBaseline = 'middle'
-  const inside = (v: number) => v > 0 && v >= lo && v <= hi
   // Each line is named at its right end, so entry and stop read without a legend; the last price is the brightest.
-  const lines = [
+  // A pinned level sits on the edge it lies beyond, with an arrow: on the chart, but not stretching it.
+  const lines = ([
     { name: 'entry', v: levels.entry, color: '#777', dash: [2, 3] },
     { name: 'stop', v: levels.stop, color: '#bbb', dash: [6, 4] },
     { name: 'liq', v: levels.liq, color: '#bbb', dash: [10, 3] },
-  ].filter(l => inside(l.v))
+  ] as const).filter(l => (l.v >= lo && l.v <= hi) || pinned.includes(l.name))
+    .map(l => ({ ...l, at: l.v > hi ? hi : l.v < lo ? lo : l.v, arrow: l.v > hi ? ' ↑' : l.v < lo ? ' ↓' : '' }))
+  // One precision for every label: the usual one for the price (as price() in format.ts), plus a digit while two
+  // different prices would still read the same, so 0.99995 is not "1.000" next to "0.9999".
+  const values = [now, ...lines.map(l => l.v)]
+  let digits = now >= 1000 ? 0 : now >= 1 ? 2 : Math.ceil(-Math.log10(now)) + 3
+  const fmt = (v: number) => v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+  while (digits < 8 && values.some((v, i) => values.some((u, j) => j > i && u !== v && fmt(u) === fmt(v)))) digits++
   const labels = [
-    ...lines.map(l => ({ text: `${l.name} ${price(l.v)}`, v: l.v, color: l.color })),
-    { text: price(now), v: now, color: '#fff' }, // brighter, not bold: bold smeared in 4-bit
-  ].sort((a, b) => b.v - a.v)
+    ...lines.map(l => ({ text: `${l.name} ${fmt(l.v)}${l.arrow}`, at: l.at, color: l.color })),
+    { text: fmt(now), at: now, color: '#fff' }, // brighter, not bold: bold smeared in 4-bit
+  ].sort((a, b) => b.at - a.at)
   const labelW = Math.ceil(Math.max(...labels.map(l => g.measureText(l.text).width))) + 14
   const plotW = w - labelW, plotH = h - AXIS_H
   const y = (v: number) => Math.round(plotH * (hi - v) / (hi - lo))
@@ -142,19 +176,22 @@ export const chartPng = (candles: Candle[], levels: Levels, w: number, h: number
 
   g.lineWidth = 1
   for (const l of lines) {
+    if (l.arrow) continue // a pinned level is only its label at the edge: a line there would look like a real level
     g.strokeStyle = l.color
-    g.setLineDash(l.dash)
-    g.beginPath(); g.moveTo(0, y(l.v) + 0.5); g.lineTo(plotW, y(l.v) + 0.5); g.stroke()
+    g.setLineDash([...l.dash])
+    const ly = Math.min(plotH - 1, Math.max(0, y(l.at))) + 0.5
+    g.beginPath(); g.moveTo(0, ly); g.lineTo(plotW, ly); g.stroke()
   }
   g.setLineDash([])
 
-  spread(labels.map(l => y(l.v)), LABEL_PX + 2, plotH).forEach((ly, i) => {
+  spread(labels.map(l => y(l.at)), LABEL_PX + 2, plotH).forEach((ly, i) => {
     g.fillStyle = labels[i].color
     g.fillText(labels[i].text, plotW + 10, ly)
   })
   g.font = `${LABEL_PX - 2}px sans-serif`
   g.fillStyle = '#888'
-  g.fillText('−1h', 0, plotH + AXIS_H / 2 + 1)
+  const minutes = Math.round((candles[candles.length - 1].start - candles[0].start) / 60_000) + 1 // a new listing has less than an hour
+  g.fillText(minutes >= 60 ? '−1h' : `−${minutes}m`, 0, plotH + AXIS_H / 2 + 1)
   g.textAlign = 'right'
   g.fillText('now', plotW, plotH + AXIS_H / 2 + 1)
 

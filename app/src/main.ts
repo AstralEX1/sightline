@@ -213,7 +213,7 @@ const current = () => screen(state, {
   outcome: outcome ?? undefined, review, hide, cursor,
 })
 /** A new key needs a rebuild: another layout or card, and a rebuild is the only way to set the menu. */
-const pageKey = (sc: Screen) => `${sc.key}:${pausedMin() > 0 ? 'paused' : ''}${noVoice() ? ':novoice' : ''}`
+const pageKey = (sc: Screen) => `${sc.layout}:${sc.key}:${pausedMin() > 0 ? 'paused' : ''}${noVoice() ? ':novoice' : ''}`
 
 /** Container name → content. A blank is ' ': an empty string is not a safe update. */
 function boxText(sc: Screen): Record<string, string> {
@@ -298,8 +298,9 @@ async function sendChart(c: NonNullable<Screen['chart']>) {
     // A failed read leaves no chart for this symbol until the next minute: never another coin's line under this one.
     closes = { symbol: c.symbol, at: Date.now(), list: await api.getChart(c.symbol).catch(() => []) }
   }
-  const key = JSON.stringify([closes.at, c])
-  if (key === shownChart || closes.list.length < 2) return
+  // Too few candles: blank slices, never the last coin's line under this one.
+  const key = closes.list.length < 2 ? `blank:${c.symbol}` : JSON.stringify([closes.at, c])
+  if (key === shownChart) return
   shownChart = '' // after a timeout the lens may show either picture
   try {
     for (const s of CHART) {
@@ -613,7 +614,7 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
     return draw()
   }
   if (is(OsEventTypeList.DOUBLE_CLICK_EVENT)) {
-    if (sc.layout === 'review') { review = ''; cursor = { key: '', at: 0 }; return draw() } // back to the alert, on Dismiss like every rebuilt page
+    if (sc.layout === 'review' && sc.card) { review = ''; cursor = { key: '', at: 0 }; return draw() } // back to the alert, on Dismiss like every rebuilt page
     if (outcome && !sc.choices.length) return closeOutcome() // "Sent": the server carries on, the lens goes back
     return act(sc, 0) // Dismiss, or OK on a result
   }
