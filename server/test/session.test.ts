@@ -4,7 +4,8 @@ import { createSession } from '../src/session.ts'
 import { createStore, type Store } from '../src/store.ts'
 import { demoExchange, FakeExchange } from '../src/fake-exchange.ts'
 import { receiptLine } from '../src/proposals.ts'
-import { CLOSE_SEED, STARTER_RULES, TEMPLATES, VOICE_SEEDS, type Draft } from '../src/registry.ts'
+import { CLOSE_SEED, STARTER_RULES, VOICE_SEEDS, type Draft } from '../src/registry.ts'
+import { template } from './removed-templates.ts'
 import { closeProposal } from '../src/execute.ts'
 import type { Position } from '../src/types.ts'
 
@@ -17,9 +18,9 @@ function btc(o: Partial<Position> = {}): Position {
   }
 }
 
-/** Template n as an enabled shortcut, with optional changes to its draft. */
+/** Template n (current or removed) as an enabled shortcut, with optional changes to its draft. */
 const tpl = (n: number, change: (d: Draft) => void = () => {}) => {
-  const d = structuredClone(TEMPLATES.find(t => t.id === `tpl_${n}`)!.draft)
+  const d = template(n)
   change(d)
   return { ...d, enabled: true }
 }
@@ -70,7 +71,7 @@ test('duplicate and concurrent taps send once and return the same execution', as
 })
 
 test('an ambiguous submit is UNKNOWN, never retried, blocks the position, and the next read settles it', async () => {
-  const { ex, store, s, ticks } = setup([btc({ stopLoss: 0 })], [tpl(8, d => { (d.action as { target: { percent: string } }).target.percent = '-3' }), tpl(7)])
+  const { ex, store, s, ticks } = setup([btc({ stopLoss: 0 })], [tpl(7, d => { d.action = { type: 'SET_SL', target: { kind: 'ENTRY_OFFSET', percent: '-3' } } }), tpl(7)])
   await ticks()
   const stop = store.pendingProposals().find(p => p.terms.type === 'setStop')!
   const margin = store.pendingProposals().find(p => p.terms.type === 'addMargin')!
@@ -219,7 +220,7 @@ test('a notify shortcut alerts and never touches the exchange', async () => {
 })
 
 test('Set SL is strict: a stop already past the mark builds no proposal, History says why', async () => {
-  const { store, s, ticks } = setup([btc({ stopLoss: 0, markPrice: 60500 })], [tpl(8)])
+  const { store, s, ticks } = setup([btc({ stopLoss: 0, markPrice: 60500 })], [tpl(7, d => { d.action = { type: 'SET_SL', target: { kind: 'ENTRY_OFFSET', percent: '-2' } } })])
   await ticks()
   assert.equal(s.state().card, null)
   assert.equal(last(store).status, 'Skipped · stop would be past the price')
@@ -299,6 +300,21 @@ test('a One position shortcut follows its epoch and ignores a reopened position'
   assert.equal(store.history().length, 0)
 })
 
+test('Positions by coin follows every position of its coins on its side, a reopened one too', async () => {
+  const eth = (o: Partial<Position> = {}) => btc({ symbol: 'ETHUSDT', entryPrice: 3000, markPrice: 2950, liqPrice: 2880, ...o })
+  const r = tpl(6, d => { d.scope = { type: 'COIN_POSITIONS', symbols: ['BTCUSDT', 'ETHUSDT'], side: 'LONG' }; d.action = { type: 'NOTIFY' } })
+  const sol = btc({ symbol: 'SOLUSDT', entryPrice: 150, markPrice: 140, liqPrice: 137 })
+  const { ex, store, ticks, advance } = setup([btc(), sol, eth({ side: 'Sell', liqPrice: 3010 })], [r])
+  await ticks()
+  assert.deepEqual(store.history().map(a => a.target), ['BTC long']) // SOL is not one of its coins, the ETH short not its side
+  ex.list = [btc()]
+  await ticks()
+  ex.list = [btc(), eth()]
+  advance(120_000)
+  await ticks()
+  assert.deepEqual(store.history().map(a => a.target).sort(), ['BTC long', 'ETH long'])
+})
+
 test('a price crossing needs two samples, and a failed poll between them is a gap, not a crossing', async () => {
   const cross = tpl(10, d => { d.scope = { type: 'SYMBOL', symbol: 'ETHUSDT' }; (d.conditions.items[0] as { threshold: string }).threshold = '3000' })
   const { ex, store, ticks } = setup([], [cross])
@@ -322,13 +338,46 @@ test('a price crossing needs two samples, and a failed poll between them is a ga
   assert.equal(a[0].reason, 'price 3,050')
 })
 
-test('price change reads the window warmed from 1-minute candles after a restart', async () => {
+test('price change counts from the price when the shortcut is turned on, then from its last alert', async () => {
   const fall = tpl(11, d => { d.scope = { type: 'SYMBOL', symbol: 'ETHUSDT' } })
-  const { ex, store, ticks } = setup([], [fall])
-  ex.candles.ETHUSDT = Array.from({ length: 10 }, (_, i) => ({ start: START - (10 - i) * 60_000, close: 3100 }))
-  ex.prices.ETHUSDT = 2990 // −3.5% from five minutes ago
+  const { ex, store, s, ticks, advance } = setup([], [fall])
+  ex.prices.ETHUSDT = 3000
+  await ticks() // the base
+  ex.prices.ETHUSDT = 2950 // −1.7%
   await ticks()
-  assert.equal(store.history()[0].reason, 'price down 3.5% in 5 min')
+  assert.equal(store.history().length, 0)
+  ex.prices.ETHUSDT = 2930 // −2.3%
+  await ticks()
+  assert.deepEqual(store.history().map(a => a.reason), ['price down 2.3%'])
+  advance(120_000) // past the cooldown
+  ex.prices.ETHUSDT = 2900 // −1.0% from the alert's 2930
+  await ticks(2)
+  assert.equal(store.history().length, 1)
+  ex.prices.ETHUSDT = 2860 // −2.4% from 2930
+  await ticks()
+  assert.equal(store.history().length, 2)
+
+  // Off and on again: the base is the price at the switch-on, so the earlier fall does not count
+  const id = store.listShortcuts()[0].id
+  store.setEnabled(id, false)
+  store.setEnabled(id, true)
+  ex.prices.ETHUSDT = 2850
+  advance(120_000)
+  await ticks()
+  ex.prices.ETHUSDT = 2830 // −0.7% from 2850
+  await ticks()
+  assert.equal(store.history().length, 2)
+  assert.equal(s.state().error, null)
+})
+
+test('price moves 15% fires on a rise and on a fall, and stays quiet on a smaller move', async () => {
+  const on = (symbol: string) => tpl(26, d => { d.scope = { type: 'SYMBOL', symbol } })
+  const { ex, store, ticks } = setup([], [on('ETHUSDT'), on('SOLUSDT'), on('XRPUSDT')])
+  ex.prices = { ETHUSDT: 3000, SOLUSDT: 150, XRPUSDT: 2 }
+  await ticks()
+  ex.prices = { ETHUSDT: 3453, SOLUSDT: 127.35, XRPUSDT: 2.28 } // +15.1%, −15.1%, +14%
+  await ticks()
+  assert.deepEqual(store.history().map(a => [a.target, a.reason]).sort(), [['ETH', 'price up 15.1%'], ['SOL', 'price down 15.1%']])
 })
 
 test('an order fill raises Set TP on the position that order opened', async () => {
@@ -343,6 +392,26 @@ test('an order fill raises Set TP on the position that order opened', async () =
   assert.equal(s.state().card!.question, 'Set BTC take profit at 62,830?')
   await ticks(2) // the same execution never fires twice
   assert.equal(s.state().pending, 1)
+})
+
+test('All orders: a fill sets the take profit of the position that order opened only, and the card outlives the fill', async () => {
+  const order = (orderId: string, symbol: string, o: object = {}) => ({ orderId, orderLinkId: '', symbol, side: 'Buy' as const, orderType: 'Limit', price: 61000, qty: 0.05, leavesQty: 0.05, reduceOnly: false, stopOrderType: '', triggerBy: '', triggerPrice: 0, positionIdx: 0, status: 'New', ...o })
+  const eth: Position = { ...btc(), symbol: 'ETHUSDT', size: 1, entryPrice: 3000, markPrice: 3000, liqPrice: 2500, stopLoss: 0 }
+  const { ex, store, s, ticks, now } = setup([eth], [tpl(14)])
+  ex.prices.ETHUSDT = 3000
+  ex.orders = [order('o1', 'BTCUSDT'), order('o2', 'ETHUSDT', { price: 3000 })]
+  await ticks()
+  ex.orders = [order('o2', 'ETHUSDT', { price: 3000 })] // only the BTC order fills
+  ex.list = [btc({ entryPrice: 61000 }), eth]
+  ex.fills.push({ id: 'e1', orderId: 'o1', orderLinkId: '', symbol: 'BTCUSDT', side: 'Buy', qty: 0.05, price: 61000, leavesQty: 0, time: now() })
+  await ticks()
+  assert.equal(s.state().card!.question, 'Set BTC take profit at 62,830?')
+  await ticks(2) // the filled order left the open list: the card stays, and the same fill never fires twice
+  assert.equal(s.state().pending, 1)
+  assert.equal(store.history().length, 1)
+  const r = await s.confirm(s.state().card!.id, 'k')
+  assert.equal(r.ok, true)
+  assert.deepEqual(ex.calls, [{ type: 'setTakeProfit', symbol: 'BTCUSDT', positionIdx: 0, price: 62830 }])
 })
 
 test('a confirm checks the condition again on fresh state', async () => {
@@ -423,11 +492,40 @@ test('an ORDER shortcut ignores an order from another symbol, and a closing orde
   assert.equal(ex.calls.length, 0)
 })
 
+test('an Open with picks: no confirm until a pick, the pick builds the terms, the picked leverage is set first', async () => {
+  const open = tpl(13, d => {
+    d.scope = { type: 'SYMBOL', symbol: 'ETHUSDT' }
+    ;(d.conditions.items[0] as { threshold: string }).threshold = '3000'
+    d.action = { type: 'OPEN_SHORT', sizes: ['100', '300'], leverages: ['2', '5'] }
+  })
+  const { ex, store, s, ticks } = setup([], [open])
+  ex.prices.ETHUSDT = 2950
+  await ticks()
+  ex.prices.ETHUSDT = 3050
+  await ticks()
+  const card = s.state().card!
+  assert.deepEqual(card.picks, { sizes: [100, 300], leverages: [2, 5] })
+  assert.match((await s.confirm(card.id, 'k0')).message, /Pick the size/)
+  assert.equal((await s.pick(card.id, 200, 5)).ok, false) // not one of the choices
+  const r = await s.pick(card.id, 300, 5)
+  assert.ok(r.ok && r.proposalId)
+  const picked = store.proposal(r.proposalId!)!
+  assert.equal(picked.picks, undefined)
+  assert.equal(picked.supersedes, card.id)
+  assert.equal(store.proposal(card.id)!.status, 'SUPERSEDED')
+  assert.ok(picked.terms.type === 'order')
+  assert.deepEqual([picked.terms.side, picked.terms.notionalUsdt, picked.terms.leverage, picked.terms.setLeverage], ['Sell', 298.9, 5, true]) // what 0.098 ETH costs, not the 300 asked for
+  const c = await s.confirm(picked.id, 'k1')
+  assert.equal(c.execution!.status, 'ACKNOWLEDGED', c.message)
+  assert.equal(ex.leverage.ETHUSDT, 5)
+  assert.equal(ex.calls.length, 1)
+})
+
 test('a read error at the moment a Once shortcut fires does not use it up', async () => {
   const open = tpl(13, d => {
     d.scope = { type: 'SYMBOL', symbol: 'ETHUSDT' }
     ;(d.conditions.items[0] as { threshold: string }).threshold = '3000'
-    d.action = { type: 'OPEN_POSITION', side: 'LONG', notionalUsdt: '100', leverage: '10' }
+    d.action = { type: 'OPEN_LONG', sizes: ['100'], leverages: ['10'] }
   })
   const { ex, store, s, ticks } = setup([], [open])
   const slots = ex.slots.bind(ex)
@@ -442,7 +540,54 @@ test('a read error at the moment a Once shortcut fires does not use it up', asyn
   await ticks()
   ex.prices.ETHUSDT = 3050
   await ticks()
-  assert.equal(s.state().card!.question, 'Open long 0.032 ETH · 100 USDT?')
+  assert.equal(s.state().card!.question, 'Open long 0.032 ETH · 97.6 USDT?') // what 0.032 ETH costs, not the 100 asked for
+})
+
+const ethOpen = (sizes: string[], leverages: string[]) => tpl(13, d => {
+  d.scope = { type: 'SYMBOL', symbol: 'ETHUSDT' }
+  ;(d.conditions.items[0] as { threshold: string }).threshold = '3000'
+  d.action = { type: 'OPEN_LONG', sizes, leverages }
+})
+const cross = async (ex: FakeExchange, ticks: () => Promise<void>) => {
+  ex.prices.ETHUSDT = 2950
+  await ticks()
+  ex.prices.ETHUSDT = 3050
+  await ticks()
+}
+
+test('an Open with picks is offered when only some choices fit the balance', async () => {
+  const { ex, s, ticks } = setup([], [ethOpen(['100', '300'], ['1', '10'])])
+  ex.available = 50 // 100 at 1x needs 97.6, 100 at 10x needs 9.76
+  await cross(ex, ticks)
+  const card = s.state().card!
+  assert.deepEqual(card.picks, { sizes: [100, 300], leverages: [1, 10] })
+  assert.equal((await s.pick(card.id, 300, 1)).ok, false)
+  assert.equal((await s.pick(card.id, 100, 10)).ok, true)
+})
+
+test('a skipped Once shortcut is not used up: a new crossing offers it again', async () => {
+  const { ex, store, s, ticks, advance } = setup([], [ethOpen(['100'], ['10'])])
+  ex.available = 5
+  await cross(ex, ticks)
+  assert.equal(s.state().card, null)
+  assert.match(last(store).status, /^Skipped/)
+  ex.available = 8_000
+  advance(120_000)
+  await cross(ex, ticks)
+  assert.equal(s.state().card!.question, 'Open long 0.032 ETH · 97.6 USDT?')
+})
+
+test('a tap whose fresh read fails offers a Once shortcut again too', async () => {
+  const { ex, s, ticks, advance } = setup([], [ethOpen(['100'], ['10'])])
+  await cross(ex, ticks)
+  const card = s.state().card!
+  ex.failReads = 'Bybit HTTP 502'
+  assert.match((await s.confirm(card.id, 'tap-1')).message, /could not check the position/)
+  ex.failReads = null
+  advance(120_000)
+  await cross(ex, ticks)
+  assert.notEqual(s.state().card?.id ?? card.id, card.id)
+  assert.equal(ex.calls.length, 0)
 })
 
 test('closing a proposal does nothing once a tap has authorized it', async () => {
@@ -490,6 +635,30 @@ test('All orders: an order open too long gets a cancel proposal; a fresh one doe
   assert.equal(s.state().pending, 1)
   assert.deepEqual(s.state().card!.terms, { type: 'cancel', symbol: 'BTCUSDT', orderId: 'old' })
   assert.equal(s.state().card!.why, 'order open 1 h 1 min')
+})
+
+test('All orders: a conditional entry order (Bybit "Stop") can be cancelled, a stop loss order cannot', async () => {
+  const { ex, s, ticks } = setup([], [tpl(24)])
+  const old = START - 61 * 60_000
+  ex.orders = [{ ...slOrder, orderId: 'entry', stopOrderType: 'Stop', side: 'Buy', reduceOnly: false, triggerPrice: 63000, createdAt: old }, { ...slOrder, createdAt: old }]
+  await ticks()
+  assert.equal(s.state().pending, 1)
+  const card = s.state().card!
+  assert.deepEqual(card.terms, { type: 'cancel', symbol: 'BTCUSDT', orderId: 'entry' })
+  await s.confirm(card.id, 'tap-1')
+  assert.deepEqual(ex.calls, [{ type: 'cancel', symbol: 'BTCUSDT', orderId: 'entry' }])
+})
+
+test('a tap checks the condition at the price of the tap, not the last poll', async () => {
+  const { ex, s, ticks } = setup([btc()], [tpl(27, d => { d.action = { type: 'CLOSE_POSITION', percent: '50' } })])
+  ex.prices.BTCUSDT = 60300 // 0.5% from the stop at 60,000
+  ex.setMark('BTCUSDT', 60300)
+  await ticks()
+  const card = s.state().card!
+  ex.prices.BTCUSDT = 63000 // ran away before the next poll
+  ex.setMark('BTCUSDT', 63000)
+  assert.match((await s.confirm(card.id, 'tap-1')).message, /condition no longer holds/)
+  assert.equal(ex.calls.length, 0)
 })
 
 test('funding: a long paying the next funding inside the window is told so', async () => {
@@ -561,16 +730,15 @@ test('starter rules: on the demo account the lens has work at once, and the menu
   const store = createStore(':memory:', () => START)
   store.seed([...STARTER_RULES, ...VOICE_SEEDS])
   assert.deepEqual(store.listShortcuts().map(r => [r.action.type, r.enabled]),
-    [['CLOSE_POSITION', true], ['SET_SL', true], ['MOVE_SL', true], ['SET_SL', true], ['MOVE_SL', true]])
+    [['CLOSE_POSITION', true], ['MOVE_SL', true], ['SET_SL', true], ['MOVE_SL', true]])
   let now = START
   const s = createSession(ex, store, () => now)
   await s.tick()
   now += 2000
   const cards = () => store.pendingProposals().map(p => p.question).sort()
-  assert.deepEqual(cards(), ['Move SOL stop to entry 140?', 'Set BTC stop at 60,760?', 'Set ETH stop at 3,162?'])
-  assert.deepEqual(await s.command('stop'), { ok: true, message: 'Heard "protect all" · 2 proposals' }) // the cards already up
-  assert.deepEqual(await s.command('lock'), { ok: true, message: 'Heard "lock profits" · 1 proposal' })
-  assert.equal(cards().length, 3)
+  assert.deepEqual(cards(), ['Move SOL stop to entry 140?'])
+  assert.deepEqual(await s.command('lock'), { ok: true, message: 'Heard "lock profits" · 1 proposal' }) // the card already up
+  assert.equal(cards().length, 1)
   ex.setMark('BTCUSDT', 61200) // liquidation distance 2.8%: the third rule
   ex.prices.BTCUSDT = 61200
   await s.tick()

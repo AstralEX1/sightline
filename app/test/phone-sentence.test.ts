@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { TEMPLATES, type Condition } from '../../server/src/registry.ts'
-import { actionParts, conditionParts, fmt, optionsSummary, parseDec, tileSub, type Part } from '../src/phone/sentence.ts'
+import { actionParts, conditionParts, fmt, optionsSummary, parseDec, targetTag, type Part } from '../src/phone/sentence.ts'
 
 /** Tokens in [brackets], plain words as they are: the sentence as a reader sees it. */
 const read = (parts: Part[]) => parts.map(p => (typeof p === 'string' ? p : `[${p.text}]`)).join(' ')
@@ -11,11 +11,10 @@ const c = (x: NoId<Condition>) => ({ id: 'c1', ...x }) as Condition
 test('condition sentences read as drawn', () => {
   assert.equal(read(conditionParts(c({ type: 'PROFIT', unit: 'ROI_PERCENT', threshold: '30' }))), '[ROI] is [above] [30%]')
   assert.equal(read(conditionParts(c({ type: 'LOSS', unit: 'ROI_PERCENT', threshold: '20' }))), '[ROI] is [below] [−20%]')
-  assert.equal(read(conditionParts(c({ type: 'PRICE_CHANGE', source: 'LAST', direction: 'UP', percent: '5', windowSec: 300 }))), '[price change] [rises] by [5%] within [5 min]')
+  assert.equal(read(conditionParts(c({ type: 'PRICE_CHANGE', source: 'LAST', direction: 'UP', percent: '5' }))), '[price change] [rises] by [5%] since switched on')
   assert.equal(read(conditionParts(c({ type: 'PRICE', source: 'LAST', operator: 'UP_CROSS', threshold: '90000' }))), '[price] [crosses above] [90,000 USDT]')
   assert.equal(read(conditionParts(c({ type: 'PRICE', source: 'LAST', operator: 'GTE', threshold: '90000' }))), '[price] is [above] [90,000 USDT]')
   assert.equal(read(conditionParts(c({ type: 'NEAR_LIQUIDATION', distancePct: '5' }))), '[liquidation distance] is below [5%]')
-  assert.equal(read(conditionParts(c({ type: 'SL_MISSING' }))), '[stop loss is missing]')
   assert.equal(read(conditionParts(c({ type: 'ORDER_PARTIAL' }))), '[order] is [partly filled]')
 })
 
@@ -25,6 +24,11 @@ test('action sentences read as drawn', () => {
   assert.equal(read(actionParts({ type: 'CLOSE_POSITION', percent: '50' })), '[close position] by [50%]')
   assert.equal(read(actionParts({ type: 'INCREASE_POSITION', notionalUsdt: '100' })), '[increase position] by [100 USDT]')
   assert.equal(read(actionParts({ type: 'NOTIFY' })), '[notify]')
+  assert.equal(read(actionParts({ type: 'ADD_MARGIN', amount: '20', unit: 'MARGIN_PERCENT' })), '[add margin] of [20%] [of its margin]')
+  assert.equal(read(actionParts({ type: 'ADD_MARGIN', amount: '50', unit: 'USDT' })), '[add margin] of [50] [USDT]')
+  assert.equal(read(actionParts({ type: 'OPEN_LONG', sizes: ['100'], leverages: ['5'] })), '[open long] of [100 USDT] at [5×]')
+  assert.equal(read(actionParts({ type: 'OPEN_SHORT', sizes: ['100', '250'], leverages: ['1', '1.5'] })), '[open short] of [100 · 250 USDT] at [1× · 1.5×] · you pick on Even G2')
+  assert.equal(read(actionParts({ type: 'OPEN_SHORT', sizes: [], leverages: ['1'] })), '[open short] of [set sizes] at [1×]')
 })
 
 test('a token says its field, value and edit to a screen reader (P23)', () => {
@@ -52,9 +56,7 @@ test('numbers: thousands, minus sign, decimals as typed', () => {
   assert.equal(parseDec(''), null)
 })
 
-test('tile subtitle and Options summary', () => {
-  assert.equal(tileSub({ enabled: false, summary: 'ROI > 30%' }), 'Off · ROI > 30%')
-  assert.equal(tileSub({ enabled: true, summary: 'Say "protect all"' }), 'Say "protect all"')
+test('Options summary', () => {
   assert.equal(optionsSummary({ trigger: { mode: 'ON_ENTRY' }, delivery: { glasses: true, phone: true } }), 'On entry · Glasses + phone')
   assert.equal(optionsSummary({ trigger: { mode: 'REPEAT', intervalSec: 300 }, delivery: { glasses: true, phone: false }, voicePhrase: 'protect all' }), 'Every 5 min · Glasses · Voice')
 })
@@ -65,4 +67,13 @@ test('the new conditions read as sentences', () => {
   assert.equal(line({ type: 'FUNDING', ratePct: '0.05', minutesBefore: 30 }), 'funding rate is above 0.05% with 30 min to payment')
   assert.equal(line({ type: 'ORDER_STALE', minutes: 60 }), 'order is open for over 60 min')
   assert.equal(line({ type: 'POSITION_CLOSED', by: 'LIQUIDATION' }), 'position is liquidated')
+})
+
+test('a tile tags its one target, never All positions or All orders', () => {
+  assert.equal(targetTag({ type: 'ALL_POSITIONS' }), null)
+  assert.equal(targetTag({ type: 'ALL_ORDERS' }), null)
+  assert.equal(targetTag({ type: 'SYMBOL', symbol: 'BTCUSDT' }), 'BTC')
+  assert.equal(targetTag({ type: 'SYMBOL', symbol: '' }), 'One symbol') // a template still to fill
+  assert.equal(targetTag({ type: 'POSITION', symbol: 'ETHUSDT', positionIdx: 0, epoch: 'Sell:1800000000000' }), 'ETH short')
+  assert.equal(targetTag({ type: 'ORDER', symbol: 'SOLUSDT', orderId: 'o1' }), 'SOL order')
 })

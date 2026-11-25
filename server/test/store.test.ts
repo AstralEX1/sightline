@@ -152,6 +152,22 @@ test('enabling a stored draft that no longer validates is refused', t => {
   assert.deepEqual([s.getShortcut(a.id)!.version, s.getShortcut(a.id)!.enabled], [2, false])
 })
 
+test('opening drops the removed SL_MISSING condition; a rule left with no condition and no phrase is deleted', t => {
+  const { path, store: s, raw } = onFile(t)
+  const keep = created(s, { enabled: true }), gone = created(s, { enabled: true })
+  const sl = { id: 'c2', type: 'SL_MISSING' } // as the old starter rule tpl_8 stored it
+  const put = (r: typeof keep, items: unknown[]) => {
+    raw.prepare('INSERT INTO shortcut_versions VALUES (?, 2, ?, 1)').run(r.id, JSON.stringify({ ...r, version: 2, conditions: { logic: 'ANY', items } }))
+    raw.prepare('UPDATE shortcuts SET current_version = 2 WHERE id = ?').run(r.id)
+  }
+  put(keep, [...keep.conditions.items, sl])
+  put(gone, [sl])
+  const again = createStore(path)
+  assert.deepEqual(again.listShortcuts().map(r => [r.id, r.version, r.enabled, r.conditions.items.map(c => c.type)]), [[keep.id, 3, true, ['PROFIT']]])
+  assert.equal(again.getShortcut(gone.id), null)
+  again.close()
+})
+
 test('seed adds the voice shortcuts once, and not again after they are deleted', () => {
   const s = createStore(':memory:')
   s.seed()

@@ -96,31 +96,54 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 
 /* Two columns; one once 10rem no longer fits twice (root ≥ 22 px). */
 .phone .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, max(10rem, calc((100% - 12px) / 2))), 1fr)); gap: 12px; } /* min(100%): at 320 px and 200% text, 10rem is wider than the screen */
+.phone .grid[hidden] { display: none; }
+/* Template categories fold like a Notion toggle: the whole heading row is the button, the chevron points right when folded and down when open. */
+.phone .tpl-group + .tpl-group { margin-top: 16px; }
+.phone .tpl-group__title { margin-bottom: 4px; font-size: 1.0625rem; line-height: 1.375rem; font-weight: 600; letter-spacing: -.01em; }
+.phone .tpl-group__toggle { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; border-radius: 8px; }
+.phone .tpl-group__chev { display: flex; flex: none; color: var(--text-2); transition: transform .2s ease-out; } /* reduced motion: the global rule drops transform, so it snaps */
+.phone .tpl-group__toggle[aria-expanded='true'] .tpl-group__chev { transform: rotate(90deg); }
 
-.phone .tile { position: relative; display: flex; flex-direction: column; min-height: 6.5rem; border-radius: 20px; }
+/* A tile is two grid rows, When and Do, shared with its neighbours (subgrid): Do starts at the same height across a row
+   of tiles, at the bottom, even when one trigger or action takes more lines. */
+.phone .tile { position: relative; display: grid; grid-row: span 2; grid-template-columns: minmax(0, 1fr); grid-template-rows: subgrid; row-gap: 0; min-height: 8.9375rem; border-radius: 20px; }
 .phone :is(.tile, .chip) { background: var(--c); }
 .phone .tile { color: #FFFFFF; }
 .phone .chip { color: #FFFFFF; } /* every action glyph is white on its color */
 .phone .tile.is-loading { background: var(--chip); opacity: .4; }
-/* Templates look like your shortcuts (same fill, white glyph); a + takes the switch's place */
+/* Templates look like your shortcuts (same fill and words); a + takes the switch's place */
 .phone .tile--template { background-color: var(--c); background-image: linear-gradient(rgb(0 0 0 / .16), rgb(0 0 0 / .38) 50px, rgb(0 0 0 / .41)); }
-.phone .tile__body, .phone .tile--template { flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 8px; padding: 16px; border-radius: 20px; }
+.phone .tile__body { grid-row: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: subgrid; row-gap: 0; }
+.phone :is(.tile__body, .tile--template) { padding: 16px; border-radius: 20px; }
 /* Keep white glyphs and labels readable on every action fill. */
 .phone .tile__body { background: linear-gradient(rgb(0 0 0 / .16), rgb(0 0 0 / .38) 50px, rgb(0 0 0 / .41)); }
 .phone :is(.tile__body, .tile--template) { transition: opacity .2s ease-out, transform .2s ease-out; }
 .phone :is(.tile__body, .tile--template):active { opacity: .85; transform: scale(.97); transition: none; }
-.phone .tile__glyph { display: flex; width: 26px; height: 26px; }
-.phone .tile__top { display: flex; justify-content: space-between; align-items: flex-start; }
-.phone .tile__badge { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: rgb(255 255 255 / .25); color: #FFFFFF; }
-.phone .tile__text { display: flex; flex-direction: column; min-width: 0; }
-.phone .tile__title { display: -webkit-box; overflow: hidden; font-size: .9375rem; line-height: 1.1875rem; font-weight: 500; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; } /* names go up to 40 characters with no spaces: two lines, then … */
-.phone .tile__sub { display: -webkit-box; min-height: 2.25rem; overflow: hidden; font-size: .8125rem; line-height: 1.125rem; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; } /* two lines reserved, so titles in one row line up */
+.phone :is(.tile__when, .tile__do) { display: flex; flex-direction: column; gap: .1875rem; }
+.phone .tile__do { padding-top: .6875rem; }
+.phone .tile__label { display: flex; align-items: center; font-size: .75rem; line-height: 1.25rem; font-weight: 600; opacity: .8; }
+.phone .tile__when .tile__label { padding-right: 38px; } /* clear of the switch */
+.phone .tile--template .tile__when .tile__label { padding-right: 32px; } /* clear of the + */
+.phone .tile__chip { display: flex; flex: none; align-items: center; justify-content: center; width: 1.25rem; height: 1.25rem; margin-right: .375rem; border-radius: .375rem; background: rgb(255 255 255 / .22); }
+.phone .tile__chip svg { width: .75rem; height: .75rem; }
+.phone .tile__do .tile__chip svg { width: .6875rem; height: .6875rem; }
+.phone .tile__word { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; } /* a name takes one line: up to 40 characters, no spaces needed */
+/* One position, symbol or order: its tag, in the chip's fill; All positions and All orders have none */
+.phone .tile__tag { min-width: 0; margin-left: .375rem; padding: 0 .375rem; border-radius: .375rem; background: rgb(255 255 255 / .22); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* the trigger and the action: one style, same size; "Add 50 USDT margin" takes all three lines on a 375 px phone */
+.phone .tile__value { display: -webkit-box; overflow: hidden; font-size: 1.375rem; line-height: 1.6875rem; font-weight: 650; letter-spacing: -.015em; font-variant-numeric: tabular-nums; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow-wrap: anywhere; }
+.phone .tile__badge { position: absolute; top: 13px; right: 16px; display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: rgb(255 255 255 / .25); color: #FFFFFF; }
 .phone .tile__switch { position: absolute; z-index: 1; top: 4px; right: 4px; display: flex; align-items: center; justify-content: center; width: 50px; height: 44px; }
-.phone .tile__track { position: relative; width: 40px; height: 24px; border-radius: 12px; background: #0C0C0C; }
+.phone .tile__track { position: relative; width: 40px; height: 24px; border-radius: 12px; background: rgb(255 255 255 / .26); }
 .phone .tile__knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #FFFFFF; transition: transform .15s ease-out; }
-.phone .tile__switch[aria-checked='true'] .tile__knob { transform: translateX(16px); }
+.phone .tile__switch[aria-checked='true'] .tile__track { background: #FFFFFF; }
+.phone .tile__switch[aria-checked='true'] .tile__knob { background: var(--c); transform: translateX(16px); }
 .phone .tile__switch[data-busy] { opacity: .6; }
 .phone .tile[data-state='off'] .tile__body { background: linear-gradient(rgb(0 0 0 / .34), rgb(0 0 0 / .5)); } /* off reads dimmer, not only by its switch */
+@media (prefers-contrast: more) {
+  .phone .tile__track { box-shadow: inset 0 0 0 1px #FFFFFF; } /* 26% white is under 3:1 on a tile */
+  .phone .tile__label { opacity: 1; }
+}
 
 /* Editor */
 .phone .title-pill { justify-self: center; display: flex; align-items: center; gap: 8px; max-width: 100%; min-height: 44px; padding: 0 8px;
@@ -252,6 +275,8 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .choice-row { --sep: 56px; }
 .phone .group:has(> .choice-row) { --sep: 56px; }
 .phone .pick-row { min-height: 60px; }
+.phone .pick-row--one { min-height: 48px; } /* one line: a symbol */
+.phone .search-wrap + div > .group-label:first-child { margin-top: 0; }
 .phone .pick-row__title { font-weight: 600; }
 .phone .pick-row__detail { flex: none; color: var(--text-2); font-size: .8125rem; }
 .phone .disclosure__list .radio-row + .radio-row::before { content: ''; position: absolute; top: 0; right: 0; left: 52px; border-top: 1px solid var(--border); }
@@ -314,7 +339,7 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .banner__time { flex: none; align-self: flex-start; font-size: .8125rem; color: var(--text-2); }
 
 /* caption (13) and label-size lines carry no tracking, the body default is -.01em */
-.phone :is(.status-line, .tile__sub, .confirm-line, .footnote, .row--note, .marker, .hist__time, .hist__sub, .hist__status, .empty-state__text, .lens__text, .radio-row__detail, .choice-row__sub, .pick-row__sub, .pick-row__detail, .dialog__text, .banner__sub, .banner__where, .banner__time) { letter-spacing: 0; }
+.phone :is(.status-line, .tile__label, .confirm-line, .footnote, .row--note, .marker, .hist__time, .hist__sub, .hist__status, .empty-state__text, .lens__text, .radio-row__detail, .choice-row__sub, .pick-row__sub, .pick-row__detail, .dialog__text, .banner__sub, .banner__where, .banner__time) { letter-spacing: 0; }
 
 /* §3.5: reduced motion turns every move into a short cross-fade. */
 @media (prefers-reduced-motion: reduce) {

@@ -90,6 +90,8 @@ let quit = false
 let outcome: Outcome | null = null
 let execId = ''
 let review = ''
+/** An Open's size, picked on its size page; the leverage page comes next */
+let pick: { id: string; size: number } | undefined
 let hide = ''
 let cursor = { key: '', at: 0 }
 let mic: 'off' | 'starting' | 'on' | 'stopping' | 'sending' = 'off'
@@ -211,7 +213,7 @@ function focusIndex(): number {
 }
 const current = () => screen(state, {
   offline, voice: voiceText(), pausedMin: pausedMin(), focus: focusIndex(), detail: detailOpen, needToken, hints: api.hintsOn(), now: Date.now(),
-  outcome: outcome ?? undefined, review, hide, cursor,
+  outcome: outcome ?? undefined, review, pick, hide, cursor,
 })
 /** A new key needs a rebuild: another layout or card, and a rebuild is the only way to set the menu. */
 const pageKey = (sc: Screen) => `${sc.layout}:${sc.key}:${pausedMin() > 0 ? 'paused' : ''}${noVoice() ? ':novoice' : ''}`
@@ -360,7 +362,8 @@ async function draw() {
         if (sc.layout === 'alert' && sc.card && sc.card.id !== blinked) {
           blinked = sc.card.id // once per alert
           await blink(want.who)
-          if (sc.choices.length > 1 && api.voiceAnswersOn()) void startListening(LISTEN_MS, sc.card.id) // only an alert with an action asks
+          // only an alert with an action asks; an Open with picks needs its size and leverage chosen by hand
+          if (sc.choices.length > 1 && !sc.card.picks && api.voiceAnswersOn()) void startListening(LISTEN_MS, sc.card.id)
         }
         continue
       }
@@ -494,7 +497,7 @@ async function onAnswer(cardId: string, r: { heard: string; answer: 'yes' | 'no'
   const sc = current()
   if (sc.layout !== 'alert' || sc.card?.id !== cardId) return
   if (r.answer === 'no') return dismissCard(sc.card)
-  if (r.answer === 'yes' && sc.choices.length > 1) return startCountdown(sc.card) // stale data offers only Dismiss: yes does nothing
+  if (r.answer === 'yes' && sc.choices.length > 1 && !sc.card.picks) return startCountdown(sc.card) // stale data offers only Dismiss: yes does nothing
   note(r.heard ? `Heard "${r.heard}" · tap to answer` : 'Heard nothing · tap to answer')
 }
 
@@ -626,11 +629,17 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
   if (swipe !== null) {
     if (sc.choices.length < 2 || Date.now() - lastSwipe < SWIPE_GATE_MS) return
     lastSwipe = Date.now()
-    cursor = { key: sc.key, at: swipe } // up: Dismiss, down: the action
+    cursor = { key: sc.key, at: Math.max(0, Math.min(sc.choices.length - 1, sc.at + (swipe ? 1 : -1))) } // up toward Dismiss, down toward the action
     return draw()
   }
   if (is(OsEventTypeList.DOUBLE_CLICK_EVENT)) {
-    if (sc.layout === 'review' && sc.card) { review = ''; cursor = { key: '', at: 0 }; return draw() } // back to the alert, on Dismiss like every rebuilt page
+    // The leverage page goes back to the size page, the rest back to the alert, on Dismiss like every rebuilt page
+    if (sc.layout === 'review' && sc.card) {
+      if (sc.key.endsWith(':leverage') && pick?.id === sc.card.id) pick = undefined
+      else review = ''
+      cursor = { key: '', at: 0 }
+      return draw()
+    }
     if (outcome && !sc.choices.length) return closeOutcome() // "Sent": the server carries on, the lens goes back
     return act(sc, 0) // Dismiss, or OK on a result
   }
@@ -650,6 +659,26 @@ function act(sc: Screen, i: number) {
   if (choice === 'dismiss') return dismissCard(card)
   if (choice === 'review') { review = card.id; return draw() }
   if (choice === 'confirm') return confirmCard(card)
+  if (choice === 'pick') return pickChoice(sc, card, i)
+}
+
+/** A tap on an Open's size or leverage page. The size page with one leverage, or the leverage page, sends the pick. */
+async function pickChoice(sc: Screen, card: Proposal, i: number) {
+  const { sizes, leverages } = card.picks!
+  const onSize = sc.key.endsWith(':size')
+  if (onSize) pick = { id: card.id, size: sizes[i] }
+  if (onSize && leverages.length > 1) { cursor = { key: '', at: 0 }; return draw() }
+  const size = pick?.id === card.id ? pick.size : sizes[0]
+  try {
+    const r = await api.pick(card.id, size, onSize ? leverages[0] : leverages[i])
+    if (r.ok && r.proposalId) review = r.proposalId // Review of the new terms, once the poll brings them
+    else note(r.message)
+  } catch {
+    note('No reply from the server · try again')
+  }
+  pick = undefined
+  cursor = { key: '', at: 0 }
+  return poll()
 }
 
 function closeOutcome() {

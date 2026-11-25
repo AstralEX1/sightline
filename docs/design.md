@@ -11,7 +11,7 @@ Set the rule. Tap the trade. The glasses stay quiet while you are fine. When one
 | Done | `Closed 0.025 BTC · avg 61,180`, then `OK` | tap OK, or wait |
 
 ## Principles, and where they live
-1. **Quiet by default.** Extra navigation tips default on while the stored launch count is below three. Settings → Gesture tips overrides that default. Exit and Back remain visible. Main shows positions and a flag only when something is wrong (`liq …%`, `no stop`); there is no dollar day-PnL on the lens.
+1. **Quiet by default.** Extra navigation tips default on while the stored launch count is below three. Settings → Gesture tips overrides that default. Exit and Back remain visible. Main shows positions and a flag only when something is wrong (`liq …%`); there is no dollar day-PnL on the lens.
 2. **One question at a time, the safe answer first.** `Dismiss` is item 0, because the firmware highlights item 0 on every rebuild. The other choice names its outcome ("Add 100 USDT margin to BTC"), never "Yes".
 3. **Say what it costs.** Detail shows unrealized PnL next to the coin; a stop action names the price you confirm. Before fees and slippage.
 4. **Your rules, not advice.** The alert's `why` is the condition you wrote. Nothing reaches the exchange without a tap.
@@ -28,10 +28,10 @@ Set the rule. Tap the trade. The glasses stay quiet while you are fine. When one
 ## How the words are written
 Sentence case. Verbs first on actions and menus (16 characters max). Numbers carry their unit. Plain words over trader shorthand. The ellipsis is one character (…). A lens line fits 540 px: the tests measure it with the firmware font (`@evenrealities/pretext`).
 
-The phone page takes its colors from `brand/README.md` (Even greys, Bybit orange `#FFB11A` as a fill with Ink text on it) and Inter, and follows Apple HIG laid out like Apple Shortcuts (a tile filled in the action's color with a white glyph; templates as plain cards; grouped white cards on a Paper page). It borrows no iOS chrome such as blurred bars. A template opens as an unsaved shortcut with Add; a sheet with edits closes only by Cancel or Done.
+The phone page takes its colors from `brand/README.md` (Even greys, Bybit orange `#FFB11A` as a fill with Ink text on it) and Inter, and follows Apple HIG laid out like Apple Shortcuts (a tile filled in the action's color that reads When and the trigger over Do and the action, both in one size, with a toggle: a white track and a knob in the tile's color when on; templates the same with a + in the toggle's place; grouped white cards on a Paper page). It borrows no iOS chrome such as blurred bars. A template opens as an unsaved shortcut with Add; a sheet with edits closes only by Cancel or Done.
 
 ## The 30-second demo
-1. Put the glasses on: `Bybit Demo · 3 positions`, BTC on top with `liq …%`, ETH with `no stop`.
+1. Put the glasses on: `Bybit Demo · 3 positions`, BTC on top with `liq …%`.
 2. Tap BTC: Detail with big PnL, size, liquidation, stop. Double tap back.
 3. A near-liquidation shortcut fires: the who line blinks, `> Dismiss`, swipe to `Close 50% · 0.025 BTC`, tap. Sent → Filled.
 4. Tap then long press for the menu, `Protect all`: one card per position without a stop.

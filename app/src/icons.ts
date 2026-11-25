@@ -13,8 +13,6 @@ export const ICONS = {
   warn: ['M12 3.5 L21.5 20 H2.5 Z', 'M12 10 V14', 'M12 17 V17.01'],
   /** Near stop: a stop protects the position */
   shield: [SHIELD],
-  /** Stop missing */
-  shieldOff: [SHIELD, 'M4 3 L20 21'],
   /** Stop moved to entry: the profit is locked */
   lock: ['M6 11 H18 V20 H6 Z', 'M8.5 11 V8 A3.5 3.5 0 0 1 15.5 8 V11'],
   /** Price level */

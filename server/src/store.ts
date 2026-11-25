@@ -358,5 +358,16 @@ export function createStore(path: string, clock: () => number = Date.now): Store
     auditLog: entityId => all('SELECT at, entity, event, detail FROM audit_log WHERE account_id = ? AND entity_id = ? ORDER BY id', ACCOUNT, entityId)
       .map(r => ({ at: r.at as number, entity: r.entity as string, event: r.event as string, detail: r.detail as string })),
   }
+
+  // SL_MISSING left the catalog (2026-11-25): drop it from stored rules; a rule left with nothing to fire on goes.
+  store.transaction(() => {
+    for (const r of store.listShortcuts()) {
+      const items = r.conditions.items.filter(c => (c.type as string) !== 'SL_MISSING')
+      if (items.length === r.conditions.items.length) continue
+      if (!items.length && !r.voicePhrase) { store.deleteShortcut(r.id, r.version); continue }
+      const rule = { ...r, version: r.version + 1, conditions: { ...r.conditions, items } }
+      writeVersion({ ...rule, enabled: r.enabled && validateShortcut(rule, { phrasesInUse: store.phrasesInUse(r.id) }).ok }, 'edited')
+    }
+  })
   return store
 }

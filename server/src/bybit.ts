@@ -5,6 +5,8 @@ import type { ClosedBy } from './registry.ts'
 const RECV_WINDOW = '5000'
 const TIMEOUT_MS = 8000
 const MARGIN_MODE_TTL_MS = 60_000
+const SYMBOLS_TTL_MS = 3_600_000
+const MAX_SYMBOL_PAGES = 10 // of 1000; a cursor that never ends must not loop forever
 const TESTNET_HOSTS = ['api-testnet.bybit.com', 'api-demo.bybit.com']
 
 export function sign(secret: string, payload: string): string {
@@ -69,6 +71,7 @@ export function createBybit(o: {
   const sleep = o.sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)))
   const instruments = new Map<string, Instrument>()
   let marginMode: { value: string; at: number } | null = null
+  let symbolList: { names: string[]; at: number } | null = null
 
   async function call<T>(method: 'GET' | 'POST', path: string, params: Params): Promise<T> {
     const query = method === 'GET' ? new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString() : ''
@@ -178,7 +181,7 @@ export function createBybit(o: {
         price: num(r.price),
         qty: num(r.qty),
         leavesQty: num(r.leavesQty),
-        reduceOnly: r.reduceOnly === true,
+        reduceOnly: r.reduceOnly === true || r.closeOnTrigger === true, // a close-on-trigger order only reduces
         stopOrderType: String(r.stopOrderType ?? ''),
         triggerBy: String(r.triggerBy ?? ''),
         triggerPrice: num(r.triggerPrice),
@@ -216,6 +219,21 @@ export function createBybit(o: {
 
     instrument,
 
+    async symbols() {
+      if (symbolList && now() - symbolList.at < SYMBOLS_TTL_MS) return symbolList.names
+      const names: string[] = []
+      let cursor = ''
+      for (let page = 0; page < MAX_SYMBOL_PAGES; page++) {
+        const r = await call<{ list: Row[]; nextPageCursor?: string }>('GET', '/v5/market/instruments-info', { category: 'linear', limit: 1000, ...(cursor && { cursor }) })
+        // linear also lists USDC perpetuals and dated futures; only USDT perpetuals that trade now
+        for (const x of r.list) if (x.contractType === 'LinearPerpetual' && x.quoteCoin === 'USDT' && x.status === 'Trading') names.push(String(x.symbol))
+        cursor = r.nextPageCursor ?? ''
+        if (!cursor) break
+      }
+      symbolList = { names: names.sort(), at: now() }
+      return symbolList.names
+    },
+
     async slots(symbol) {
       // Flat slots too: leverage is set per slot, and hedge mode shows as positionIdx 1 and 2.
       const rows = await list('/v5/position/list', { symbol })
@@ -240,6 +258,15 @@ export function createBybit(o: {
 
     async addMargin(symbol, positionIdx, usd) {
       await call('POST', '/v5/position/add-margin', { category: 'linear', symbol, margin: String(usd), positionIdx })
+    },
+
+    async setLeverage(symbol, leverage) {
+      const lev = String(leverage)
+      try {
+        await call('POST', '/v5/position/set-leverage', { category: 'linear', symbol, buyLeverage: lev, sellLeverage: lev })
+      } catch (e) {
+        if (!/\b110043\b/.test((e as Error).message)) throw e // 110043: leverage not modified, it already is
+      }
     },
 
     async placeOrder(r) {

@@ -7,8 +7,8 @@ import type { IconName } from './icons.ts'
 
 /** Which boxes main.ts LAYOUTS puts on the lens (docs/glasses-shortcuts.md §4). */
 export type Layout = 'main' | 'detail' | 'alert' | 'review'
-/** What a tap on opt1 / opt2 does: dismiss the proposal, confirm it, open its Review, or close a result. */
-export type Choice = 'dismiss' | 'confirm' | 'review' | 'close'
+/** What a tap on opt1 / opt2 does: dismiss the proposal, confirm it, open its Review, close a result, or pick an Open's size or leverage. */
+export type Choice = 'dismiss' | 'confirm' | 'review' | 'close' | 'pick'
 
 /**
  * Text for each glasses container. Table columns are separate containers, so rows line up
@@ -72,6 +72,8 @@ export interface View {
   outcome?: Outcome
   /** Id of the card whose Review is open */
   review?: string
+  /** The size picked for the card `id` (its picks): the next page asks the leverage */
+  pick?: { id: string; size: number }
   /** Id of a card being dismissed: gone from the lens before the server says so */
   hide?: string
   /** Where a swipe put `>`, on the page with this key */
@@ -147,7 +149,7 @@ export function pnlText(n: number): string {
 
 /** The condition behind the alert names its icon; the text says it too. */
 const REASON_ICON: Record<ConditionType, IconName> = {
-  NEAR_LIQUIDATION: 'warn', LOSS: 'trendDown', SL_MISSING: 'shieldOff', NEAR_SL: 'shield', PROFIT: 'trendUp',
+  NEAR_LIQUIDATION: 'warn', LOSS: 'trendDown', NEAR_SL: 'shield', PROFIT: 'trendUp',
   NEAR_TP: 'target', PRICE_CHANGE: 'pulse', PRICE: 'bell', ORDER_FILLED: 'check', ORDER_PARTIAL: 'half',
   VOLUME_SPIKE: 'pulse', FUNDING: 'percent', ORDER_STALE: 'hourglass', POSITION_CLOSED: 'exit',
 }
@@ -179,7 +181,7 @@ function row(p: Position, on: boolean): string[] {
   const dist = liqDistancePct(p)
   const r = roi(p)
   const cell = r && fit(r, INNER_PX.loss)
-  const flag = dist < LIQ_FLAG_PCT ? `liq ${dist.toFixed(1)}%` : p.stopLoss ? '' : 'no stop'
+  const flag = dist < LIQ_FLAG_PCT ? `liq ${dist.toFixed(1)}%` : ''
   const mark = on ? ROW_MARK : ROW_UNMARKED
   return [mark + name(p, getTextWidth(mark)), fit(price(p.markPrice), INNER_PX.price), r.startsWith('▼') ? cell : '', r.startsWith('▲') ? cell : '', flag && alignRight(flag, INNER_PX.flag)]
 }
@@ -264,16 +266,18 @@ function detail(p: Position, at: number, total: number, v: View): Screen {
 
 /** The framed pages: `head` is the text inside the frame, `labels` go in opt1 and opt2 with `>` on one. */
 /** What a tap does on the choice under `>`, said in the hint line. */
-const TAP: Record<Choice, string> = { dismiss: 'tap: dismiss', confirm: 'tap: confirm', review: 'tap: review', close: 'tap: close' }
+const TAP: Record<Choice, string> = { dismiss: 'tap: dismiss', confirm: 'tap: confirm', review: 'tap: review', close: 'tap: close', pick: 'tap: pick' }
 
 function framed(o: { layout: 'alert' | 'review'; key: string; head: Record<string, string>; labels: string[]; choices: Choice[]; icon: IconName; card: Proposal | null; hint: (at: number) => string }, v: View): Screen {
   const at = v.cursor?.key === o.key ? Math.min(v.cursor.at, o.labels.length - 1) : 0 // Dismiss first: a stray tap must not trade
   const text: Record<string, string> = { frame: '', opt1: '', opt2: '', hint: fit(v.voice || o.hint(at), INNER_PX.hint) } // the mic bar, a countdown or a voice note
   for (const [box, t] of Object.entries(o.head)) text[box] = t.split('\n').map(l => (box === 'queue' ? l && alignRight(l, INNER_PX.queue) : fit(l, INNER_PX[box]))).join('\n')
   const tone: Record<string, number> = { ...TONE, queue: o.head.queue === 'TEST' || o.head.queue === 'NEW' ? 4 : TONE.queue } // a warning, not a counter
-  o.labels.forEach((l, i) => {
-    text[`opt${i + 1}`] = fit(`${i === at ? '> ' : UNMARKED}${l}`, INNER_PX.opt1)
-    tone[`opt${i + 1}`] = i === at ? 4 : 3
+  // Two rows show; a longer list (an Open's picks) scrolls with `>`
+  const from = Math.max(0, Math.min(at - 1, o.labels.length - 2))
+  o.labels.slice(from, from + 2).forEach((l, j) => {
+    text[`opt${j + 1}`] = fit(`${from + j === at ? '> ' : UNMARKED}${l}`, INNER_PX.opt1)
+    tone[`opt${j + 1}`] = from + j === at ? 4 : 3
   })
   return { layout: o.layout, key: o.key, text, tone, icon: o.icon, choices: o.choices, at, card: o.card }
 }
@@ -284,14 +288,14 @@ export function lensWhy(why: string): string {
     .replace(/^liquidation distance (.+%)$/i, '$1 to liquidation')
     .replace(/^stop loss distance (.+%)$/i, '$1 to stop')
     .replace(/^take profit distance (.+%)$/i, '$1 to take profit')
-    .replace(/^no stop loss$/i, 'no stop')
     .replace(/stop loss/gi, 'stop'))
 }
 
 function alert(s: ServerState, c: Proposal, v: View): Screen {
   const t = c.terms
   // Stale exchange data: the server cannot check the terms, so only Dismiss is offered.
-  const action = s.error ? [] : [t.type === 'order' && grows(c) ? `Review ${heldBy(s, c) ? 'add' : sideWord(t.side)} · ${usdt(t.notionalUsdt)}` : c.question.replace(/\?$/, '')]
+  // With picks the size is not chosen yet, so the label names none
+  const action = s.error ? [] : [t.type === 'order' && grows(c) ? `Review ${heldBy(s, c) ? 'add' : sideWord(t.side)}${c.picks ? '' : ` · ${usdt(t.notionalUsdt)}`}` : c.question.replace(/\?$/, '')]
   return framed({
     layout: 'alert', key: `alert:${c.id}`, card: c, icon: s.error ? 'hourglass' : iconOf(c),
     head: { who: c.who, why: s.error ? 'Bybit data is stale' : lensWhy(c.why), queue: c.simulated ? 'TEST' : c.supersedes ? 'NEW' : s.pending > 1 ? `1/${s.pending}` : '' },
@@ -305,13 +309,36 @@ function review(s: ServerState, c: Proposal & { terms: { type: 'order' } }, v: V
   const qty = `${t.qty} ${coin(t.symbol)}`
   const held = heldBy(s, c)
   const head = held
-    ? { ask: `Add to ${coin(t.symbol)} ${sideWord(t.side)}?`, terms: `${qty} · ${usdt(t.notionalUsdt)}\nStop ${price(held.stopLoss)} stays` }
-    : { ask: `Open ${coin(t.symbol)} ${sideWord(t.side)}?`, terms: `${qty} · ${usdt(t.notionalUsdt)} · ${t.leverage}×\nMargin ≈ ${usdt(t.marginUsdt)} · ${t.stopLoss ? `stop ${price(t.stopLoss)}` : 'no stop'}` }
+    ? { ask: `Add to ${coin(t.symbol)} ${sideWord(t.side)}?`, terms: `${qty} · ${usdt(t.notionalUsdt)}${held.stopLoss ? `\nStop ${price(held.stopLoss)} stays` : ''}` }
+    : { ask: `Open ${coin(t.symbol)} ${sideWord(t.side)}?`, terms: `${qty} · ${usdt(t.notionalUsdt)} · ${t.leverage}×\nMargin ≈ ${usdt(t.marginUsdt)}${t.stopLoss ? ` · stop ${price(t.stopLoss)}` : ''}` }
   return framed({
     layout: 'review', key: `review:${c.id}`, card: c, icon: 'grow', head,
     labels: ['Dismiss', held ? `Add · ${qty}` : `Open ${sideWord(t.side)} · ${qty}`], choices: ['dismiss', 'confirm'],
     hint: at => `swipe: choose · ${TAP[at ? 'confirm' : 'dismiss']} · double tap: back`,
   }, v)
+}
+
+/**
+ * An Open with picks, before its Review: the size page, then the leverage page (a list of one is skipped). The tap on the
+ * last one sends the pick; the server answers with the proposal Review shows.
+ */
+function picker(c: Proposal & { terms: { type: 'order' }; picks: NonNullable<Proposal['picks']> }, v: View): Screen {
+  const { sizes, leverages } = c.picks
+  const size = v.pick?.id === c.id ? v.pick.size : sizes.length === 1 ? sizes[0] : undefined
+  const step = size === undefined ? 'size' : 'leverage'
+  const key = `pick:${c.id}:${step}`
+  const values = step === 'size' ? sizes : leverages
+  const at = v.cursor?.key === key ? Math.min(v.cursor.at, values.length - 1) : 0
+  const what = `${coin(c.terms.symbol)} ${sideWord(c.terms.side)}`
+  const head = step === 'size'
+    ? { ask: `Open ${what} · size?`, terms: leverages.length > 1 ? 'Leverage next' : `${leverages[0]}× · margin ≈ ${usdt(sizes[at] / leverages[0])}` }
+    : { ask: `Open ${what} · leverage?`, terms: `Size ${usdt(size)}\nMargin ≈ ${usdt(size! / values[at])}` }
+  const place = `${at + 1}/${values.length}`
+  return framed({
+    layout: 'review', key, card: c, icon: 'grow', head,
+    labels: values.map(x => (step === 'size' ? usdt(x) : `${x}×`)), choices: values.map(() => 'pick' as const),
+    hint: () => `swipe: choose · tap: pick · double tap: back · ${place}`,
+  }, { ...v, cursor: { key, at } })
 }
 
 /** The icon, the line and the one choice of a result; no choice while it waits for Bybit. Results come from executions only. */
@@ -358,7 +385,11 @@ export function screen(s: ServerState | null, v: View = {}): Screen {
   const live = s && !v.offline && !v.needToken ? s : null
   if (live && v.outcome) return result(v.outcome, v)
   const c = live && !((v.pausedMin ?? 0) > 0) && live.card?.id !== v.hide ? live.card : null
-  if (live && c) return v.review === c.id && c.terms.type === 'order' && grows(c) ? review(live, c as Proposal & { terms: { type: 'order' } }, v) : alert(live, c, v)
+  if (live && c && v.review === c.id && c.terms.type === 'order' && grows(c)) {
+    const order = c as Proposal & { terms: { type: 'order' } }
+    return c.picks ? picker({ ...order, picks: c.picks }, v) : review(live, order, v)
+  }
+  if (live && c) return alert(live, c, v)
   if (live && v.detail) {
     const ranked = rankPositions(live.positions)
     const focus = clampFocus(v.focus, ranked.length)

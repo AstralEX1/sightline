@@ -13,7 +13,7 @@ Design canvas: https://claude.ai/artifact/QkfLzCX64QKfdKRV6N2BUA (boards named i
 | Topic | Source of truth |
 |---|---|
 | Phone screens, tokens, components, copy, interactions | **this document**, then the canvas |
-| Rule model, condition and action registry, compatibility matrices, `validate()`, engine, proposals, API, the 25 templates as data | `docs/shortcuts-architecture.md` (§ numbers below as "arch §n") |
+| Rule model, condition and action registry, compatibility matrices, `validate()`, engine, proposals, API, the templates as data | `docs/shortcuts-architecture.md` (§ numbers below as "arch §n") |
 | Lens screens, lens gestures | `docs/glasses-shortcuts.md` and its canvas |
 
 Where the canvas and this document differ, this document wins: it records decisions made after drawing. The product name is **Trade Shortcuts**. Brand assets and the target visual system are maintained in `brand/README.md`. The current phone implementation and the brand migration are distinct stages. The G2 boards on the phone canvas are outdated; build the lens from `glasses-shortcuts.md`.
@@ -78,7 +78,7 @@ Dark values are drawn for the home screen only (board HomeDark); the contrast co
 | `--error` | `#C93434` | `#F07878` | incompatible row text and marker | on `--error-bg` 4.57 / 5.43 |
 | `--error-bg` | `#FDECEC` | `#3A2024` | incompatible token fill | — |
 | `--success` | `#4CB782` | `#4CB782` | status dot, always beside a word | decorative |
-| `--chip` | `#ECEDF0` | `#2A2C31` | remove circle, template badge, segmented and search fills; glyph `--text-2` | glyph 4.31 |
+| `--chip` | `#ECEDF0` | `#2A2C31` | remove circle, segmented and search fills; glyph `--text-2` | glyph 4.31 |
 | `--scrim` | `rgba(0,0,0,.35)` | `rgba(0,0,0,.55)` | behind sheets | — |
 | `--menu-scrim` | `rgba(34,35,38,.06)` | `rgba(0,0,0,.3)` | behind token menu | — |
 | `--chip-neutral` | `#8A8F98` | same | fill of chips without an action (Apply to, When, empty Do) | white glyph 3.25 |
@@ -107,8 +107,8 @@ Font: **Inter** variable (SIL OFL), latin subset bundled as `app/src/phone/fonts
 | `sentence` | 18 / 32 | 400 | 0 | When / Do cards; tokens inherit |
 | `body` | 16 / 22 | 400 | 0 | rows, menus, sheet nav |
 | `body-strong` | 16 / 22 | 500 | 0 | `Apply to`, `Options`, `Add condition`, `Add action` |
-| `tile-title` | 16 / 21 | 600 | −0.1 px | tile title |
-| `tile-sub` | 13 / 17 | 400 | 0 | tile subtitle, up to two lines, then ellipsis |
+| `tile-label` | 12 / 20 | 600 | 0 | `When` / `Do` word on a tile, 80% opacity, one line |
+| `tile-value` | 22 / 27 | 650 | −0.015 em | tile trigger and action, one size, up to three lines, then ellipsis |
 | `footnote` | 13 / 18 | 400 | 0 | sheet notes, status line is 15 / 20 |
 | `group-label` | 13 / 18 | 400 | 0, uppercase | History and Settings group headers |
 | `numeric` | 30 / 36 | 400 | 0 | numeric sheet value and unit |
@@ -129,12 +129,12 @@ Sizes are in `rem` from a 16 px root so text size settings scale the layout. On 
 | Radius | tile 20 · card 20 · list group 12 · sheet top 12 · menu 12 · menu item 8 · token 6 · chip 24 → 6, chip 26 → 7 · circle 50% | |
 | Touch target | ≥ 44 × 44 (tokens: see §8) | |
 | Circle button | 44 | back, history, `+` |
-| Tile | min height 104, padding 12 | grows with text |
-| Glyph | 26 on tiles; 14–15 in chips; 20–22 in rows | stroke 2 (26) / 2.2–2.6 (small) |
-| Tile switch | 40 × 24 visible, 50 × 44 target, top 4 right 2 | |
+| Tile | min height 143, padding 16 | grows with text |
+| Glyph | 12 (When) / 11 (Do) in 20 px tile chips; 14–15 in chips; 20–22 in rows | filled on tile chips; stroke 2.2–2.6 (small) |
+| Tile switch | 40 × 24 track, 20 knob, 50 × 44 target, top 4 right 4 | |
 | Row switch | 51 × 31 | Settings |
 
-Elevation: no shadows on cards or tiles. Cards: `box-shadow: inset 0 0 0 1px var(--border)`. Your tiles: none, the fill is the edge. Template tiles: as cards. Menu: border + `0 12px 32px rgba(34,35,38,.16)`.
+Elevation: no shadows on cards or tiles. Cards: `box-shadow: inset 0 0 0 1px var(--border)`. Tiles, templates included: none, the fill is the edge. Menu: border + `0 12px 32px rgba(34,35,38,.16)`.
 
 ### 3.4 Icons
 
@@ -192,24 +192,30 @@ Class names are the contract between `app/index.html` (CSS) and the TypeScript t
 Shared by your shortcuts and templates (canvas: Main).
 
 ```html
-<div class="tile" data-state="on">                      <!-- on | off | draft -->
+<div class="tile" data-state="on" style="--c: var(--act-close)">  <!-- on | off | draft -->
   <a class="tile__body" href="#/shortcut/sc_123"
-     aria-label="Move Stop Loss, ROI above 30%. Edit">
-    <svg class="tile__glyph">…</svg>                    <!-- the tile has style="--c: var(--act-stop)" -->
-    <span class="tile__text">
-      <span class="tile__title">Move Stop Loss</span>
-      <span class="tile__sub">ROI above 30%</span>
+     aria-label="Close Position: when Liq ≤ 3%, do Close 50%. Edit">
+    <span class="tile__when">
+      <span class="tile__label"><span class="tile__chip">…</span><span class="tile__word">When</span></span>
+      <span class="tile__value">Liq ≤ 3%</span>
+    </span>
+    <span class="tile__do">                       <!-- same markup: `do-empty` chip, `Do` -->
+      …<span class="tile__value">Close 50%</span>
     </span>
   </a>
-  <button class="tile__switch" role="switch" aria-checked="true" aria-label="Move Stop Loss"></button>
+  <button class="tile__switch" role="switch" aria-checked="true" aria-label="Close Position, Liq ≤ 3%">
+    <span class="tile__track"><span class="tile__knob"></span></span>
+  </button>
 </div>
 ```
 
-- Body: column, `justify-content: space-between`; 24 px action glyph top-left, title and subtitle bottom-left, all white over the shaded action fill (§3.1). The card uses system type at 15 px medium for the title and 12 px for the subtitle, radius 20 and padding 16. The switch track is `#0C0C0C`. The knob is white in both states.
-- Switch sits over the top-right corner (50 × 44 target); the body link does not cover it for pointer events (`z-index` above). Tapping the switch never opens the editor.
-- `data-state="off"`: subtitle prefixed `Off · `, switch off. `data-state="draft"`: subtitle prefixed `Draft · `, switch `aria-disabled="true"`; tapping it opens the editor with the missing values marked (§5.10).
+- Body: two grid rows, When over Do, shared across a row of tiles (subgrid) so Do starts at one height, at the bottom. Each is a label (20 px chip, white 22%, and a word) over its value (§6.3), trigger and action in the same size. White over the shaded action fill (§3.1), radius 20, padding 16.
+- When chip and word: `when` and `When`; `mic` and `Say` for a voice-only shortcut. The shortcut's `name` replaces the word. Do: `do-empty` and `Do`.
+- A shortcut bound to a symbol, chosen coins, one position or an order carries its tag after `Do` (`targetTag`: `BTC`, `BTC, ETH longs`, `ETH short`, `SOL order`; `One symbol` and the like while a template has it to fill), in the chip's fill; the label ends `, on BTC`.
+- Switch: over the top-right corner (50 × 44 target), above the body link, so tapping it never opens the editor. On: white track, knob in the card's color. Off: track white 26%, white knob.
+- `data-state="off"`: switch off and a darker shade; no text prefix. `data-state="draft"`: the word is `Draft`, switch `aria-disabled="true"`; tapping it opens the editor with the missing values marked (§5.10).
 - Busy: while `enable` / `pause` is in flight the switch shows the new position at 60% opacity; on failure it springs back and a toast shows the server's `Issue.message`.
-- Template variant `.tile--template`: the whole tile is one `<button>`, a plain card (`--surface`, `--border` outline, `--text` / `--text-2`) so your own shortcuts stand out; the glyph is a 34 px chip (radius 9) in the action color, and the switch is replaced by a 26 px badge (`--chip`, `plus` 12 px in `--text-2`, `aria-hidden`). `aria-label="Template: Move Stop Loss, ROI above 30%. Add"`.
+- Template variant `.tile--template`: the whole tile is one `<button>` with the same fill and When / Do layout; a 26 px badge (white 25%, `plus` 12 px, `aria-hidden`) takes the switch's place. `aria-label="Template: when ROI ≥ 20%, do SL to entry. Add"`.
 - Grid: 2 columns, 12 px gap. At root font size ≥ 22 px: 1 column.
 
 ### 4.3 Token `.token`
@@ -260,9 +266,9 @@ Top to bottom, page inset 16:
 3. Status line (15 / 20, `--text-2`, min height 28, a link to Settings): dot (`--success` when Bybit is connected, `--error` when not) + `Bybit · Demo` (`Bybit · Offline` when not connected) + `glasses` 18 + `G2` (`G2 off` when the lens has not polled `/state` in 10 s, arch §10).
 4. Your shortcuts: tile grid, 10 px below the status line, in creation order (oldest first; no reordering in the MVP).
 5. `Templates` (`title-section`), 24 px above.
-6. Template grid, 10 px below: the 25 templates of arch §12, in that order, as `.tile--template`.
+6. One block per template category of arch §12 (Protect, Take profit, Market, Orders), in that order: a collapsible heading like a Notion toggle, then the category's templates in a 2-column grid of `.tile--template`, 4 px below. The heading is an `h3` (17 / 22, semibold) holding one full-width button, min height 44, with a `right` chevron (14, `--text-2`) left of the name; the chevron turns down (0.2 s, none under reduced motion) while open. Tapping anywhere on the row folds or opens that grid; the heading stays. The button carries `aria-expanded` and `aria-controls` (the grid). All open by default. The choice lives on the phone (`createStorage`, key `gt.hiddenTemplates`, since the Even app wipes `localStorage`), so it works while the server is offline. Focus stays on the heading across the 10 s refresh.
 
-Data: `GET /shortcuts` (title, summary, enabled, draft flag), `GET /templates`, status from `GET /settings` and `GET /state`. Refetch on route enter and every 10 s while visible.
+Data: `GET /shortcuts` (title, name, `summary`, `doSummary`, enabled, draft flag), `GET /templates` (the same two lines), status from `GET /settings` and `GET /state`. Refetch on route enter and every 10 s while visible.
 
 Interactions:
 - Tile body → editor. Switch → `POST /shortcuts/:id/enable` or `/pause` (optimistic, see §4.2). An enable rejected by `validate()` springs back and opens the editor with the issues marked.
@@ -298,9 +304,9 @@ Data: the shortcut from `GET /shortcuts`, `GET /catalog`, and `POST /shortcuts/v
 |---|---|---|
 | All positions | `All positions` | sets `ALL_POSITIONS`, collapses; the open list shows `N now` from validate |
 | One position | `BTCUSDT · Long` | opens the position picker (`GET /positions`; rows `BTCUSDT · Long · 0.050 BTC`), then collapses |
-| One symbol | `BTCUSDT` | opens the symbol picker (search field + USDT perpetuals, recent first), then collapses |
+| One symbol | `BTCUSDT` | opens the symbol picker: search field, `Positions and orders` (their symbols), then `All symbols` (`GET /symbols`, the exchange's USDT perpetuals), both filtered by the search; until that list arrives, or when it fails, the typed symbol is offered as is, and once it is there a symbol not on it is not offered (`No results`). Then collapses |
 | One order | `BTCUSDT · Buy limit 88,500` | opens the order picker (`GET /orders/open`; rows `BTCUSDT · Buy limit 88,500 · 0.030`), then collapses |
-| All orders | `All orders` | sets `ALL_ORDERS` (order age only: Cancel Order or Notify), collapses |
+| All orders | `All orders` | sets `ALL_ORDERS` (filled, partly filled or order age; fills act on the position the order opened), collapses |
 
 Long values end with an ellipsis; `aria-label` keeps the full value. Options that can never fit the current action are hidden (e.g. One order for Open Position; Open needs One symbol, Cancel needs One order, arch §7). A scope change that breaks a condition marks that line (§5.9); conditions are never removed silently.
 
@@ -361,7 +367,7 @@ Driven only by `POST /shortcuts/validate` issues (arch §7):
 
 ### 5.10 Drafts from templates
 
-Selecting a template immediately persists a disabled shortcut. A complete template shows `Off · `. An incomplete one shows `Draft · ` and survives leaving the editor and reloading the phone page. Templates 10–15 need a symbol or an order: the editor shows `.token--placeholder` for it, and Apply to shows `Choose…` in `--error`. Validate returns a `missing` issue per gap; the switch stays disabled until there are none.
+Selecting a template immediately persists a disabled shortcut. A complete template shows as an off tile. An incomplete one shows `Draft` as its When word and survives leaving the editor and reloading the phone page. Templates 10–15 need a symbol or an order: the editor shows `.token--placeholder` for it, and Apply to shows `Choose…` in `--error`. Validate returns a `missing` issue per gap; the switch stays disabled until there are none.
 
 ### 5.11 History (board History)
 
@@ -396,33 +402,34 @@ In-app notifications have a switch (`In-app notifications`, Notifications group,
 ## 6. Text rules
 
 ### 6.1 Titles
-`CLOSE_POSITION` Close Position · `MOVE_SL` Move Stop Loss · `SET_SL` Set Stop Loss · `SET_TP` Set Take Profit · `ADD_MARGIN` Add Margin · `OPEN_POSITION` Open Position · `INCREASE_POSITION` Increase Position · `CANCEL_ORDER` Cancel Order · `NOTIFY` Notify. `name` overrides the label everywhere.
+`CLOSE_POSITION` Close Position · `MOVE_SL` Move Stop Loss · `SET_SL` Set Stop Loss · `SET_TP` Set Take Profit · `ADD_MARGIN` Add Margin · `OPEN_LONG` Open Long · `OPEN_SHORT` Open Short · `INCREASE_POSITION` Increase Position · `CANCEL_ORDER` Cancel Order · `NOTIFY` Notify. `name` overrides the label everywhere.
 
 ### 6.2 Numbers
-Thousands with `,` (`90,000`); decimals as entered; percent attached (`30%`); negatives with U+2212 (`−20%`); `USDT` after a space (`100 USDT`); prices on tiles without a unit; coin from the symbol without `USDT` on tiles (`BTC crosses 90,000`); minutes `5 min`; leverage `10×`; quantities to the instrument step (`0.025 BTC`).
+Thousands with `,` (`90,000`); decimals as entered; percent attached (`30%`); negatives with U+2212 (`−20%`); `USDT` after a space (`100 USDT`); prices on tiles without a unit; coin from the symbol without `USDT` in the tile's tag (`BTC`); minutes `5 min`; leverage `10×`; quantities to the instrument step (`0.025 BTC`).
 
-### 6.3 Tile subtitle
-One shared function, `summary(rule)` in `server/src/registry.ts`, returned by `GET /shortcuts` and used by the phone for drafts it has not saved:
-- one condition → long form; two → short forms joined by ` or ` / ` and `; more → first short form + ` +N`;
-- prefix `Off · ` when disabled, `Draft · ` when incomplete;
-- one line, CSS ellipsis.
+### 6.3 Tile lines
+The server words both lines of every tile and template, as `summary` (When) and `doSummary` (Do) on `GET /shortcuts` and `GET /templates`: `conditionSummary` and `actionSummary` in `server/src/proposals.ts`. No `Off ·` or `Draft ·` prefix; a value a template leaves open is `…`.
+- When: every condition, joined by ` or ` / ` and `; a rise or fall of one size joined by `or` is `Price ±15%`; a voice-only shortcut shows its phrase, `“protect all”`.
 
-| Condition | Long form | Short form |
-|---|---|---|
-| PRICE GTE / LTE | `BTC above 90,000` / `BTC below 90,000` | `BTC > 90,000` / `BTC < 90,000` |
-| PRICE UP_CROSS / DOWN_CROSS | `BTC crosses 90,000` / `BTC crosses below 90,000` | `BTC ↑ 90,000` / `BTC ↓ 90,000` |
-| PRICE_CHANGE UP / DOWN | `Price rises 3% in 5 min` / `Price falls 3% in 5 min` | `+3% in 5 min` / `−3% in 5 min` |
-| PROFIT ROI / USDT | `ROI above 30%` / `Profit above 100 USDT` | `ROI > 30%` / `Profit > 100` |
-| LOSS ROI / USDT | `ROI below −20%` / `Loss above 100 USDT` | `ROI < −20%` / `Loss > 100` |
-| NEAR_LIQUIDATION | `Liquidation within 5%` | `Liq. < 5%` |
-| NEAR_SL / NEAR_TP | `Stop within 1%` / `Take profit within 1%` | `SL < 1%` / `TP < 1%` |
-| SL_MISSING | `Stop loss missing` | `No SL` |
-| ORDER_FILLED / ORDER_PARTIAL | `Order filled` / `Order partly filled` | same |
+| Condition | When line |
+|---|---|
+| PRICE GTE / LTE | `Price ≥ 90,000` / `Price ≤ 90,000` (`Mark`, `Index` for those sources) |
+| PRICE UP_CROSS / DOWN_CROSS | `Price crosses above 90,000` / `Price crosses below 90,000` |
+| PRICE_CHANGE UP / DOWN | `Price +3%` / `Price −3%` (from the price when it was switched on, then from its last alert) |
+| PROFIT ROI / USDT | `ROI ≥ 30%` / `Profit ≥ 100 USDT` |
+| LOSS ROI / USDT | `ROI ≤ −20%` / `Loss ≥ 100 USDT` |
+| NEAR_LIQUIDATION | `Liq ≤ 5%` |
+| NEAR_SL / NEAR_TP | `SL ≤ 1%` / `TP ≤ 1%` |
+| ORDER_FILLED / ORDER_PARTIAL | `Order filled` / `Order partly filled` |
+| VOLUME_SPIKE | `Volume 3× in 5 min` |
+| FUNDING | `Funding ≥ 0.05% in 30 min` |
+| ORDER_STALE | `Order open ≥ 1 h` |
+| POSITION_CLOSED | `Liquidated` / `Closed by stop loss` / `Closed by take profit` |
 
-Template subtitles are fixed strings from arch §12 (`Near liquidation · half`, …), not generated.
+- Do: `Close 50%` · `SL to entry`, `SL at −2%`, `SL at 64,250` (`TP` likewise) · `Add 50 USDT margin` / `Add 25% margin` · `Long 100 USDT ×10` / `Short …` (no leverage when there are several; `Open Long` / `Open Short` when there are several sizes) · `Add 100 USDT` · `Cancel order` · `Notify me`.
 
 ### 6.4 Copy deck (fixed strings)
-`Shortcuts` · `Templates` · `Bybit · Demo` · `Bybit · Offline` · `Server offline` · `G2` · `G2 off` · `No shortcuts yet. Start from a template or tap +.` · `New Shortcut` · `Apply to` · `All positions` · `One position` · `One symbol` · `One order` · `N now` · `When` · `Do` · `Add condition` · `Add action` · `Options` · `Confirm on Even G2` · `Shows on Even G2` · `Incompatible` · `Cancel` · `Done` · `Market order, reduce-only` · `Custom` · `Discard changes?` · `This shortcut has a problem that stops it from saving.` · `Keep editing` · `Discard` · `Delete this shortcut?` · `Delete` · `Test alert sent` · `Changed on another device. Reloaded.` · `No alerts yet.` · `History` · `Settings`.
+`Shortcuts` · `Templates` · `Bybit · Demo` · `Bybit · Offline` · `Server offline` · `G2` · `G2 off` · `No shortcuts yet. Start from a template or tap +.` · `New Shortcut` · `Apply to` · `All positions` · `Positions by coin` · `Long and short` · `One position` · `One symbol` · `One order` · `of its margin` · `N now` · `When` · `Do` · `Add condition` · `Add action` · `Options` · `Confirm on Even G2` · `Shows on Even G2` · `Incompatible` · `Cancel` · `Done` · `Market order, reduce-only` · `Custom` · `Discard changes?` · `This shortcut has a problem that stops it from saving.` · `Keep editing` · `Discard` · `Delete this shortcut?` · `Delete` · `Test alert sent` · `Changed on another device. Reloaded.` · `No alerts yet.` · `History` · `Settings`.
 
 ## 7. Behavior
 
@@ -440,7 +447,7 @@ Every token change is one draft update followed by validate. Never reset a valid
 ### 7.3 Choice filtering (v1 §7.4, kept)
 Uses the matrices shipped in `GET /catalog` (arch §7); the server validates again on save.
 - Condition type sheet: types compatible with the scope, the action and every existing condition (intersection across `or` branches). Static impossibilities are hidden.
-- Action type sheet: actions compatible with the scope and every condition come first. Actions that the scope forbids are hidden. Actions that only the current conditions forbid appear in a second section, `Needs changes`, each with one `--text-2` line (`Not with Near liquidation`); picking one sets the action and marks the lines (§5.9).
+- Action type sheet: only actions compatible with the scope and every condition. Apply to lists only scopes that hold the action and every condition, and the condition sheet only conditions that fit the scope, the action and the other conditions. Nothing incompatible is offered.
 - Apply to options: §5.3.
 
 ### 7.4 Turning shortcuts on and off
@@ -458,7 +465,7 @@ Server unreachable: home as in §5.1; the editor shows its last data read-only (
 - Targets: buttons, rows, switches and remove buttons are ≥ 44 × 44 without overlap. Tokens are an accepted exception, as in Apple Shortcuts: 32 px tall (the sentence line) with 4 px extra on each side horizontally; never closer than 6 px to the next line's token.
 - Text size: all sizes in `rem`; at root ≥ 22 px tiles go to one column, sheet rows grow, the title pill truncates (the label keeps the full title). Nothing is clipped; everything wraps.
 - VoiceOver / TalkBack: labels as in §4; switches `role="switch"` + `aria-checked`; disclosure `aria-expanded`; menus `role="menu"`; sheets `role="dialog" aria-modal="true"` with a focus trap; the marker is announced once per new issue.
-- Color is never the only signal: off tiles say `Off ·`, error lines carry `Incompatible`, status dots sit beside words.
+- Color is never the only signal: an off tile's knob sits left (and the card is darker), error lines carry `Incompatible`, status dots sit beside words.
 - Reduced motion, reduced transparency, more contrast: §3.5.
 
 ## 9. Where it goes in the code
@@ -473,13 +480,13 @@ Server unreachable: home as in §5.1; the editor shows its last data read-only (
 | Font | `app/public/fonts/InterVariable.woff2` |
 | Remove | `app/src/shortcuts.ts` (old voice-shortcut list) once arch §13 step 1 lands |
 
-No framework and no animation library. Unit-test `summary()`, the token renderer and the save-or-discard decision with `node --test` next to the existing `app/test/*.test.ts`.
+No framework and no animation library. Unit-test the tile lines (§6.3), the token renderer and the save-or-discard decision with `node --test` next to the existing `app/test/*.test.ts`.
 
 ## 10. Acceptance tests (phone)
 
 | ID | Do | Expect |
 |---|---|---|
-| P01 | Open the app with 4 shortcuts | 2-column dark tiles in creation order; the off one shows `Off ·` and a grey glyph |
+| P01 | Open the app with 4 shortcuts | 2-column tiles in creation order, each When over Do; the off one is darker with its switch off |
 | P02 | Tap a tile's switch | API call, switch moves; on a server error it springs back and a toast shows the reason; the editor does not open |
 | P03 | Tap a tile body | editor opens for that shortcut |
 | P04 | Tap template 10 | the disabled draft survives leaving, reloading, and reopening; editor shows `choose symbol`; its switch cannot turn on until a symbol is picked |
@@ -491,7 +498,7 @@ No framework and no animation library. Unit-test `summary()`, the token renderer
 | P10 | Add a second condition | `or` token on line 2, remove buttons on both lines; remove one → one line, no remove button |
 | P11 | Set the operator to `and` | every operator token shows `and`; `logic` is `ALL` |
 | P12 | Apply to | with no action selected, all five scopes are available; selecting an action filters the scopes by compatibility. Show the matching target count; One position opens the picker; choosing collapses to `BTCUSDT · Long` |
-| P13 | Profit OR Near liquidation, then pick Increase Position from `Needs changes` | liquidation line red with `Incompatible`; title says Increase Position; back shows the discard dialog; nothing saved |
+| P13 | Profit OR Near liquidation, open the action sheet | Increase Position is not listed; Close Position is |
 | P14 | Profit AND Loss | validate marks a line; cannot save |
 | P15 | Open Position with All positions | Open is not offered; with One symbol it is |
 | P16 | Options for Increase Position | only `Once` is selectable |
@@ -510,8 +517,8 @@ No framework and no animation library. Unit-test `summary()`, the token renderer
 
 | v1 | v2 | Why |
 |---|---|---|
-| Root cards with full When/Do sentences and inline token editing | Dark tiles (title + one-line summary + switch), editing only in the editor | Apple Shortcuts library layout, chosen on the canvas |
-| Separate New Shortcut sheet with template rows | Templates as tiles on the home screen, no categories; `+` top right opens an empty editor | user decision |
+| Root cards with full When/Do sentences and inline token editing | Colour tiles (When trigger over Do action + switch), editing only in the editor | Apple Shortcuts library layout, chosen on the canvas |
+| Separate New Shortcut sheet with template rows | Templates as tiles on the home screen, grouped in four categories, each a heading that folds its grid away (25 November 2026: 10 templates instead of 25, the ones where answering on the glasses matters); `+` top right opens an empty editor | user decision |
 | Modal editor with Cancel / Done | Pushed editor, back button saves when valid (§7.1) | Apple Shortcuts automation editor reference |
 | One grouped When/Do card | Separate Apply to, When, Do cards, 24 px apart | clearer separation |
 | Scope row / segmented control | `Apply to` disclosure with five possible scopes | user decision |
@@ -526,7 +533,7 @@ No framework and no animation library. Unit-test `summary()`, the token renderer
 Canvas page **Flow**: Main, TokenMenu, NumericSheet, ClosePercent, NewShortcut, Editor, Incompatible, History, Settings (historical board; use §5.12 for the current rows), ApplyB, EditorRule.
 
 Canvas page **More screens**:
-- Editor menus, sheets and dialogs: TitleMenu, RenameSheet, OptionsSheet, DeleteDialog, ConditionSheet, ActionSheet (with `Needs changes`), TargetSheet, DiscardDialog.
+- Editor menus, sheets and dialogs: TitleMenu, RenameSheet, OptionsSheet, DeleteDialog, ConditionSheet, ActionSheet, TargetSheet, DiscardDialog.
 - Pickers, drafts and home states: PositionPicker, SymbolPicker, OrderPicker, DraftEditor (template 10 with placeholder token and `Choose symbol`), HomeBanner, HomeEmpty, HomeOffline, HomeDark.
 
 The home states come from one board: Main has a `variant` tweak (`normal`, `empty`, `offline`, `dark`), and the state boards import it with that value.

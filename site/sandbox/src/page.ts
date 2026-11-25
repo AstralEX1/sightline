@@ -1,19 +1,22 @@
 /**
  * The sandbox page. The phone frame runs the real app (app.html: app/src/main.ts unchanged); this page plays the Even
  * app for it (host.ts, drawing the lens), runs the real server against a simulated exchange (backend.ts, market.ts),
- * and plays one scenario per template.
+ * and shows one scenario per tab (scenarios.ts).
  */
 import './style.css'
-import { CLOSE_SEED, STARTER_RULES, VOICE_SEEDS } from '../../../server/src/registry.ts'
 import { createBackend, type Backend } from './backend.ts'
 import { mountExchange } from './exchange.ts'
 import { createHost, type Gesture } from './host.ts'
 import { Lens } from './lens.ts'
-import { Market, START_PRICE } from './market.ts'
-import { draftOf, SCENARIOS, type Scenario } from './scenarios.ts'
+import { Market } from './market.ts'
+import { TABS, type Tab } from './scenarios.ts'
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, ...kids: (Node | string)[]) => {
+  const e = Object.assign(document.createElement(tag), props)
+  e.append(...kids)
+  return e
+}
 
 const lens = new Lens($<HTMLCanvasElement>('lens'))
 const host = createHost(lens)
@@ -26,54 +29,91 @@ let backend: Backend
   fetch: (input: RequestInfo | URL, init?: RequestInit) => backend.fetch(input, init),
 }
 
-mountExchange($('exchange'), market)
+const exchange = mountExchange($('exchange'), market)
 setInterval(() => market.refresh(), 500) // the app's trades change FakeExchange directly: show them
+setInterval(() => market.drift(), 1000) // time passes: the chart moves on its own
 
 const phone = $<HTMLIFrameElement>('phone')
+const tabsEl = $('tabs')
+const stepsEl = $('steps')
 
-/** Free play: a BTC long with a stop and a target, and the shortcuts a new account starts with. */
-async function freePlay() {
-  run++
-  backend?.stop()
-  market.reset()
-  await market.open('Buy', 0.05, 10, Math.round(START_PRICE * 1.03), Math.round(START_PRICE * 0.98))
-  backend = createBackend(market.ex, [...STARTER_RULES, ...VOICE_SEEDS, CLOSE_SEED])
-  say(null)
-}
-
-// ── scenarios ──
+// ── tabs ──
 let run = 0
-const caption = $('caption')
-const steps = ['Shortcut on', 'Market moves', 'Alert on the glasses']
+let tab = TABS[0]
+/** Where the visitor is: add the shortcut, move the price, answer the alert, done. */
+type Phase = 'add' | 'move' | 'answer' | 'done'
+let phase: Phase = 'move'
+let gliding = false
 
-function say(s: Scenario | null, step = 0) {
-  caption.hidden = !s
-  if (!s) return
-  caption.replaceChildren(
-    Object.assign(document.createElement('b'), { textContent: `${s.title} · ${s.sub}` }),
-    ...steps.map((t, i) => Object.assign(document.createElement('span'), {
-      className: i < step ? 'done' : i === step ? 'now' : '',
-      textContent: i === 1 ? s.watch : t,
-    })),
-  )
-}
+const buttons = TABS.map((t, i) => {
+  const b = el('button', { type: 'button', id: `tab-${t.id}`, className: 'tab', role: 'tab' } as Partial<HTMLButtonElement>,
+    el('span', { className: 'tab-n' }, String(i + 1)),
+    el('span', { className: 'tab-t' }, el('b', {}, t.title), el('small', {}, t.sub)))
+  b.setAttribute('aria-controls', 'panel')
+  b.onclick = () => void open(t)
+  b.onkeydown = e => {
+    const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+    if (!d) return
+    const next = TABS[(i + d + TABS.length) % TABS.length]
+    void open(next)
+    $(`tab-${next.id}`).focus()
+  }
+  return b
+})
+tabsEl.append(...buttons)
 
-async function play(s: Scenario) {
+/** A tab starts from scratch: a new account, the server, and the app reloaded on the phone. */
+async function open(t: Tab) {
   const id = ++run
+  tab = t
+  history.replaceState(null, '', `#${t.id}`)
+  for (const b of buttons) {
+    const on = b.id === `tab-${t.id}`
+    b.setAttribute('aria-selected', String(on))
+    b.tabIndex = on ? 0 : -1
+  }
+  $('panel').setAttribute('aria-labelledby', `tab-${t.id}`)
   backend?.stop()
   market.reset()
-  await s.before(market)
-  backend = createBackend(market.ex, [draftOf(s, market)])
-  phone.contentWindow?.location.reload() // the phone lists just this shortcut, the lens starts clean
-  say(s, 0)
-  await sleep(2200) // the app starts and the server's first poll sees the market before it moves
+  await t.before(market)
   if (id !== run) return
-  say(s, 1)
-  if (s.to) await glide(s.to(market), 2600, id)
-  else await sleep(800)
+  backend = createBackend(market.ex, t.on ? [structuredClone(t.template.draft)] : [])
+  // A new query reloads the app even when only the hash would change; build-your-own opens the template in the editor.
+  phone.src = `app.html?run=${id}${t.on ? '' : `#/shortcut/new?tpl=${t.template.id}`}`
+  exchange.start()
+  phase = t.on ? 'move' : 'add'
+  gliding = false
+  renderSteps()
+}
+
+$('restart').onclick = () => void open(tab)
+
+// ── steps under the glasses ──
+function renderSteps() {
+  const order: Phase[] = tab.on ? ['move', 'answer', 'done'] : ['add', 'move', 'answer']
+  const at = phase === 'done' ? order.length : order.indexOf(phase)
+  stepsEl.replaceChildren(...tab.steps.map((text, i) => {
+    const li = el('li', { className: i < at ? 'done' : i === at ? 'now' : '' }, el('span', { className: 'step-n' }, i < at ? '✓' : String(i + 1)), el('span', {}, text))
+    if (i === at && order[i] === 'move') {
+      const play = el('button', { type: 'button', className: 'play', disabled: gliding }, '▶ Play')
+      play.onclick = () => void playMove(play)
+      li.append(el('span', { className: 'or' }, 'or'), play)
+    }
+    if (i === at && order[i] === 'answer') li.append(el('kbd', {}, 'Down'), el('span', { className: 'or' }, 'then'), el('kbd', {}, 'Click'))
+    if (i === at && order[i] === 'add') li.append(el('span', { className: 'or' }, '← on the phone'))
+    return li
+  }))
+  for (const g of ['down', 'tap']) document.querySelector(`[data-gesture="${g}"]`)?.classList.toggle('hint', phase === 'answer')
+}
+
+async function playMove(button: HTMLButtonElement) {
+  const id = run
+  gliding = true
+  button.disabled = true
+  await glide(tab.to, 2600, id)
   if (id !== run) return
+  gliding = false
   await backend.tick()
-  say(s, 2)
 }
 
 /** Eases the price to `to`, one step a frame, so the chart, the server's polls and the lens all see the move. */
@@ -92,53 +132,37 @@ function glide(to: number, ms: number, id: number) {
   })
 }
 
-const list = $('scenarios')
-let group = ''
-for (const s of SCENARIOS) {
-  if (s.group !== group) {
-    group = s.group
-    list.append(Object.assign(document.createElement('h3'), { textContent: group }))
-  }
-  const b = document.createElement('button')
-  b.type = 'button'
-  b.innerHTML = '<span aria-hidden="true">▶</span>'
-  b.append(Object.assign(document.createElement('b'), { textContent: s.title }), Object.assign(document.createElement('small'), { textContent: s.sub }))
-  b.onclick = () => {
-    for (const x of list.querySelectorAll('button')) x.removeAttribute('aria-current')
-    b.setAttribute('aria-current', 'true')
-    void play(s)
-  }
-  list.append(b)
-}
-$('reset').onclick = () => {
-  for (const x of list.querySelectorAll('button')) x.removeAttribute('aria-current')
-  void freePlay().then(() => phone.contentWindow?.location.reload())
-}
+/** The steps follow the server: a shortcut exists, an alert is waiting for the glasses, it was answered. */
+setInterval(async () => {
+  const id = run
+  try {
+    const get = (path: string) => backend.fetch(path).then(r => r.json())
+    const [shortcuts, alerts] = (await Promise.all([get('/api/shortcuts'), get('/api/history')])) as [{ enabled: boolean }[], { status: string }[]]
+    if (id !== run) return
+    // the app saves a new shortcut off: it counts once it is switched on
+    const next: Phase = !shortcuts.some(s => s.enabled) ? 'add' : !alerts[0] ? 'move' : /^Waiting/.test(alerts[0].status) ? 'answer' : 'done'
+    if (next !== phase) { phase = next; renderSteps() }
+  } catch { /* the tab is being replaced */ }
+}, 400)
 
 // ── glasses input: buttons, the lens itself, the keyboard ──
 for (const b of document.querySelectorAll<HTMLButtonElement>('[data-gesture]')) b.onclick = () => host.gesture(b.dataset.gesture as Gesture)
-$('lens').onclick = () => host.gesture('tap')
+/** A gesture from the keyboard or the lens also flashes its ring button, so the visitor sees what they did. */
+function press(g: Gesture) {
+  host.gesture(g)
+  const b = document.querySelector(`[data-gesture="${g}"]`)
+  b?.classList.add('pressed')
+  setTimeout(() => b?.classList.remove('pressed'), 160)
+}
+$('lens').onclick = () => press('tap')
 const KEYS: Record<string, Gesture> = { ArrowUp: 'up', ArrowDown: 'down', Enter: 'tap', ' ': 'tap', Escape: 'double', Backspace: 'double', m: 'menu' }
 document.addEventListener('keydown', e => {
   const t = e.target as HTMLElement
-  if (t.closest('input, textarea, select, button, .ex-canvas') || e.metaKey || e.ctrlKey || e.altKey) return
+  if (t.closest('input, textarea, select, button, canvas:not(#lens)') || e.metaKey || e.ctrlKey || e.altKey) return
   const g = KEYS[e.key]
   if (!g) return
   e.preventDefault()
-  host.gesture(g)
+  press(g)
 })
 
-// ── the world behind the lens: blurred clips, one after another ──
-const clips = [...document.querySelectorAll<HTMLVideoElement>('.scene video')]
-let clip = 0
-if (!matchMedia('(prefers-reduced-motion: reduce)').matches && clips.length > 1) {
-  setInterval(() => {
-    clips[clip].classList.remove('on')
-    clip = (clip + 1) % clips.length
-    void clips[clip].play().catch(() => {})
-    clips[clip].classList.add('on')
-  }, 16_000)
-} else clips.forEach(v => { v.removeAttribute('autoplay'); v.pause() })
-
-await freePlay()
-phone.src = 'app.html'
+void open(TABS.find(t => `#${t.id}` === location.hash) ?? TABS[0])

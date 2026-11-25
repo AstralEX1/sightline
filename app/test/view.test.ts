@@ -53,12 +53,12 @@ const result = (o: Partial<Outcome>, c: Partial<Proposal> = {}) => screen(st({ c
 
 // ── Main ───────────────────────────────────────────────────
 
-test('main: header-less rows of position, price, ROI and a flag only in trouble', () => {
+test('main: header-less rows of position, price, ROI and a flag only near liquidation', () => {
   assert.deepEqual(rows(screen(st())), [['BTC long', '61,240', '▼ 4.2%', 'liq 5.9%']])
   const calm = pos({ symbol: 'ETHUSDT', side: 'Sell', markPrice: 3198.4, liqPrice: 4000, unrealisedPnl: 89.28, positionIM: 372 })
   assert.deepEqual(rows(screen(st({ positions: [calm] }))), [['ETH short', '3,198', '▲ 24.0%']])
   assert.deepEqual(rows(screen(st({ positions: [pos({ symbol: 'SOLUSDT', markPrice: 182.65, liqPrice: 120, stopLoss: 0, unrealisedPnl: 4.3, positionIM: 140 })] }))),
-    [['SOL long', '182.65', '▲ 3.1%', 'no stop']])
+    [['SOL long', '182.65', '▲ 3.1%']]) // a missing stop is not trouble
 })
 
 test('main: a loss sits in the bright box, a gain in the quieter one', () => {
@@ -70,7 +70,7 @@ test('main: a loss sits in the bright box, a gain in the quieter one', () => {
   assert.equal(sc.tone.flag, 4)
 })
 
-test('main: no ROI without initial margin, liquidation beats a missing stop in the flag', () => {
+test('main: no ROI without initial margin; a position without a stop still flags only liquidation', () => {
   assert.deepEqual(rows(screen(st({ positions: [pos({ positionIM: 0, stopLoss: 0 })] }))), [['BTC long', '61,240', 'liq 5.9%']])
 })
 
@@ -241,7 +241,6 @@ test('pnlText: tenths, whole dollars, thousands', () => {
 const ALERTS: [ConditionType, string, string, string, string][] = [
   ['NEAR_LIQUIDATION', 'liquidation distance 3.2%', 'Close 50% · 0.025 BTC?', 'warn', 'Close 50% · 0.025 BTC'],
   ['LOSS', 'ROI −18.2%', 'Add 100 USDT margin to BTC?', 'trendDown', 'Add 100 USDT margin to BTC'],
-  ['SL_MISSING', 'no stop loss', 'Set SOL stop at 178.75?', 'shieldOff', 'Set SOL stop at 178.75'],
   ['NEAR_SL', 'stop loss distance 0.9%', 'Close 100% · 120 XRP?', 'shield', 'Close 100% · 120 XRP'],
   ['PROFIT', 'ROI +31.4%', 'Move ETH stop to entry 3,412?', 'trendUp', 'Move ETH stop to entry 3,412'],
   ['NEAR_TP', 'take profit distance 0.8%', 'Close 50% · 0.6 ETH?', 'target', 'Close 50% · 0.6 ETH'],
@@ -256,7 +255,7 @@ test('alert: every condition wears its icon, names the position and the reason, 
     assert.equal(sc.layout, 'alert')
     assert.equal(sc.icon, icon, reasonType)
     assert.equal(sc.text.who, 'BTC long')
-    const lens: Partial<Record<ConditionType, string>> = { NEAR_LIQUIDATION: '3.2% to liquidation', SL_MISSING: 'No stop', NEAR_SL: '0.9% to stop', NEAR_TP: '0.8% to take profit' }
+    const lens: Partial<Record<ConditionType, string>> = { NEAR_LIQUIDATION: '3.2% to liquidation', NEAR_SL: '0.9% to stop', NEAR_TP: '0.8% to take profit' }
     assert.equal(sc.text.why, lens[reasonType] ?? why.charAt(0).toUpperCase() + why.slice(1))
     assert.equal(sc.text.opt1, '> Dismiss')
     assert.equal(sc.text.opt2, `   ${opt2}`)
@@ -335,7 +334,33 @@ test('review: Open shows qty, notional, leverage, margin and stop, Dismiss first
   assert.deepEqual(sc.choices, ['dismiss', 'confirm'])
   assert.equal(sc.text.hint, 'swipe: choose · tap: dismiss · double tap: back')
   assert.equal(alertOf({ id: 'o1', who: 'BTC', terms: OPEN }, { positions: [] }, { review: 'o1', cursor: { key: 'review:o1', at: 1 } }).text.hint, 'swipe: choose · tap: confirm · double tap: back')
-  assert.equal(alertOf({ id: 'o1', terms: { ...OPEN, stopLoss: undefined } }, { positions: [] }, { review: 'o1' }).text.terms.split('\n')[1], 'Margin ≈ 100 USDT · no stop')
+  assert.equal(alertOf({ id: 'o1', terms: { ...OPEN, stopLoss: undefined } }, { positions: [] }, { review: 'o1' }).text.terms.split('\n')[1], 'Margin ≈ 100 USDT')
+})
+
+test('Open with picks: the alert names no size, then a size page and a leverage page that scroll two rows at a time', () => {
+  const picks = { sizes: [100, 250, 500], leverages: [1, 1.5, 2, 5, 10] }
+  const c = { id: 'o2', who: 'BTC', terms: OPEN, picks }
+  assert.equal(alertOf(c, { positions: [] }).text.opt2, '   Review long')
+  const size = alertOf(c, { positions: [] }, { review: 'o2' })
+  assert.equal(size.layout, 'review')
+  assert.equal(size.key, 'pick:o2:size')
+  assert.equal(size.text.ask, 'Open BTC long · size?')
+  assert.equal(size.text.terms, 'Leverage next')
+  assert.deepEqual([size.text.opt1, size.text.opt2], ['> 100 USDT', '   250 USDT'])
+  assert.deepEqual(size.choices, ['pick', 'pick', 'pick'])
+  assert.equal(size.text.hint, 'swipe: choose · tap: pick · double tap: back · 1/3')
+  const third = alertOf(c, { positions: [] }, { review: 'o2', cursor: { key: 'pick:o2:size', at: 2 } })
+  assert.deepEqual([third.text.opt1, third.text.opt2, third.at], ['   250 USDT', '> 500 USDT', 2])
+  const lev = alertOf(c, { positions: [] }, { review: 'o2', pick: { id: 'o2', size: 250 }, cursor: { key: 'pick:o2:leverage', at: 3 } })
+  assert.equal(lev.key, 'pick:o2:leverage')
+  assert.equal(lev.text.ask, 'Open BTC long · leverage?')
+  assert.deepEqual(lev.text.terms.split('\n'), ['Size 250 USDT', 'Margin ≈ 50 USDT'])
+  assert.deepEqual([lev.text.opt1, lev.text.opt2], ['   2×', '> 5×'])
+  // one size: straight to the leverage page; a pick for another card does not count
+  const one = alertOf({ ...c, picks: { sizes: [100], leverages: [2, 5] } }, { positions: [] }, { review: 'o2', pick: { id: 'x', size: 999 } })
+  assert.deepEqual([one.key, one.text.terms.split('\n')[0]], ['pick:o2:leverage', 'Size 100 USDT'])
+  // without picks Review shows the terms as before
+  assert.equal(alertOf({ id: 'o2', terms: OPEN }, { positions: [] }, { review: 'o2' }).key, 'review:o2')
 })
 
 test('review: Increase names the position and the stop that stays', () => {

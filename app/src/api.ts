@@ -13,15 +13,17 @@ const TIMEOUT_MS = 4000
 const VOICE_TIMEOUT_MS = 20_000 // upload plus transcription
 // Dev server only: in a build DEV is false and the bundler drops the token.
 const devToken: string = import.meta.env.DEV ? import.meta.env.VITE_APP_TOKEN ?? '' : ''
+// The public demo server's token, set only for the hosted phone page; a token typed in Settings wins.
+const demoToken: string = import.meta.env.VITE_DEMO_TOKEN ?? ''
 
-const store = createStorage(['gt.server', 'gt.token', 'gt.hints', 'gt.launches', 'gt.voice'], (() => { try { return localStorage } catch { return null } })())
+const store = createStorage(['gt.server', 'gt.token', 'gt.hints', 'gt.launches', 'gt.voice', 'gt.hiddenTemplates'], (() => { try { return localStorage } catch { return null } })())
 /** Call once the Even bridge is up: the settings live in its storage, not in the WebView's. */
 export const loadSettings = store.load
 
 export function getSettings() {
   if (import.meta.env.MODE === 'paper') return { server: '', token: '' } // the local proxy connects to the isolated paper account
   // The dev token wins: a token saved by an earlier run outlives a new APP_TOKEN in .env and would get 401.
-  return { server: store.get('gt.server') || DEFAULT_SERVER, token: devToken || store.get('gt.token') }
+  return { server: store.get('gt.server') || DEFAULT_SERVER, token: devToken || store.get('gt.token') || demoToken }
 }
 
 export function saveSettings(server: string, token: string) {
@@ -36,6 +38,14 @@ export const setHints = (on: boolean) => store.set('gt.hints', on ? 'on' : 'off'
 /** The mic opens for 5 s when an alert arrives, so a spoken yes or no answers it. On unless switched off on the phone. */
 export const voiceAnswersOn = () => store.get('gt.voice') !== 'off'
 export const setVoiceAnswers = (on: boolean) => store.set('gt.voice', on ? 'on' : 'off')
+/** Template categories collapsed on Shortcuts, by name; every category is open until collapsed. The key keeps its first name, so a saved choice still applies. */
+export const collapsedCategories = () => new Set(store.get('gt.hiddenTemplates').split(',').filter(Boolean))
+export function setCategoryOpen(category: string, open: boolean) {
+  const collapsed = collapsedCategories()
+  if (open) collapsed.delete(category)
+  else collapsed.add(category)
+  store.set('gt.hiddenTemplates', [...collapsed].join(','))
+}
 /** Once per start, after the bridge's storage is read. */
 export const countLaunch = () => store.set('gt.launches', String(launches() + 1))
 
@@ -66,6 +76,9 @@ export const confirm = (proposalId: string, idempotencyKey: string) =>
   request<Reply & { executionId?: string; status?: ExecutionStatus }>('POST', `/api/proposals/${id(proposalId)}/confirm`, { idempotencyKey })
 export const dismiss = (proposalId: string, by: 'glasses' | 'app' = 'glasses') => request<Reply>('POST', `/api/proposals/${id(proposalId)}/dismiss`, { by })
 /** Until the lens moves to confirm/dismiss: a tap on the card's action, or on its safe choice. One key per card. */
+/** Open on the lens: the size and leverage from the card's picks; the reply names the proposal Review shows. */
+export const pick = (proposalId: string, size: number, leverage: number) =>
+  request<Reply & { proposalId?: string }>('POST', `/api/proposals/${id(proposalId)}/pick`, { size, leverage })
 export const answer = (cardId: string, yes: boolean) => (yes ? confirm(cardId, `lens:${cardId}`) : dismiss(cardId, 'glasses'))
 export const getChart = (symbol: string) => request<Candle[]>('GET', `/api/chart?symbol=${encodeURIComponent(symbol)}`)
 export const getExecution = (executionId: string) => request<Execution>('GET', `/api/executions/${id(executionId)}`)
@@ -76,8 +89,10 @@ export const voice = (pcm: Uint8Array) => request<{ heard: string; answer: 'yes'
 
 // ── phone: shortcuts, editor, history, settings ───────────
 export type Catalog = ReturnType<typeof catalog>
-/** A Shortcuts tile: the rule plus its derived title and one-line summary. */
-export type Tile = ShortcutRule & { title: string; summary: string }
+/** A Shortcuts tile: the rule plus its derived title and its When (`summary`) and Do lines. */
+export type Tile = ShortcutRule & { title: string; summary: string; doSummary: string }
+/** A template with the same two lines. */
+export type TemplateTile = Template & Pick<Tile, 'summary' | 'doSummary'>
 export type Preview = { key: string; label: string; values: Record<string, number | null> }
 export type SettingsPage = {
   settings: Settings
@@ -86,7 +101,7 @@ export type SettingsPage = {
 }
 
 export const getCatalog = () => request<Catalog>('GET', '/api/catalog')
-export const getTemplates = () => request<Template[]>('GET', '/api/templates')
+export const getTemplates = () => request<TemplateTile[]>('GET', '/api/templates')
 export const listShortcuts = () => request<Tile[]>('GET', '/api/shortcuts')
 /** Issues for the editor, plus the targets it matches now and each condition's value on them. `id` when editing. */
 export const validate = (draft: EditableShortcut & { id?: string }) => request<Validation & { targets?: Preview[] }>('POST', '/api/shortcuts/validate', draft)
@@ -101,6 +116,8 @@ export const setEnabled = (shortcutId: string, enabled: boolean, version: number
 export const testShortcut = (shortcutId: string) => request<Reply & { alertId?: string; proposalId?: string }>('POST', `/api/shortcuts/${id(shortcutId)}/test`, {})
 export const getPositions = () => request<(Position & { epoch: string })[]>('GET', '/api/positions')
 export const getOpenOrders = () => request<Order[]>('GET', '/api/orders/open')
+/** Every symbol the exchange trades, sorted. */
+export const getSymbols = () => request<string[]>('GET', '/api/symbols')
 /** Newest first; pass the last line's createdAt for the next page. */
 export const getHistory = (before?: number) => request<AlertRecord[]>('GET', `/api/history${before ? `?before=${before}` : ''}`)
 /** New alerts for the in-app banner; polling it also tells the server the app is open. */

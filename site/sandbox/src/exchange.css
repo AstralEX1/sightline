@@ -1,0 +1,147 @@
+/* The exchange panel (exchange.ts): a futures app's dark theme, sampled from its Charts and Trade screens. */
+.bx {
+  --bx-bg: #100f13;
+  --bx-card: #1b1b21;
+  --bx-field: #26272a;
+  --bx-active: #444850;
+  --bx-text: #e6e6e6;
+  --bx-text2: #a1a4a5;
+  --bx-text3: #77787a;
+  --bx-hint: #5f6063;
+  --bx-up: #55af72;
+  --bx-down: #dc5250;
+  --bx-up-bg: #1e2f26;
+  --bx-down-bg: #391c1f;
+  --bx-accent: #eeae3f;
+  display: flex; flex-direction: column; width: 100%; height: 100%; overflow: hidden; padding: 0; margin: 0;
+  background: var(--bx-bg); color: var(--bx-text); color-scheme: dark; box-shadow: none;
+  font: 12.5px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums;
+}
+.bx *, .bx *::before, .bx *::after { box-sizing: border-box; }
+.bx [hidden] { display: none !important; }
+.bx button { font: inherit; color: inherit; cursor: pointer; margin: 0; }
+.bx :focus-visible { outline: 2px solid var(--bx-accent); outline-offset: 1px; }
+.bx .ex-up { color: var(--bx-up); }
+.bx .ex-down { color: var(--bx-down); }
+.bx .ex-warn { color: var(--bx-accent); }
+
+/* ── Charts | Trade, the pair ── */
+.bx .ex-views { display: grid; grid-template-columns: 1fr 1fr; flex: none; height: 30px; margin: 16px 14px 0; border-radius: 4px; background: var(--bx-card); }
+.bx .ex-views button { border: 0; border-radius: 4px; background: transparent; color: var(--bx-text2); font-size: 13px; font-weight: 600; }
+.bx .ex-views button[aria-selected="true"] { background: var(--bx-active); color: var(--bx-text); }
+.bx .ex-pair { display: flex; align-items: center; gap: 6px; flex: none; padding: 10px 14px 0; }
+.bx .ex-pair > b { font-size: 15px; font-weight: 700; letter-spacing: .01em; }
+.bx .ex-tag { padding: 1px 4px; border-radius: 2px; background: var(--bx-field); color: var(--bx-text2); font-size: 10.5px; font-weight: 500; white-space: nowrap; }
+.bx .ex-tag-up, .bx .ex-badge-up { background: var(--bx-up-bg); color: var(--bx-up); }
+.bx .ex-tag-down, .bx .ex-badge-down { background: var(--bx-down-bg); color: var(--bx-down); }
+.bx .ex-badge { padding: 1px 5px; border-radius: 2px; font-size: 11.5px; font-weight: 500; }
+.bx .ex-pair-last { margin-left: auto; font-size: 14px; font-weight: 700; }
+.bx[data-view="Charts"] .ex-pair-last { display: none; }
+
+.bx .ex-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+
+/* ── Charts ── */
+.bx .ex-last { padding: 2px 14px 0; font-size: 24px; line-height: 32px; font-weight: 700; letter-spacing: -.01em; }
+.bx .ex-tf { padding: 2px 14px 6px; color: var(--bx-text3); font-size: 12.5px; }
+.bx .ex-tf b { color: var(--bx-text); font-weight: 700; }
+.bx .ex-plot { position: relative; flex: 1; min-height: 0; border-top: 1px solid var(--bx-card); }
+.bx .ex-canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.bx .ex-canvas.is-grabbing { cursor: grabbing; }
+.bx .ex-canvas:focus-visible { outline-offset: -2px; }
+.bx .ex-drag {
+  position: absolute; left: 8px; top: 8px; padding: 4px 10px; border-radius: 99px; background: rgba(238, 174, 63, .14); color: var(--bx-accent);
+  font-size: 12px; font-weight: 600; white-space: nowrap; pointer-events: none; animation: bx-nudge 2.4s ease-in-out infinite;
+}
+@keyframes bx-nudge { 50% { transform: translateY(3px); } }
+@media (prefers-reduced-motion: reduce) { .bx .ex-drag { animation: none; } }
+.bx .ex-slot { flex: none; min-height: 176px; padding: 0 14px; }
+.bx .ex-cta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: none; padding: 8px 14px 18px; }
+
+/* ── buttons ── */
+.bx .ex-btn { width: 100%; height: 40px; border: 0; border-radius: 4px; color: #fff; font-size: 14.5px; font-weight: 600; transition: filter .15s, transform .12s ease; }
+.bx .ex-btn:hover { filter: brightness(1.08); }
+.bx .ex-btn:active { transform: scale(.98); }
+.bx .ex-btn-buy { background: var(--bx-up); }
+.bx .ex-btn-sell { background: var(--bx-down); }
+
+/* ── Trade: order form ── */
+.bx .ex-trade { overflow: auto; overscroll-behavior: contain; padding: 10px 14px 16px; scrollbar-width: none; }
+.bx .ex-trade::-webkit-scrollbar { display: none; }
+.bx .ex-form { display: grid; gap: 8px; }
+.bx .ex-pills { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.bx .ex-pill { display: flex; align-items: center; justify-content: center; height: 30px; border: 0; border-radius: 4px; background: var(--bx-field); color: var(--bx-text); font-size: 12.5px; font-weight: 600; }
+.bx .ex-pill[aria-expanded="true"] { box-shadow: inset 0 0 0 1px var(--bx-accent); }
+.bx .ex-levbox { display: grid; gap: 8px; padding: 10px; border-radius: 6px; background: var(--bx-card); }
+.bx .ex-levrow { display: grid; grid-template-columns: 36px 1fr 36px; align-items: center; height: 36px; border-radius: 4px; background: var(--bx-field); }
+.bx .ex-levrow button { height: 100%; border: 0; background: transparent; color: var(--bx-text2); font-size: 18px; }
+.bx .ex-levrow output { text-align: center; font-size: 15px; font-weight: 700; }
+.bx .ex-levbox input[type="range"] { width: 100%; margin: 4px 0 0; accent-color: var(--bx-accent); }
+.bx .ex-ticks { display: flex; justify-content: space-between; margin-top: -6px; color: var(--bx-text3); font-size: 10.5px; }
+.bx .ex-confirm, .bx .ex-primary { height: 32px; border: 0; border-radius: 4px; background: var(--bx-accent) !important; color: #100f13 !important; font-weight: 700; }
+.bx .ex-side { display: grid; grid-template-columns: 1fr 1fr; height: 32px; border-radius: 4px; background: var(--bx-field); }
+.bx .ex-side button { border: 0; border-radius: 4px; background: transparent; color: var(--bx-text); font-size: 13.5px; font-weight: 600; }
+.bx .ex-side .ex-side-buy[aria-pressed="true"] { background: var(--bx-up); color: #fff; }
+.bx .ex-side .ex-side-sell[aria-pressed="true"] { background: var(--bx-down); color: #fff; }
+.bx .ex-line { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.bx .ex-line span, .bx .ex-cell span { color: var(--bx-text3); text-decoration: underline dotted var(--bx-hint); text-underline-offset: 3px; }
+.bx .ex-line b { font-weight: 500; }
+.bx .ex-select { position: relative; display: block; }
+.bx .ex-select select { width: 100%; height: 38px; padding: 0 10px; border: 0; border-radius: 4px; background: var(--bx-field); color: var(--bx-text); font: inherit; font-size: 13.5px; font-weight: 600; appearance: none; cursor: pointer; }
+.bx .ex-select::after { content: "▼"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--bx-text2); font-size: 9px; pointer-events: none; }
+.bx .ex-box { position: relative; display: flex; align-items: center; height: 42px; padding: 0 10px; border-radius: 4px; background: var(--bx-field); cursor: text; }
+.bx .ex-box:focus-within { box-shadow: inset 0 0 0 1px var(--bx-accent); }
+.bx .ex-box input { flex: 1; width: 0; min-width: 0; padding: 14px 0 0; border: 0; outline: 0; background: transparent; color: #fff; font: inherit; font-size: 13.5px; }
+.bx .ex-box span { position: absolute; left: 10px; top: 5px; color: var(--bx-hint); font-size: 10.5px; pointer-events: none; transition: top .12s, font-size .12s, transform .12s; }
+.bx .ex-box input:placeholder-shown:not(:focus) + span { top: 50%; transform: translateY(-50%); font-size: 13.5px; }
+.bx .ex-box i { margin-left: 6px; color: var(--bx-text2); font-style: normal; font-size: 12.5px; }
+.bx .ex-two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.bx .ex-slider { position: relative; height: 22px; margin: 0 8px; }
+.bx .ex-slider::before, .bx .ex-slider > i { content: ""; position: absolute; left: 0; top: 50%; height: 2px; margin-top: -1px; background: var(--bx-active); }
+.bx .ex-slider::before { right: 0; }
+.bx .ex-slider > i { background: var(--bx-accent); }
+.bx .ex-slider button { position: absolute; top: 50%; width: 22px; height: 22px; padding: 0; border: 0; background: transparent; transform: translate(-50%, -50%); }
+.bx .ex-slider button::after { content: ""; position: absolute; inset: 5px; border: 2px solid var(--bx-active); border-radius: 50%; background: var(--bx-bg); }
+.bx .ex-slider button.on::after { border-color: var(--bx-accent); }
+.bx .ex-check { display: flex; align-items: center; gap: 8px; width: max-content; min-height: 24px; color: var(--bx-text2); cursor: pointer; }
+.bx .ex-check input { width: 14px; height: 14px; margin: 0; accent-color: var(--bx-accent); }
+.bx .ex-err { margin: 0; color: var(--bx-down); font-size: 12px; }
+.bx .ex-err:empty { display: none; }
+
+/* ── positions and orders ── */
+.bx .ex-tabs { display: flex; gap: 20px; margin-top: 16px; border-bottom: 1px solid var(--bx-card); }
+.bx .ex-tabs button { margin-bottom: -1px; padding: 8px 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--bx-text3); font-size: 13.5px; font-weight: 600; }
+.bx .ex-tabs button[aria-selected="true"] { color: var(--bx-text); border-color: var(--bx-accent); }
+.bx .ex-card { display: grid; gap: 8px; padding: 10px 0; border-top: 1px solid var(--bx-card); }
+.bx .ex-list .ex-card:first-child { border-top: 0; }
+.bx .ex-card-head { display: flex; align-items: center; gap: 6px; }
+.bx .ex-card-head > b { font-size: 13.5px; font-weight: 700; }
+.bx .ex-cell { display: grid; gap: 1px; min-width: 0; }
+.bx .ex-cell span { font-size: 11px; white-space: nowrap; }
+.bx .ex-cell b { font-weight: 500; white-space: nowrap; }
+.bx .ex-pnl { display: flex; justify-content: space-between; }
+.bx .ex-pnl .ex-cell:last-child { text-align: right; }
+.bx .ex-pnl b { font-size: 16px; font-weight: 700; }
+.bx .ex-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px 8px; }
+.bx .ex-grid .ex-cell:nth-child(3n + 2) { text-align: center; }
+.bx .ex-grid .ex-cell:nth-child(3n) { text-align: right; }
+.bx .ex-grid .ex-cell:nth-child(5) { grid-column: span 2; text-align: right; }
+.bx .ex-card-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.bx .ex-card-btns button, .bx .ex-cancel { height: 28px; border: 0; border-radius: 4px; background: var(--bx-field); color: var(--bx-text); font-size: 12.5px; font-weight: 600; }
+.bx .ex-cancel { margin-left: auto; padding: 0 14px; }
+.bx .ex-card-btns button:hover, .bx .ex-cancel:hover { background: var(--bx-active); }
+.bx .ex-edit { display: grid; gap: 8px; }
+
+/* What just changed (exchange.ts lit): an amber wash that fades in FLASH_MS. A lit card's cells don't wash twice. */
+.bx .ex-lit { border-radius: 3px; animation: bx-lit 4s ease-out both; }
+.bx .ex-lit .ex-lit { animation: none; }
+@keyframes bx-lit {
+  0%, 40% { background: rgba(238, 174, 63, .42); box-shadow: 0 0 0 4px rgba(238, 174, 63, .42); }
+  to { background: rgba(238, 174, 63, 0); box-shadow: 0 0 0 4px rgba(238, 174, 63, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bx .ex-lit { animation: none; background: rgba(238, 174, 63, .16); box-shadow: 0 0 0 4px rgba(238, 174, 63, .16); }
+  .bx .ex-lit .ex-lit { background: none; box-shadow: none; }
+}
+.bx .ex-empty { margin: 0; padding: 22px 0; color: var(--bx-text3); text-align: center; }
+.bx .ex-slot .ex-empty { padding-top: 64px; border-top: 1px solid var(--bx-card); }

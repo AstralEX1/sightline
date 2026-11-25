@@ -21,10 +21,10 @@ Shared server: several testers run at once. Prefix every shortcut you create wit
 
 | ID | Precondition | Do | Expect |
 |---|---|---|---|
-| P01 | 4 own shortcuts, one off | open home | 2-column tiles in creation order; off tile says `Off ·`, grey glyph; status line `Bybit · Demo`, `G2` / `G2 off` |
+| P01 | 4 own shortcuts, one off | open home | 2-column tiles in creation order, each When over Do; off tile darker, knob left; status line `Bybit · Demo`, `G2` / `G2 off` |
 | P02 | an own shortcut | tap its switch on, off; then make enable fail (incomplete draft) | API call, switch moves; failure springs back + toast / editor with issues; body does not open on switch tap |
 | P03 | | tap tile body | editor of that shortcut |
-| P04 | | tap template 10 (needs symbol) | return to Shortcuts, reload, and reopen the same disabled `Draft ·` tile; editor shows `choose symbol` placeholder, Apply to `Choose…` red; switch cannot turn on until symbol picked |
+| P04 | | tap template 10 (needs symbol) | return to Shortcuts, reload, and reopen the same disabled tile (its When word reads `Draft`); editor shows `choose symbol` placeholder, Apply to `Choose…` red; switch cannot turn on until symbol picked |
 | P05 | note tiles | `+`, then back at once | nothing created |
 | P06 | ROI condition | tap `above` | menu under token, check on `Above`; `is` not tappable |
 | P07 | ROI 30% | tap `30%` | numeric sheet, `30` prefilled, `Now …` line; Cancel restores; `0` → red bounds line, Done disabled |
@@ -33,7 +33,7 @@ Shared server: several testers run at once. Prefix every shortcut you create wit
 | P10 | | add 2nd condition, remove it | `or` token on line 2, remove buttons on both; after removal one line, no remove button |
 | P11 | 2 conditions | operator → `and` | every operator token shows `and`; saved rule `logic: ALL` (check via API) |
 | P12 | | Apply to | with no action selected, 5 options (All orders included); after choosing an action, only compatible scopes with `3 now`; One position → picker `BTCUSDT · Long · 0.050 BTC`; collapses to `BTCUSDT · Long` |
-| P13 | Profit OR Near liquidation | pick Increase Position from `Needs changes` | liquidation line red + `Incompatible`; title Increase Position; back → `Discard changes?` dialog; nothing saved |
+| P13 | Profit OR Near liquidation | open the action sheet | Increase Position is not listed; Close Position is |
 | P14 | | Profit AND Loss | a line marked; cannot save |
 | P15 | All positions | open action sheet | Open Position not offered; with One symbol it is |
 | P16 | Increase Position | Options | only `Once` selectable, others disabled with a reason |
@@ -56,7 +56,7 @@ Shared server: several testers run at once. Prefix every shortcut you create wit
 
 | ID | Precondition | Do | Expect |
 |---|---|---|---|
-| L01 | no own alerts | launch | Main: top `Bybit Demo · 3 positions` … time; rows sorted by liq distance; `liq x%` flag on BTC, `no stop` on ETH; extra tips follow the launch count and Gesture tips setting; exit remains visible |
+| L01 | no own alerts | launch | Main: top `Bybit Demo · 3 positions` … time; rows sorted by liq distance; `liq x%` flag on BTC only; extra tips follow the launch count and Gesture tips setting; exit remains visible |
 | L02 | Main | swipe down/up | `▶` moves, brightness swaps; no page rebuild flicker |
 | L03 | Main | tap | Detail of `▶` position: top `BTC long · 10×` … `1/3`, table, big PnL, `swipe: next position · double tap: back` |
 | L04 | Detail | swipe, double tap | next position; back to Main with cursor on the same position |

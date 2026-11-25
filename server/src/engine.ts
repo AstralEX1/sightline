@@ -1,5 +1,5 @@
 /**
- * The pure half of the shortcut engine: four-valued conditions, groups, trigger policies and rolling price windows.
+ * The pure half of the shortcut engine: four-valued conditions, groups and trigger policies.
  * No I/O and no timers: the caller passes the clock. Spec: docs/shortcuts-architecture.md §5, §8.
  */
 import { isEvent, LIMITS, SEVERITY } from './registry.ts'
@@ -32,7 +32,8 @@ export interface Facts {
   prices: Partial<Record<PriceSource, Quote>>
   /** The sample before `prices`, per source. Leave it out after a failed poll so a gap never makes a crossing. */
   prev: Partial<Record<PriceSource, Quote>>
-  windowAgo: (source: PriceSource, windowSec: number) => number | null
+  /** PRICE_CHANGE's reference price per source (TriggerState.base); none: UNKNOWN */
+  base?: Partial<Record<PriceSource, number>>
   position?: PositionFacts
   /** The target order's new execution in this poll: comes from diffing two polls, so never from the first one. */
   event?: { kind: 'FILLED' | 'PARTIAL'; orderId: string; execId: string }
@@ -89,7 +90,7 @@ export function evaluateCondition(c: Condition, f: Facts, o: EvalOpts): Conditio
     }
     case 'PRICE_CHANGE': {
       const cur = quote(c.source)
-      const ago = cur && f.windowAgo(c.source, c.windowSec)
+      const ago = f.base?.[c.source]
       if (!cur || !ago) return UNKNOWN
       const change = 100 * (cur.price / ago - 1)
       const min = Number(c.percent) - points
@@ -119,9 +120,6 @@ export function evaluateCondition(c: Condition, f: Facts, o: EvalOpts): Conditio
       if (px === undefined) return UNKNOWN
       return near(c.type === 'NEAR_SL' ? (100 * d * (px - level.price)) / px : (100 * d * (level.price - px)) / px, c.distancePct)
     }
-    case 'SL_MISSING':
-      if (!p) return UNKNOWN
-      return p.stopLoss.state === 'none' ? is(true) : p.stopLoss.state === 'set' ? is(false) : UNKNOWN
     case 'ORDER_FILLED':
     case 'ORDER_PARTIAL':
       return is(f.event?.kind === (c.type === 'ORDER_FILLED' ? 'FILLED' : 'PARTIAL'))
@@ -197,6 +195,8 @@ export interface TriggerState {
   seen: string[]
   /** ONCE has fired; only rearm() clears it */
   latched: boolean
+  /** PRICE_CHANGE's reference prices: set at the first evaluation of this version and target, moved to the price at each alert */
+  base?: Partial<Record<PriceSource, number>>
 }
 
 export const initialTriggerState = (version: number): TriggerState => ({ version, phase: 'start', lastAlertAt: null, seen: [], latched: false })
@@ -235,44 +235,12 @@ export function decide(
       lastAlertAt: fire ? now : s.lastAlertAt,
       seen: fresh.length ? [...s.seen, ...fresh].slice(-SEEN_MAX) : s.seen,
       latched: s.latched || (mode === 'ONCE' && fire),
+      ...(s.base && { base: s.base }),
     },
   }
 }
 
 const MINUTE_MS = 60_000
-const GAP_MS = 2 * MINUTE_MS
-const KEEP_MS = LIMITS.windowSec.max * 1000 + GAP_MS
-
-/** Price history of one symbol and source, for PRICE_CHANGE. Holds the largest window plus the gap allowance. */
-export class PriceWindow {
-  // shortcut: bounded by time, not count (a 1 s poll keeps ~14,500 points); downsample when WS ticks feed it.
-  #points: [ts: number, price: number][] = []
-
-  push(ts: number, price: number) {
-    const pts = this.#points
-    let i = pts.length
-    while (i > 0 && pts[i - 1][0] > ts) i--
-    if (pts[i - 1]?.[0] === ts) pts[i - 1] = [ts, price]
-    else pts.splice(i, 0, [ts, price])
-    const cut = pts[pts.length - 1][0] - KEEP_MS
-    while (pts[0][0] < cut) pts.shift()
-  }
-
-  /** 1-minute candles in any order. A close is the price at the candle's end; the candle still open at `now` is skipped. */
-  warm(candles: { start: number; close: number }[], now: number) {
-    for (const k of candles) if (k.start + MINUTE_MS <= now) this.push(k.start + MINUTE_MS, k.close)
-  }
-
-  /** The price at or just before now − window; null before the history or inside a gap over 2 minutes. */
-  ago(windowSec: number, now: number): number | null {
-    const target = now - windowSec * 1000
-    const pts = this.#points
-    let i = pts.length - 1
-    while (i >= 0 && pts[i][0] > target) i--
-    if (i < 0) return null
-    return (pts[i + 1]?.[0] ?? now) - pts[i][0] > GAP_MS ? null : pts[i][1]
-  }
-}
 
 /** Minutes of volume the window is measured against. */
 export const VOLUME_BASE_MIN = 60

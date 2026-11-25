@@ -1,8 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { BAND_LEVEL_PCT, BAND_POINTS, PriceWindow, decide, evaluateCondition, evaluateGroup, initialTriggerState, rearm, volumeRatio } from '../src/engine.ts'
+import { BAND_LEVEL_PCT, BAND_POINTS, decide, evaluateCondition, evaluateGroup, initialTriggerState, rearm, volumeRatio } from '../src/engine.ts'
 import type { EvalOpts, Facts, GroupResult, PositionFacts, TriggerState } from '../src/engine.ts'
-import { LIMITS } from '../src/registry.ts'
 import type { Condition, ShortcutRule, TriggerMode } from '../src/registry.ts'
 
 const NOW = 1_800_000_000_000
@@ -18,7 +17,7 @@ function pos(o: Partial<PositionFacts> = {}): PositionFacts {
 }
 
 function facts(o: Partial<Facts> = {}): Facts {
-  return { prices: { LAST: q(100), MARK: q(100), INDEX: q(100) }, prev: {}, windowAgo: () => null, ...o }
+  return { prices: { LAST: q(100), MARK: q(100), INDEX: q(100) }, prev: {}, ...o }
 }
 
 type NoId<T> = T extends unknown ? Omit<T, 'id'> : never
@@ -53,10 +52,10 @@ test('price level on the chosen source', () => {
   assert.equal(ev({ type: 'PRICE', source: 'INDEX', operator: 'LTE', threshold: '100' }, f).verdict, 'UNKNOWN')
 })
 
-test('price change = 100·(now / window ago − 1) on the same source', () => {
-  const up = { type: 'PRICE_CHANGE', source: 'MARK', direction: 'UP', percent: '3', windowSec: 300 } as const
+test('price change = 100·(now / base − 1) on the same source', () => {
+  const up = { type: 'PRICE_CHANGE', source: 'MARK', direction: 'UP', percent: '3' } as const
   const down = { ...up, direction: 'DOWN' } as const
-  const at = (now: number) => facts({ prices: { MARK: q(now) }, windowAgo: (s, w) => (s === 'MARK' && w === 300 ? 100 : null) })
+  const at = (now: number) => facts({ prices: { MARK: q(now) }, base: { MARK: 100, LAST: 50 } })
   const r = ev(up, at(104))
   assert.equal(r.verdict, 'TRUE')
   close(r.value, 4)
@@ -65,7 +64,8 @@ test('price change = 100·(now / window ago − 1) on the same source', () => {
   const d = ev(down, at(96))
   assert.equal(d.verdict, 'TRUE')
   close(d.value, -4)
-  assert.equal(ev({ ...up, source: 'LAST' }, facts({ prices: { LAST: q(104) }, windowAgo: () => null })).verdict, 'UNKNOWN') // no history
+  assert.equal(ev({ ...up, source: 'INDEX' }, at(104)).verdict, 'UNKNOWN') // no base for this source
+  assert.equal(ev(up, facts({ prices: { MARK: q(104) } })).verdict, 'UNKNOWN') // no base yet
 })
 
 test('profit and loss in USDT and ROI, long and short', () => {
@@ -111,14 +111,6 @@ test('stop loss and take profit distance on the trigger source, long and short',
   assert.equal(ev(sl, at({ stopLoss: { state: 'unknown' } })).verdict, 'UNKNOWN')
   assert.equal(ev(tp, at({ takeProfit: { state: 'partial' } })).verdict, 'UNKNOWN')
   assert.equal(ev(sl, facts({ prices: { LAST: q(1000) }, position: pos({ stopLoss: set(995, 'MARK') }) })).verdict, 'UNKNOWN') // no mark quote
-})
-
-test('missing stop loss is TRUE only when absence is verified', () => {
-  const at = (stopLoss: PositionFacts['stopLoss']) => ev({ type: 'SL_MISSING' }, facts({ position: pos({ stopLoss }) })).verdict
-  assert.equal(at({ state: 'none' }), 'TRUE')
-  assert.equal(at({ state: 'set', price: 90, triggerBy: 'LAST' }), 'FALSE')
-  assert.equal(at({ state: 'unknown' }), 'UNKNOWN')
-  assert.equal(at({ state: 'partial' }), 'UNKNOWN')
 })
 
 test('order events are TRUE only for a matching event in this evaluation', () => {
@@ -191,10 +183,10 @@ test('NOT_APPLICABLE never becomes zero', () => {
 
 test('the strongest reason picks liquidation over ROI, whatever the order', () => {
   const f = facts({ position: pos({ mark: 1000, liqPrice: 970, unrealisedPnl: -30, positionIM: 100 }) })
-  const items = [cond({ type: 'LOSS', unit: 'ROI_PERCENT', threshold: '20' }, 'roi'), cond(LIQ5, 'liq'), cond({ type: 'SL_MISSING' }, 'sl')]
+  const items = [cond({ type: 'LOSS', unit: 'ROI_PERCENT', threshold: '20' }, 'roi'), cond(LIQ5, 'liq')]
   const g = evaluateGroup({ logic: 'ANY', items }, f, OPTS)
   assert.equal(g.verdict, 'TRUE')
-  assert.deepEqual(g.matched, ['roi', 'liq', 'sl'])
+  assert.deepEqual(g.matched, ['roi', 'liq'])
   assert.deepEqual(g.reason, { id: 'liq', type: 'NEAR_LIQUIDATION', value: 3 })
 })
 
@@ -218,8 +210,8 @@ test('relaxed thresholds give way by the band', () => {
   assert.equal(both({ type: 'PRICE', source: 'LAST', operator: 'GTE', threshold: '1000' }, px(996)), 'FALSE TRUE')
   assert.equal(both({ type: 'PRICE', source: 'LAST', operator: 'LTE', threshold: '1000' }, px(1004)), 'FALSE TRUE')
   assert.equal(both({ type: 'PRICE', source: 'LAST', operator: 'LTE', threshold: '1000' }, px(1006)), 'FALSE FALSE')
-  const change = facts({ prices: { LAST: q(102.7) }, windowAgo: () => 100 })
-  assert.equal(both({ type: 'PRICE_CHANGE', source: 'LAST', direction: 'UP', percent: '3', windowSec: 300 }, change), 'FALSE TRUE')
+  const change = facts({ prices: { LAST: q(102.7) }, base: { LAST: 100 } })
+  assert.equal(both({ type: 'PRICE_CHANGE', source: 'LAST', direction: 'UP', percent: '3' }, change), 'FALSE TRUE')
   assert.equal(both(LIQ5, facts({ position: pos({ mark: 1000, liqPrice: 948 }) })), 'FALSE TRUE') // 5.2% ≤ 5.5
 })
 
@@ -308,44 +300,11 @@ test('REPEAT fires every intervalSec while TRUE, and waits for the pending propo
   assert.deepEqual(feed(rule('REPEAT', [cond(LIQ5)]), [s(0), s(299), s(300)]).fired, [0, 2]) // default 5 min
 })
 
-test('price window: the price at or just before now − window, null before the history', () => {
-  const w = new PriceWindow()
-  for (let s = 0; s <= 600; s += 10) w.push(NOW + s * 1000, 100 + s)
-  const now = NOW + 600_000
-  assert.equal(w.ago(300, now), 400) // exactly on a sample
-  assert.equal(w.ago(305, now), 390) // between samples: the one before
-  assert.equal(w.ago(600, now), 100)
-  assert.equal(w.ago(660, now), null)
-})
-
-test('price window: a gap over 2 minutes around the target is null', () => {
-  const w = new PriceWindow()
-  for (let s = 0; s <= 120; s += 10) w.push(NOW + s * 1000, 1)
-  for (let s = 300; s <= 600; s += 10) w.push(NOW + s * 1000, 2) // 120 s → 300 s missing
-  const now = NOW + 600_000
-  assert.equal(w.ago(500, now), 1) // target 100 s
-  assert.equal(w.ago(400, now), null) // target 200 s, inside the gap
-  assert.equal(w.ago(60, now + 180_000), null) // nothing pushed for 3 minutes
-})
-
-test('price window: warms from 1-minute candles, skips the open one, keeps only the largest window', () => {
-  const w = new PriceWindow()
-  const now = NOW + 30_000 // 30 s into the minute that starts at NOW
-  const candles = [0, -60, -120, -180, -240, -300, -360].map((s, i) => ({ start: NOW + s * 1000, close: 99 - i })) // newest first, as Bybit sends
-  w.warm(candles, now)
-  w.push(now, 100)
-  assert.equal(w.ago(60, now), 97) // target NOW − 30 s: the candle that ended at NOW − 60 s
-  assert.equal(w.ago(300, now), 93) // target NOW − 270 s: the candle that ended at NOW − 300 s
-  assert.equal(w.ago(400, now), null) // before the first close
-  assert.equal(w.ago(60, NOW + 120_000), 100) // the open candle's close is not taken as the price at its end
-
-  const b = new PriceWindow()
-  const max = LIMITS.windowSec.max
-  const minutes = max / 60 + 60
-  for (let m = 0; m <= minutes; m++) b.push(NOW + m * 60_000, m)
-  const end = NOW + minutes * 60_000
-  assert.equal(b.ago(max, end), 60)
-  assert.equal(b.ago(max + 600, end), null) // older than the largest window: dropped
+test('decide carries the price-change base into the next state', () => {
+  const s = { ...initialTriggerState(1), base: { LAST: 100 } }
+  const d = decide(rule('ON_ENTRY', [cond(LIQ5)]), G('FALSE'), s, NOW)
+  assert.deepEqual(d.next.base, { LAST: 100 })
+  assert.equal(decide(rule('ON_ENTRY', [cond(LIQ5)]), G('FALSE'), initialTriggerState(1), NOW).next.base, undefined)
 })
 
 // ---- Volume, funding, order age, position closed ----

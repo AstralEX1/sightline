@@ -22,6 +22,6 @@ export default defineConfig({
     target: 'esnext',
     outDir: at('../landing/sandbox'),
     emptyOutDir: true,
-    rollupOptions: { input: { index: at('index.html'), app: at('app.html') } },
+    rollupOptions: { input: { index: at('index.html'), app: at('app.html'), phone: at('phone.html') } },
   },
 })

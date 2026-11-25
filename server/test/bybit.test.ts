@@ -334,3 +334,20 @@ test('order lookup: realtime first, then history, null when Bybit has neither', 
   const none = client({ '/v5/order/realtime': ok({ list: [] }), '/v5/order/history': ok({ list: [] }) })
   assert.equal(await none.ex.order('BTCUSDT', { orderLinkId: 'x' }), null)
 })
+
+test('symbols: every page of linear instruments, USDT perpetuals that trade only, sorted, read again after an hour', async () => {
+  const row = (symbol: string, o: Record<string, string> = {}) => ({ symbol, contractType: 'LinearPerpetual', quoteCoin: 'USDT', status: 'Trading', ...o })
+  const page1 = ok({ list: [row('SOLUSDT'), row('BTCPERP', { quoteCoin: 'USDC' }), row('BTCUSDT-26DEC26', { contractType: 'LinearFutures' })], nextPageCursor: 'p2' })
+  const page2 = ok({ list: [row('BTCUSDT'), row('OLDUSDT', { status: 'Closed' }), row('1000PEPEUSDT')], nextPageCursor: '' })
+  const f = fakeFetch({ '/v5/market/instruments-info': [page1, page2, page1, page2] })
+  let t = TS
+  const ex = createBybit({ key: 'k', secret: 's', base: 'https://api-testnet.bybit.com', fetch: f.fetch, now: () => t })
+  assert.deepEqual(await ex.symbols(), ['1000PEPEUSDT', 'BTCUSDT', 'SOLUSDT'])
+  assert.deepEqual(f.calls.map(c => c.url.search), ['?category=linear&limit=1000', '?category=linear&limit=1000&cursor=p2'])
+  t += 3_599_000
+  await ex.symbols()
+  assert.equal(f.calls.length, 2) // cached for the hour
+  t += 1000
+  assert.deepEqual(await ex.symbols(), ['1000PEPEUSDT', 'BTCUSDT', 'SOLUSDT'])
+  assert.equal(f.calls.length, 4)
+})

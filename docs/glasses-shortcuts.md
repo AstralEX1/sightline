@@ -26,6 +26,8 @@ Main ──tap──▶ Detail ──swipe──▶ next position's Detail
 Main ──rule fires──▶ Alert ──tap action──▶ Sent ──▶ Filled / Rejected / Unknown ──OK──▶ next Alert or Main
                       │  └─tap Dismiss / double tap──────────────────────────────────▶ next Alert or Main
                       ├─ Open / Increase: tap "Review…" ──▶ Review ──tap action──▶ Sent
+                      │    Open with several sizes or leverages: Size page ──tap──▶ Leverage page ──tap──▶ Review
+                      │    (a list of one is skipped; double tap goes back one page)
                       │                                      └─double tap──▶ back to Alert on Dismiss, proposal still pending
                       └─ time runs out / position or rule changed ──▶ Expired (Dismiss only)
 ```
@@ -45,6 +47,8 @@ Main ──rule fires──▶ Alert ──tap action──▶ Sent ──▶ Fi
 | Tap | open Detail of the `▶` position | nothing | do the `>` item | do the `>` item | OK |
 | Double tap | host exit dialog | back to Main | Dismiss | back to Alert | OK |
 
+Open long and Open short carry the sizes (USDT) and leverages the user set on the phone. With more than one of either, `Review…` opens a size page, then a leverage page, in the Review frame: the two option rows show two values of the list, swipe scrolls `>` through all of them, the hint ends with the place (`2/5`), and the leverage page shows the margin of the value under `>`. The tap on the last page sends the pick; the server answers with a new proposal and the lens shows its Review. A voice yes does not answer an Open with choices.
+
 The hint is the last line, dim, lower case, and says what a tap does on the choice under `>`: `swipe: choose · tap: dismiss`, then `tap: confirm` (or `tap: review`) once `>` is on the action. `double tap: exit` on Main and `double tap: back` on Detail always show, offline too. The other tips (`tap: details`, `tap, hold: menu` on Main, `swipe: next position` on Detail) are optional: on for the first 3 launches, then off, unless the phone's Settings › Gesture tips switch says otherwise. Alerts, Review and results always keep their line. A `>` left on an action goes back to Dismiss after 8 s without a swipe (`CURSOR_IDLE_MS`). An alert that fires while Detail is open takes over the lens; after it, the lens goes back to Detail. Speak is on the menu (not a Main tap). Swipes are gated to one per 700 ms (`SWIPE_GATE_MS`). Taps while sending are ignored.
 
 ## 4. Layouts
@@ -59,7 +63,7 @@ main:            # text 8, image 0; no frames
   - {name: price,  type: text, x: 160, y: 56,  w: 128, h: 144, brightness: 3}                 # 61,240.5, right-aligned, no currency
   - {name: loss,   type: text, x: 288, y: 56,  w: 104, h: 144, brightness: 4}                 # ▼ 4.2% ROI; losses brighter than gains
   - {name: gain,   type: text, x: 288, y: 56,  w: 104, h: 144, brightness: 2}                 # ▲ 24.0%
-  - {name: flag,   type: text, x: 392, y: 56,  w: 168, h: 144, brightness: 4}                 # only trouble: "liq 5.9%" under 10%, "no stop"
+  - {name: flag,   type: text, x: 392, y: 56,  w: 168, h: 144, brightness: 4}                 # only trouble: "liq 5.9%" under 10%
   - {name: hint,   type: text, x: 16,  y: 248, w: 544, h: 32,  brightness: 2}
 detail:          # text 3, image 4 (the limit); after the ticker apps: one big line, plain numbers, a plain chart
   - {name: title,  type: image, x: 16,  y: 12,  w: 288, h: 44}                                 # "BTC long", bold, as big as fits (titlePng)
@@ -97,13 +101,12 @@ review:          # text 5, image 1
 
 ## 5. Every alert
 
-Ten alerts cover all ten conditions and all nine actions. The icon names the condition; `opt2` names the action and its size.
+Nine alerts cover nine conditions and eight of the nine actions; Set Stop Loss reaches the lens through "protect all". The icon names the condition; `opt2` names the action and its size.
 
 | Condition | Icon | who | why | Action | `opt2` |
 |---|---|---|---|---|---|
 | Near liquidation | warning triangle | `BTC long` | `3.2% to liquidation` | Close Position | `Close 50% · 0.025 BTC` |
 | Loss | trend down | `BTC long` | `ROI −18.2%` | Add Margin | `Add 100 USDT margin` |
-| Stop missing | shield crossed out | `SOL long` | `No stop` | Set Stop Loss | `Set stop · 178.75` |
 | Near stop | shield | `XRP long` | `0.9% to stop` | Notify | none: `> Dismiss` only |
 | Profit | trend up | `ETH short` | `ROI +31.4%` | Move Stop Loss | `Move stop to entry · 3,412` |
 | Near take profit | target | `ETH short` | `0.8% to take profit` | Close Position | `Close 50% · 0.6 ETH` |

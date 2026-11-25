@@ -4,50 +4,51 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Trade Shortcuts Sandbox</title>
-  <meta name="description" content="The real Trade Shortcuts app in your browser: set a shortcut on the phone, move the BTC price, answer on the glasses." />
+  <meta name="description" content="The real Trade Shortcuts app in your browser: a shortcut on the phone, the BTC price on a simulated exchange, the answer on the glasses." />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Saira:wght@300&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 </head>
 <body>
   <header class="top">
     <a href="../" class="brand"><img src="lockup.svg" alt="Trade Shortcuts" width="214" height="20" /></a>
     <span class="pill">Sandbox</span>
-    <p class="lede">The real app on a simulated exchange. Run a scenario, or drag the chart and answer on the glasses.</p>
+    <p class="lede">The real app and rule engine on a paper exchange. No glasses, account or money needed.</p>
     <a href="../" class="back">Back to site</a>
   </header>
 
-  <main class="stage">
-    <section class="glasses" aria-labelledby="glasses-title">
-      <h2 id="glasses-title" class="sr-only">Even G2 glasses</h2>
-      <div class="scene">
-        <video src="media/street.mp4" poster="media/street.jpg" class="on" autoplay muted loop playsinline preload="auto" aria-hidden="true"></video>
-        <video src="media/cafe.mp4" poster="media/cafe.jpg" muted loop playsinline preload="auto" aria-hidden="true"></video>
-        <video src="media/park.mp4" poster="media/park.jpg" muted loop playsinline preload="auto" aria-hidden="true"></video>
-        <canvas id="lens" width="576" height="288" role="img" aria-label="What the glasses show. Click to tap."></canvas>
-      </div>
-      <div class="controls" role="group" aria-label="Ring and temple">
-        <button type="button" data-gesture="up" aria-label="Swipe up">▲</button>
-        <button type="button" data-gesture="down" aria-label="Swipe down">▼</button>
-        <button type="button" data-gesture="tap" class="wide">Tap</button>
-        <button type="button" data-gesture="double" class="wide">Double tap</button>
-        <button type="button" data-gesture="menu" class="wide">Hold · menu</button>
-        <span class="keys">or ↑ ↓ Enter Esc M</span>
-      </div>
-      <p id="caption" class="caption" role="status" aria-live="polite" hidden></p>
-      <div class="scenarios-head">
-        <h2>Scenarios</h2>
-        <button type="button" id="reset" class="reset">Reset to free play</button>
-      </div>
-      <div id="scenarios" class="scenarios"></div>
-    </section>
+  <nav id="tabs" class="tabs" role="tablist" aria-label="Scenarios"></nav>
 
-    <section class="phone-col" aria-label="Phone">
+  <main id="panel" class="panel" role="tabpanel">
+    <section class="device phone-col" aria-label="Phone">
+      <p class="label">Phone · Trade Shortcuts</p>
       <div class="phone"><iframe id="phone" title="Trade Shortcuts on the phone"></iframe></div>
     </section>
 
-    <section id="exchange" class="exchange" aria-label="Exchange"></section>
+    <section class="device glasses" aria-label="Glasses">
+      <p class="label">Glasses · Even G2</p>
+      <div class="sim">
+        <div class="sim-title"><span class="sim-dots" aria-hidden="true"><i></i><i></i><i></i></span>Glasses Display</div>
+        <canvas id="lens" width="576" height="288" role="img" aria-label="What the glasses show. Click to tap."></canvas>
+        <div class="sim-bar" role="group" aria-label="Ring and temple">
+          <button type="button" data-gesture="up">Up</button>
+          <button type="button" data-gesture="down">Down</button>
+          <button type="button" data-gesture="tap">Click</button>
+          <button type="button" data-gesture="double">Double Click</button>
+          <button type="button" data-gesture="long">Long Press</button>
+          <button type="button" data-gesture="menu">Menu</button>
+        </div>
+      </div>
+      <p class="keys">Keys: ↑ ↓ · Enter click · Esc double click · M menu</p>
+      <ol id="steps" class="steps" aria-live="polite"></ol>
+      <button type="button" id="restart" class="restart">↺ Start over</button>
+    </section>
+
+    <section class="device exchange-col" aria-label="Exchange">
+      <p class="label">Exchange · simulated</p>
+      <div class="phone phone--dark"><div id="exchange" class="screen"></div></div>
+    </section>
   </main>
 
   <script type="module" src="./src/page.ts"></script>
