@@ -8,8 +8,8 @@ import {
   type ActionType, type ConditionType, type ScopeType,
 } from '../src/registry.ts'
 
-// §5 C1–C10 and §6 A1–A9.
-const C: ConditionType[] = ['PRICE', 'PRICE_CHANGE', 'PROFIT', 'LOSS', 'NEAR_LIQUIDATION', 'NEAR_SL', 'NEAR_TP', 'SL_MISSING', 'ORDER_FILLED', 'ORDER_PARTIAL']
+// §5 C1–C14 and §6 A1–A9.
+const C: ConditionType[] = ['PRICE', 'PRICE_CHANGE', 'PROFIT', 'LOSS', 'NEAR_LIQUIDATION', 'NEAR_SL', 'NEAR_TP', 'SL_MISSING', 'ORDER_FILLED', 'ORDER_PARTIAL', 'VOLUME_SPIKE', 'FUNDING', 'ORDER_STALE', 'POSITION_CLOSED']
 const A: ActionType[] = ['CLOSE_POSITION', 'MOVE_SL', 'SET_SL', 'SET_TP', 'ADD_MARGIN', 'OPEN_POSITION', 'INCREASE_POSITION', 'CANCEL_ORDER', 'NOTIFY']
 
 // §7, columns Close, Move SL, Set SL, Set TP, Margin, Open, Increase, Cancel, Notify.
@@ -23,19 +23,27 @@ C6  Y G N N G N N N Y
 C7  Y G G G G N N N Y
 C8  Y N Y G N N N N Y
 C9  G G G G G N N N Y
-C10 G G G G G N N Y Y`
-// §7 condition stacking matrix, columns C1–C10.
+C10 G G G G G N N Y Y
+C11 Y G G G G G G N Y
+C12 Y N N N N N N N Y
+C13 N N N N N N N Y Y
+C14 N N N N N N N N Y`
+// §7 condition stacking matrix, columns C1–C14.
 const DOC_STACKING = `
-C1  V B B B B B B B A A
-C2  B V B B B B B B A A
-C3  B B V O B B B B - -
-C4  B B O V B B B B - -
-C5  B B B B V B B B - -
-C6  B B B B B V B O - -
-C7  B B B B B B V B - -
-C8  B B B B B O B V - -
-C9  A A - - - - - - V O
-C10 A A - - - - - - O V`
+C1  V B B B B B B B A A B B B -
+C2  B V B B B B B B A A B B B -
+C3  B B V O B B B B - - B B - -
+C4  B B O V B B B B - - B B - -
+C5  B B B B V B B B - - B B - -
+C6  B B B B B V B O - - B B - -
+C7  B B B B B B V B - - B B - -
+C8  B B B B B O B V - - B B - -
+C9  A A - - - - - - V O - - - -
+C10 A A - - - - - - O V - - - -
+C11 B B B B B B B B - - V B - -
+C12 B B B B B B B B - - B V - -
+C13 B B - - - - - - - - - - V -
+C14 - - - - - - - - - - - - - V`
 
 const table = <K extends string>(cols: readonly K[], text: string) =>
   Object.fromEntries(text.trim().split('\n').map((line, i) => {
@@ -51,6 +59,7 @@ const SCOPE: Record<ScopeType, object> = {
   ALL_POSITIONS: { type: 'ALL_POSITIONS' },
   SYMBOL: { type: 'SYMBOL', symbol: 'BTCUSDT' },
   ORDER: { type: 'ORDER', symbol: 'BTCUSDT', orderId: 'o1' },
+  ALL_ORDERS: { type: 'ALL_ORDERS' },
 }
 const COND: Record<ConditionType, object> = {
   PRICE: { type: 'PRICE', source: 'LAST', operator: 'GTE', threshold: '100' },
@@ -63,6 +72,10 @@ const COND: Record<ConditionType, object> = {
   SL_MISSING: { type: 'SL_MISSING' },
   ORDER_FILLED: { type: 'ORDER_FILLED' },
   ORDER_PARTIAL: { type: 'ORDER_PARTIAL' },
+  VOLUME_SPIKE: { type: 'VOLUME_SPIKE', multiplier: '3', windowSec: 300 },
+  FUNDING: { type: 'FUNDING', ratePct: '0.05', minutesBefore: 30 },
+  ORDER_STALE: { type: 'ORDER_STALE', minutes: 60 },
+  POSITION_CLOSED: { type: 'POSITION_CLOSED', by: 'SL' },
 }
 const ACT: Record<ActionType, object> = {
   CLOSE_POSITION: { type: 'CLOSE_POSITION', percent: '50' },
@@ -79,11 +92,11 @@ const price = (operator: string, threshold: string, source = 'LAST') => ({ type:
 const change = (direction: string, percent: string, windowSec = 300, source = 'LAST') => ({ type: 'PRICE_CHANGE', source, direction, percent, windowSec })
 const ON_ENTRY = { mode: 'ON_ENTRY' }, ON_EVENT = { mode: 'ON_EVENT' }, ONCE = { mode: 'ONCE' }
 
-const PREFERRED: ScopeType[] = ['POSITION', 'ALL_POSITIONS', 'SYMBOL', 'ORDER']
+const PREFERRED: ScopeType[] = ['POSITION', 'ALL_POSITIONS', 'SYMBOL', 'ORDER', 'ALL_ORDERS']
 const scopeFor = (cs: ConditionType[], a: ActionType) =>
   PREFERRED.find(s => cs.every(c => SCOPE_RULES[s].conditions.includes(c)) && SCOPE_RULES[s].actions.includes(a))
 const triggerFor = (cs: ConditionType[], a: ActionType) =>
-  a === 'OPEN_POSITION' || a === 'INCREASE_POSITION' ? ONCE : cs.some(c => c === 'ORDER_FILLED' || c === 'ORDER_PARTIAL') ? ON_EVENT : ON_ENTRY
+  a === 'OPEN_POSITION' || a === 'INCREASE_POSITION' ? ONCE : cs.some(c => c === 'ORDER_FILLED' || c === 'ORDER_PARTIAL' || c === 'POSITION_CLOSED') ? ON_EVENT : ON_ENTRY
 
 interface Parts { scope?: object; logic?: string; items?: object[]; action?: object; trigger?: object; delivery?: object; voicePhrase?: unknown }
 /** Conditions get ids c1, c2, … unless they bring their own. */
@@ -126,7 +139,7 @@ test('STACKING matches the §7 stacking table cell by cell', () => {
   assert.deepEqual(STACKING, DOC_ST)
 })
 
-test('catalog numbers conditions C1–C10 and actions A1–A9 as §5 and §6, and ships both matrices', () => {
+test('catalog numbers conditions C1–C14 and actions A1–A9 as §5 and §6, and ships both matrices', () => {
   const cat = JSON.parse(JSON.stringify(catalog()))
   assert.deepEqual(cat.conditions.map((c: { code: string; type: string }) => [c.code, c.type]), C.map((t, i) => [`C${i + 1}`, t]))
   assert.deepEqual(cat.actions.map((a: { code: string; type: string }) => [a.code, a.type]), A.map((t, i) => [`A${i + 1}`, t]))
@@ -162,7 +175,8 @@ for (let i = 0; i < C.length; i++) {
     test(`${x} stacked with ${y} is ${cell}`, () => {
       const common = scopeFor([x, y], 'NOTIFY')
       if (cell === '-') {
-        assert.equal(common, undefined, "a '-' pair never has a common scope")
+        // no common scope, or one that holds both but where they make no sense together (a close leaves no position)
+        if (common) assert.ok(codes(rule({ scope: SCOPE[common], items: [COND[x], COND[y]], trigger: triggerFor([x, y], 'NOTIFY') })).includes('cannot_combine'))
         for (const own of [x, y]) {
           const s = PREFERRED.find(t => SCOPE_RULES[t].conditions.includes(own))!
           for (const logic of ['ALL', 'ANY']) assert.equal(check(rule({ scope: SCOPE[s], logic, items: [COND[x], COND[y]], trigger: triggerFor([x, y], 'NOTIFY') })).ok, false)
@@ -395,27 +409,38 @@ const words = (o: object): string => Object.entries(o).filter(([k]) => k !== 'id
 
 // Card, scope, trigger, condition and action as §12 states them (a prefix of the draft's own words).
 const BRIEF_TEMPLATES: [string, ScopeType, string, string, string][] = [
-  ['Move Stop Loss · ROI above 30%', 'ALL_POSITIONS', 'ON_ENTRY', 'PROFIT ROI_PERCENT 30', 'MOVE_SL ENTRY_OFFSET 0'],
-  ['Close Position · ROI above 30% · half', 'ALL_POSITIONS', 'ON_ENTRY', 'PROFIT ROI_PERCENT 30', 'CLOSE_POSITION 50'],
+  ['Move Stop Loss · ROI above 20% · breakeven', 'ALL_POSITIONS', 'ON_ENTRY', 'PROFIT ROI_PERCENT 20', 'MOVE_SL ENTRY_OFFSET 0'],
+  ['Close Position · ROI above 50% · half', 'ALL_POSITIONS', 'ON_ENTRY', 'PROFIT ROI_PERCENT 50', 'CLOSE_POSITION 50'],
   ['Close Position · Profit above 100 USDT', 'ALL_POSITIONS', 'ON_ENTRY', 'PROFIT USDT 100', 'CLOSE_POSITION 25'],
-  ['Close Position · Near take profit · half', 'ALL_POSITIONS', 'ON_ENTRY', 'NEAR_TP 1', 'CLOSE_POSITION 50'],
-  ['Close Position · ROI below −20% · all', 'ALL_POSITIONS', 'ON_ENTRY', 'LOSS ROI_PERCENT 20', 'CLOSE_POSITION 100'],
-  ['Close Position · Near liquidation · half', 'ALL_POSITIONS', 'ON_ENTRY', 'NEAR_LIQUIDATION 5', 'CLOSE_POSITION 50'],
-  ['Add Margin · Near liquidation', 'ALL_POSITIONS', 'ON_ENTRY', 'NEAR_LIQUIDATION 5', 'ADD_MARGIN 100'],
+  ['Close Position · Near take profit · half', 'ALL_POSITIONS', 'ON_ENTRY', 'NEAR_TP 0.5', 'CLOSE_POSITION 50'],
+  ['Close Position · ROI below −30% · all', 'ALL_POSITIONS', 'ON_ENTRY', 'LOSS ROI_PERCENT 30', 'CLOSE_POSITION 100'],
+  ['Close Position · Near liquidation · half', 'ALL_POSITIONS', 'ON_ENTRY', 'NEAR_LIQUIDATION 3', 'CLOSE_POSITION 50'],
+  ['Add Margin · Near liquidation', 'ALL_POSITIONS', 'ON_ENTRY', 'NEAR_LIQUIDATION 5', 'ADD_MARGIN 50'],
   ['Set Stop Loss · No stop loss', 'ALL_POSITIONS', 'ON_ENTRY', 'SL_MISSING', 'SET_SL ENTRY_OFFSET -2'],
-  ['Close Position · Near stop loss · half', 'ALL_POSITIONS', 'ON_ENTRY', 'NEAR_SL 1', 'CLOSE_POSITION 50'],
+  ['Notify · Near stop loss', 'ALL_POSITIONS', 'ON_ENTRY', 'NEAR_SL 0.5', 'NOTIFY'],
+  ['Notify · Loss above 50 USDT', 'ALL_POSITIONS', 'ON_ENTRY', 'LOSS USDT 50', 'NOTIFY'],
+  ['Notify · Closed by stop loss', 'ALL_POSITIONS', 'ON_EVENT', 'POSITION_CLOSED SL', 'NOTIFY'],
+  ['Notify · Closed by take profit', 'ALL_POSITIONS', 'ON_EVENT', 'POSITION_CLOSED TP', 'NOTIFY'],
+  ['Notify · Liquidated', 'ALL_POSITIONS', 'ON_EVENT', 'POSITION_CLOSED LIQUIDATION', 'NOTIFY'],
+  ['Notify · Funding above 0.05% in 30 min', 'ALL_POSITIONS', 'ON_ENTRY', 'FUNDING 0.05 30', 'NOTIFY'],
+  ['Close Position · Funding above 0.1% · close', 'ALL_POSITIONS', 'ON_ENTRY', 'FUNDING 0.1 10', 'CLOSE_POSITION 100'],
+  ['Notify · Volume 3× in 5 min', 'SYMBOL', 'ON_ENTRY', 'VOLUME_SPIKE 3 300', 'NOTIFY'],
+  ['Move Stop Loss · Volume 5× · breakeven', 'ALL_POSITIONS', 'ON_ENTRY', 'VOLUME_SPIKE 5 300', 'MOVE_SL ENTRY_OFFSET 0'],
   ['Notify · Price crosses a level', 'SYMBOL', 'ON_EVENT', 'PRICE', 'NOTIFY'],
-  ['Notify · Price falls 3% in 5 min', 'SYMBOL', 'ON_ENTRY', 'PRICE_CHANGE LAST DOWN 3 300', 'NOTIFY'],
-  ['Notify · Price rises 3% in 5 min', 'SYMBOL', 'ON_ENTRY', 'PRICE_CHANGE LAST UP 3 300', 'NOTIFY'],
-  ['Open Position · Price crosses a level', 'SYMBOL', 'ONCE', 'PRICE', 'OPEN_POSITION'],
-  ['Set Take Profit · Order filled', 'ORDER', 'ON_EVENT', 'ORDER_FILLED', 'SET_TP ENTRY_OFFSET 5'],
+  ['Notify · Price falls 2% in 5 min', 'SYMBOL', 'ON_ENTRY', 'PRICE_CHANGE LAST DOWN 2 300', 'NOTIFY'],
+  ['Notify · Price rises 2% in 5 min', 'SYMBOL', 'ON_ENTRY', 'PRICE_CHANGE LAST UP 2 300', 'NOTIFY'],
+  ['Open Position · Price crosses a level', 'SYMBOL', 'ONCE', 'PRICE', 'OPEN_POSITION LONG 100 5 ENTRY_OFFSET -2'],
+  ['Set Take Profit · Order filled', 'ORDER', 'ON_EVENT', 'ORDER_FILLED', 'SET_TP ENTRY_OFFSET 3'],
   ['Cancel Order · Order partly filled', 'ORDER', 'ON_EVENT', 'ORDER_PARTIAL', 'CANCEL_ORDER'],
+  ['Cancel Order · Order open over 1 h', 'ALL_ORDERS', 'ON_ENTRY', 'ORDER_STALE 60', 'CANCEL_ORDER'],
+  ['Notify · Order open over 15 min', 'ALL_ORDERS', 'ON_ENTRY', 'ORDER_STALE 15', 'NOTIFY'],
 ]
 
 const startsWithWords = (actual: string, expected: string) => actual === expected || actual.startsWith(`${expected} `)
 
-test('the 15 templates are the §12 cards, in grid order', () => {
-  assert.equal(TEMPLATES.length, 15)
+test('the 25 templates are the §12 cards, in grid order', () => {
+  assert.equal(TEMPLATES.length, 25)
+  assert.equal(new Set(TEMPLATES.map(t => t.id)).size, 25)
   TEMPLATES.forEach((t, i) => {
     const [card, scope, mode, cond, action] = BRIEF_TEMPLATES[i]
     assert.equal(`${t.title} · ${t.sub}`, card)
@@ -427,8 +452,8 @@ test('the 15 templates are the §12 cards, in grid order', () => {
   })
 })
 
-for (let n = 1; n <= 9; n++) {
-  test(`template ${n} validates as it is`, () => { accepts(TEMPLATES[n - 1].draft) })
+for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9, 16, 17, 18, 19, 20, 21, 23, 24, 25]) {
+  test(`template ${n} validates as it is`, () => { accepts(TEMPLATES.find(t => t.id === `tpl_${n}`)!.draft) })
 }
 
 // What the user still has to enter (§12): [conditionId or undefined, the blank field's name].
@@ -436,9 +461,10 @@ const BLANKS: Record<number, [string | undefined, string][]> = {
   10: [[undefined, 'symbol'], ['c1', 'threshold']],
   11: [[undefined, 'symbol']],
   12: [[undefined, 'symbol']],
-  13: [[undefined, 'symbol'], ['c1', 'threshold'], [undefined, 'notionalUsdt'], [undefined, 'leverage']],
+  13: [[undefined, 'symbol'], ['c1', 'threshold']],
   14: [[undefined, 'symbol'], [undefined, 'orderId']],
   15: [[undefined, 'symbol'], [undefined, 'orderId']],
+  22: [[undefined, 'symbol']],
 }
 const SENSIBLE: Record<string, string> = { symbol: 'BTCUSDT', orderId: 'o1', threshold: '100000', notionalUsdt: '100', leverage: '5' }
 const fillBlanks = (o: unknown): unknown => Array.isArray(o) ? o.map(fillBlanks)
@@ -448,9 +474,9 @@ const fillBlanks = (o: unknown): unknown => Array.isArray(o) ? o.map(fillBlanks)
     return [k, SENSIBLE[k]]
   })) : o
 
-for (let n = 10; n <= 15; n++) {
+for (const n of [10, 11, 12, 13, 14, 15, 22]) {
   test(`template ${n} reports exactly its blanks, then validates once they are filled`, () => {
-    const draft = TEMPLATES[n - 1].draft
+    const draft = TEMPLATES.find(t => t.id === `tpl_${n}`)!.draft
     const v = check(draft)
     assert.ok(v.issues.every(i => i.code === 'missing_value'), JSON.stringify(v.issues))
     const got = v.issues.map(i => [i.conditionId, i.field ?? ''] as const)

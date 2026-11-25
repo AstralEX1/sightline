@@ -4,7 +4,7 @@ Lens side of `bybit-shortcuts-spec.md` (§1, §8.3, §10). Shortcuts are created
 
 Screens drawn at 576 × 288: https://claude.ai/artifact/1n89NY12383wwVqdkFS1Pr. Page Flow holds the chosen design (main screen, every alert, review and result); page Position detail holds the detail screen (top row; the row below is the earlier, overloaded version); the other pages keep rejected variants. Switch on the `guides` tweak to see the container boxes.
 
-Status: design, not built. Every line below was measured with `@evenrealities/pretext` and fits its box. Nothing here was tried on real glasses.
+Status: built in `app/src/view.ts` + `app/src/main.ts` (Main with `>`, Detail with dotted PnL, Alert, Review, Result). Every line below was measured with `@evenrealities/pretext` and fits its box. Nothing here was tried on real glasses yet.
 
 ## 1. What each screen answers
 
@@ -45,7 +45,7 @@ Main ──rule fires──▶ Alert ──tap action──▶ Sent ──▶ Fi
 | Tap | open Detail of the `>` position | nothing | do the `>` item | do the `>` item | OK |
 | Double tap | host exit dialog | back to Main | Dismiss | back to Alert | OK |
 
-The hint is the last line, dim, lower case: `swipe: choose · tap: confirm`, on Main `swipe: choose · tap: details · double tap: exit`. On Main it shows for 10 s after launch (`HINT_MS`), then leaves. An alert that fires while Detail is open takes over the lens; after it, the lens goes back to Detail. Swipes are gated to one per 700 ms (`SWIPE_GATE_MS`). Taps while sending are ignored.
+The hint is the last line, dim, lower case: `swipe: choose · tap: confirm`, on Main `swipe: choose · tap: details · double tap: exit · tap, hold: menu`. On Main it shows for 10 s after launch (`HINT_MS`), then leaves. An alert that fires while Detail is open takes over the lens; after it, the lens goes back to Detail. Speak is on the menu (not a Main tap). Swipes are gated to one per 700 ms (`SWIPE_GATE_MS`). Taps while sending are ignored.
 
 ## 4. Layouts
 
@@ -155,7 +155,7 @@ Results come from order and execution updates only. `Sent` is never shown as `Fi
 1. `Dismiss` comes first and carries `>` when an alert opens; the spec mock has `> Confirm` selected. A stray tap must not trade.
 2. The confirm item names its outcome (`Close 50% · 0.025 BTC`), not `Confirm`, so the tap confirms exactly what the lens shows.
 3. No countdown on the lens; expiry shows as the Expired state.
-4. No lens menu: turning shortcuts on and off, editing and test alerts are phone-only.
+4. Editing, enable/disable and test alerts stay phone-only. The lens still has a contextual menu for `Protect all`, `Lock profits`, `Pause 15 min` and `Speak` (architecture voice seeds).
 
 ## 9. QA before calling it done
 

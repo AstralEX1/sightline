@@ -59,8 +59,8 @@ test('action sheet: forbidden by scope hidden, ruled out by a condition under Ne
 test('Apply to hides scopes that cannot hold the action (P15)', () => {
   const open = draft({ action: { type: 'OPEN_POSITION', side: 'LONG', notionalUsdt: '100', leverage: '10' } })
   assert.deepEqual(scopeChoices(cat, open).map(s => s.type), ['SYMBOL'])
-  assert.deepEqual(scopeChoices(cat, draft({ action: { type: 'CANCEL_ORDER' } })).map(s => s.type), ['ORDER'])
-  assert.equal(scopeChoices(cat, draft({})).length, 4)
+  assert.deepEqual(scopeChoices(cat, draft({ action: { type: 'CANCEL_ORDER' } })).map(s => s.type), ['ORDER', 'ALL_ORDERS'])
+  assert.equal(scopeChoices(cat, draft({})).length, 5)
 })
 
 test('Options: Increase Position fires Once only; crossings fire on event (P16)', () => {

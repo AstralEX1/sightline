@@ -184,7 +184,7 @@ Example: the "Close Position · Liq. < 5% or ROI < −20%" tile on the Shortcuts
 
 Persist immutable rule versions. Edit, pause or delete invalidates outstanding proposals belonging to the old version. An already submitted execution remains in reconciliation.
 
-## 5. Condition blocks (10 variants, 5 families)
+## 5. Condition blocks (14 variants, 7 families)
 
 | ID | Condition | Parameters | Fact / event |
 |---|---|---|---|
@@ -198,8 +198,12 @@ Persist immutable rule versions. Edit, pause or delete invalidates outstanding p
 | C8 | `SL_MISSING` | none | Verified protection inventory |
 | C9 | `ORDER_FILLED` | scope-bound order | Transition into Filled |
 | C10 | `ORDER_PARTIAL` | scope-bound order | First partial fill with remaining quantity |
+| C11 | `VOLUME_SPIKE` | multiplier (1,100], windowSec 1–60 min | Last-price 1-minute candles, read once a minute |
+| C12 | `FUNDING` | ratePct (0,5], minutesBefore 1–480 | Ticker `fundingRate`, `nextFundingTime` |
+| C13 | `ORDER_STALE` | minutes 1–10080 | Open order's `createdTime` |
+| C14 | `POSITION_CLOSED` | by: `SL` / `TP` / `LIQUIDATION` | Execution `stopOrderType` (StopLoss, PartialStopLoss, TrailingStop / TakeProfit, PartialTakeProfit) or `execType` BustTrade |
 
-Families: Price (C1–2), PnL (C3–4), Liquidation (C5), TP/SL (C6–8), Orders (C9–10).
+Families: Price (C1–2), PnL (C3–4), Liquidation (C5), TP/SL (C6–8), Orders (C9–10, C13), Market (C11–12), Closes (C14).
 
 ### Metric definitions
 
@@ -211,7 +215,11 @@ For side sign `d=+1` long / `-1` short, positive relevant price `P`, entry `E`, 
 - SL distance = `100 * d * (P - S) / P`; TP distance = `100 * d * (T - P) / P`; use actual order trigger source, not always last price. Resolve from verified order inventory.
 - A reached/crossed protective level is not proof of a fill; reconcile position/order state. Do not produce an executable proposal on a closed position.
 - Missing/stale/ambiguous data = UNKNOWN. Known absent TP/SL makes corresponding proximity NOT_APPLICABLE. Missing SL is true only when absence is verified: the position's `stopLoss` is empty or 0 AND no open order for it has `stopOrderType` `PartialStopLoss` (Partial-mode stops live as orders, not in the position; confirm on Demo how `/v5/order/realtime` lists them). Partial/multiple protection configurations are unsupported for related mutation/proximity logic in MVP: such a position is skipped with the reason in History ("Skipped · partial stop orders on this position").
-- Each condition type has a fixed severity rank in the registry, used to pick the one reason the lens shows when several OR branches match: `NEAR_LIQUIDATION` > `LOSS` > `NEAR_SL` > `SL_MISSING` > `PRICE_CHANGE` > `PRICE` > `NEAR_TP` > `PROFIT` > `ORDER_PARTIAL` > `ORDER_FILLED`.
+- Volume spike = average volume per minute of the last `windowSec` of closed 1-minute last-price candles over that of the 60 candles before them. Fewer than 30 base candles, or candles older than 3 minutes, is UNKNOWN. The newest closed candle can lag by up to a minute.
+- Funding = the next funding rate in percent. A position counts what it pays (`d * rate`: a long pays a positive rate); One symbol counts either side (`|rate|`). True when the next funding is at most `minutesBefore` away and that is ≥ `ratePct`. Past `nextFundingTime` before the ticker rolls over is UNKNOWN.
+- Order age = minutes since `createdTime` of an order still open; a gone order is NOT_APPLICABLE. All orders (scope) is every open non-protective order with remaining qty.
+- Position closed is an edge event of one poll's fresh executions: the position is named by the closing order's slot (or, for a liquidation, the slot that side held) and its epoch before the poll, so it still alerts after the position is gone. Split fills of one closing order alert once (dedupe key `close:<orderId>`). Notify only.
+- Each condition type has a fixed severity rank in the registry, used to pick the one reason the lens shows when several OR branches match: `NEAR_LIQUIDATION` > `POSITION_CLOSED` > `LOSS` > `NEAR_SL` > `SL_MISSING` > `FUNDING` > `PRICE_CHANGE` > `VOLUME_SPIKE` > `PRICE` > `NEAR_TP` > `PROFIT` > `ORDER_STALE` > `ORDER_PARTIAL` > `ORDER_FILLED`.
 
 ## 6. Action blocks (exactly one per shortcut)
 
@@ -247,25 +255,33 @@ Single source of truth in the registry. `Y` = allowed with baseline guards; `G` 
 | C8 No SL | Y | N | Y | G | N | N | N | N | Y |
 | C9 Filled | G | G | G | G | G | N | N | N | Y |
 | C10 Partial | G | G | G | G | G | N | N | Y | Y |
+| C11 Volume spike | Y | G | G | G | G | G | G | N | Y |
+| C12 Funding | Y | N | N | N | N | N | N | N | Y |
+| C13 Order age | N | N | N | N | N | N | N | Y | Y |
+| C14 Closed | N | N | N | N | N | N | N | N | Y |
 
 All branches, including OR, must be compatible with the action and same bound subject. Position action on price rule requires explicit position binding (global relative-price-change rules bind per position). Order-driven position action requires non-reduce-only opening fill, verified mapping to a currently open position and epoch. Open is symbol-only. Cancel is order-only. Near-liquidation SL proposals require a valid tighter/protective stop between trigger price and liquidation boundary, using verified price-source semantics; otherwise suppress. No risk-increasing action from loss, liquidation, SL/TP proximity, missing SL or fill events; Add Margin is separately permitted only by its matrix cells and guards.
 
 ### Condition stacking matrix
 
-`B` = AND/OR; `O` = OR only; `A` = AND only; `V` = validate same-metric bounds/duplicates; `-` = disallowed. Symmetric matrix. Scope and action guards still apply.
+`B` = AND/OR; `O` = OR only; `A` = AND only; `V` = validate same-metric bounds/duplicates; `-` = disallowed (no common scope, or a close, which leaves no position for another condition to read). Symmetric matrix. Scope and action guards still apply.
 
-| | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 | C9 | C10 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| C1 | V | B | B | B | B | B | B | B | A | A |
-| C2 | B | V | B | B | B | B | B | B | A | A |
-| C3 | B | B | V | O | B | B | B | B | - | - |
-| C4 | B | B | O | V | B | B | B | B | - | - |
-| C5 | B | B | B | B | V | B | B | B | - | - |
-| C6 | B | B | B | B | B | V | B | O | - | - |
-| C7 | B | B | B | B | B | B | V | B | - | - |
-| C8 | B | B | B | B | B | O | B | V | - | - |
-| C9 | A | A | - | - | - | - | - | - | V | O |
-| C10 | A | A | - | - | - | - | - | - | O | V |
+| | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 | C9 | C10 | C11 | C12 | C13 | C14 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| C1 | V | B | B | B | B | B | B | B | A | A | B | B | B | - |
+| C2 | B | V | B | B | B | B | B | B | A | A | B | B | B | - |
+| C3 | B | B | V | O | B | B | B | B | - | - | B | B | - | - |
+| C4 | B | B | O | V | B | B | B | B | - | - | B | B | - | - |
+| C5 | B | B | B | B | V | B | B | B | - | - | B | B | - | - |
+| C6 | B | B | B | B | B | V | B | O | - | - | B | B | - | - |
+| C7 | B | B | B | B | B | B | V | B | - | - | B | B | - | - |
+| C8 | B | B | B | B | B | O | B | V | - | - | B | B | - | - |
+| C9 | A | A | - | - | - | - | - | - | V | O | - | - | - | - |
+| C10 | A | A | - | - | - | - | - | - | O | V | - | - | - | - |
+| C11 | B | B | B | B | B | B | B | B | - | - | V | B | - | - |
+| C12 | B | B | B | B | B | B | B | B | - | - | B | V | - | - |
+| C13 | B | B | - | - | - | - | - | - | - | - | - | - | V | - |
+| C14 | - | - | - | - | - | - | - | - | - | - | - | - | - | V |
 
 Rules beyond the matrix:
 - Reject exact duplicates, contradictory ranges, tautologies and redundant same-direction near thresholds. Check the entire group, not only pairs. One consistent source per metric family. No mixed subjects.
@@ -346,7 +362,7 @@ For simultaneous matching shortcuts, optionally coalesce notification delivery b
 3. If resolved authorization terms changed, invalidate and generate a fresh proposal requiring confirmation. Never silently adjust quantity, target price, margin or leverage. Revalidation cannot remove all exchange races; rely on reduce-only and exchange-side constraints too.
 4. Persist intent before sending. Submit one supported exchange command with a stable unique `orderLinkId` where supported. For commands without exchange idempotency, retain local intent and reconcile state before any retry. No blind retries after an ambiguous network outcome. `server/src/bybit.ts` already splits outcomes this way: a non-zero `retCode` is a clear rejection (`ExchangeRejected`), while 10000, 10016, a timeout or a 5xx is UNKNOWN; a rate limit is retried with the same body and `orderLinkId`. Reuse it.
 5. REST acknowledgement is not proof of success. Confirm orders via private order/execution stream and REST reconciliation; aggregate unique fills. For SL/TP and margin, verify authoritative post-state and record uncertainties rather than invent execution attribution. A partial fill is not a full close.
-6. Persist final result and outbox event; revalidate related proposals. Unknown outcomes block conflicting actions until reconciled or explicitly resolved by authorized operational procedure.
+6. Persist final result and outbox event; revalidate related proposals. Unknown outcomes block conflicting actions until reconciled. An unknown add margin has no id to reconcile by: it blocks only another add margin and settles when the position closes; a reduce-only Close is never blocked by it.
 
 ## 10. Persistence, transport and API contracts
 
@@ -365,7 +381,7 @@ Endpoints, by the screen that calls them. All under `/api`, behind the existing 
 | Screen | Call | Returns or does |
 |---|---|---|
 | Shortcuts | `GET /shortcuts`, `POST /shortcuts/:id/enable`, `/pause` | tiles: derived title (or `name`), one-line condition summary ("Liq. < 5% or ROI < −20%"), `enabled` |
-| Shortcuts · Templates | `GET /templates` | the 15 seeds of §12; picking one creates a disabled draft |
+| Shortcuts · Templates | `GET /templates` | the 25 seeds of §12; picking one creates a disabled draft |
 | New Shortcut, Editor | `GET /catalog` | condition and action registry, editor words, parameter bounds, the three matrices |
 | Editor | `POST /shortcuts/validate` | `Validation` (§7) plus, for the numeric sheet and Apply to, the targets it matches now ("3 now") and each condition's current value per target ("Now 18.2% on BTCUSDT long") |
 | Editor | `POST /shortcuts`, `PUT /shortcuts/:id`, `DELETE /shortcuts/:id` | save a new version; invalidates outstanding proposals of the old one |
@@ -411,23 +427,35 @@ All numerical values are editable examples, not recommended trading thresholds. 
 
 The Templates grid on the Shortcuts screen shows them in this order, as action title over one subtitle line.
 
+Numbers fit a 5–10× position: breakeven before taking part, the liquidation ladder adds margin at 5% and closes half at 3%. `#` is the template id (`tpl_<#>`), stable across reorders.
+
 | # | Card on the phone | Condition | Action | Scope, trigger |
 |---|---|---|---|---|
-| 1 | Move Stop Loss · ROI above 30% | Profit ROI ≥ 30% | Move SL to entry | All positions, on entry |
-| 2 | Close Position · ROI above 30% · half | Profit ROI ≥ 30% | Close 50% | All positions, on entry |
+| 1 | Move Stop Loss · ROI above 20% · breakeven | Profit ROI ≥ 20% | Move SL to entry | All positions, on entry |
+| 2 | Close Position · ROI above 50% · half | Profit ROI ≥ 50% | Close 50% | All positions, on entry |
 | 3 | Close Position · Profit above 100 USDT | Profit ≥ 100 USDT | Close 25% | All positions, on entry |
-| 4 | Close Position · Near take profit · half | TP distance ≤ 1% | Close 50% | All positions, on entry |
-| 5 | Close Position · ROI below −20% · all | Loss ROI ≥ 20% | Close 100% | All positions, on entry |
-| 6 | Close Position · Near liquidation · half | Liq distance ≤ 5% | Close 50% | All positions, on entry |
-| 7 | Add Margin · Near liquidation | Liq distance ≤ 5% | Add 100 USDT margin | All positions (isolated only; others skipped with a reason), on entry |
+| 4 | Close Position · Near take profit · half | TP distance ≤ 0.5% | Close 50% | All positions, on entry |
+| 5 | Close Position · ROI below −30% · all | Loss ROI ≥ 30% | Close 100% | All positions, on entry |
+| 6 | Close Position · Near liquidation · half | Liq distance ≤ 3% | Close 50% | All positions, on entry |
+| 7 | Add Margin · Near liquidation | Liq distance ≤ 5% | Add 50 USDT margin | All positions (isolated only; others skipped with a reason), on entry |
 | 8 | Set Stop Loss · No stop loss | SL absent | Set SL 2% adverse from entry | All positions, on entry |
-| 9 | Close Position · Near stop loss · half | SL distance ≤ 1% | Close 50% | All positions, on entry |
+| 9 | Notify · Near stop loss | SL distance ≤ 0.5% | Notify | All positions, on entry |
+| 16 | Notify · Loss above 50 USDT | Loss ≥ 50 USDT | Notify | All positions, on entry |
+| 17 | Notify · Closed by stop loss | Closed by stop loss | Notify | All positions, on event |
+| 18 | Notify · Closed by take profit | Closed by take profit | Notify | All positions, on event |
+| 19 | Notify · Liquidated | Liquidated | Notify | All positions, on event |
+| 20 | Notify · Funding above 0.05% in 30 min | Pays ≥ 0.05% within 30 min | Notify | All positions, on entry |
+| 21 | Close Position · Funding above 0.1% · close | Pays ≥ 0.1% within 10 min | Close 100% | All positions, on entry |
+| 22 | Notify · Volume 3× in 5 min | Volume ≥ 3× within 5 min | Notify | Symbol, on entry |
+| 23 | Move Stop Loss · Volume 5× · breakeven | Volume ≥ 5× within 5 min | Move SL to entry | All positions, on entry |
 | 10 | Notify · Price crosses a level | Price crosses a level | Notify | Symbol, on event |
-| 11 | Notify · Price falls 3% in 5 min | Price falls 3% in 5 min | Notify | Symbol, on entry |
-| 12 | Notify · Price rises 3% in 5 min | Price rises 3% in 5 min | Notify | Symbol, on entry |
-| 13 | Open Position · Price crosses a level | Price crosses a level | Open side/notional/leverage | Symbol, on event + once |
-| 14 | Set Take Profit · Order filled | Opening order fully filled | Set TP 5% favorable from entry | Order (picked), mapped position, on event |
+| 11 | Notify · Price falls 2% in 5 min | Price falls 2% in 5 min | Notify | Symbol, on entry |
+| 12 | Notify · Price rises 2% in 5 min | Price rises 2% in 5 min | Notify | Symbol, on entry |
+| 13 | Open Position · Price crosses a level | Price crosses a level | Open long 100 USDT at 5×, stop 2% adverse | Symbol, once |
+| 14 | Set Take Profit · Order filled | Opening order fully filled | Set TP 3% favorable from entry | Order (picked), mapped position, on event |
 | 15 | Cancel Order · Order partly filled | Limit order partially filled | Cancel the rest | Order (picked, non-protective limit), on event |
+| 24 | Cancel Order · Order open over 1 h | Open ≥ 60 min | Cancel | All orders, on entry |
+| 25 | Notify · Order open over 15 min | Open ≥ 15 min | Notify | All orders, on entry |
 
 Sightline's built-in rules today (liquidation warning, lock profit, no stop) become shortcuts made from templates 6/7, 1 and 8, so the old code paths in `rules.ts` go away instead of running beside the engine. Its voice commands become voice phrases on shortcuts, seeded on first start:
 
@@ -439,11 +467,11 @@ Sightline's built-in rules today (liquidation warning, lock profit, no stop) bec
 
 ## 13. Implementation sequence and acceptance
 
-Status 24 November 2026: steps 1–5 are built and tested against `FakeExchange` (`server/test/session.test.ts` and `http.test.ts` cover the acceptance list below except Demo-only items); the removals are done. Left: verify each mutation and ROI parity on Bybit Demo (step 4), real glasses, a real Telegram bot.
+Status 24 November 2026: steps 1–5 are built and tested against `FakeExchange` (`server/test/session.test.ts` and `http.test.ts` cover the acceptance list below except Demo-only items); the removals are done. Each mutation is verified on Bybit testnet and a real Telegram bot delivered an alert. Left: ROI parity with the Bybit app (step 4), real glasses.
 
 Keep from Sightline as is: `assertTestnet`, request signing, rate-limit retry, the rejected/unknown split, `orderLinkId`, `toStep` quantization, the instrument cache, `execId` fill dedupe, `FakeExchange` and the demo scenario, the bearer-token HTTP layer, `BAND_PCT` hysteresis, speech to text and `matchShortcut`, the lens app's storage and lifecycle handling. Remove: the `transfer` action and `transferToTrading`, the daily loss lock and per-action cap (config fields, `locked` in the session and on the lens), `stopPrice()`'s fallback, the built-in rules in `evaluate()`, the voice `Shortcut` type.
 
-1. Delete the voice `Shortcut` type (its phrases move to `voicePhrase`, §12). Write `registry.ts` (types of §4, editor words, bounds, three matrices, 15 templates as data) and `validate.ts`; unit-test every matrix cell and the composite rules. This step unblocks the phone app: it needs only `GET /catalog`, `GET /templates` and `POST /shortcuts/validate`.
+1. Delete the voice `Shortcut` type (its phrases move to `voicePhrase`, §12). Write `registry.ts` (types of §4, editor words, bounds, three matrices, 25 templates as data) and `validate.ts`; unit-test every matrix cell and the composite rules. This step unblocks the phone app: it needs only `GET /catalog`, `GET /templates` and `POST /shortcuts/validate`.
 2. `engine.ts`: per-target snapshots from the existing poll, four-valued evaluator, trigger policies with hysteresis, price-change windows with kline warm-up. Replace the built-in rules of `rules.ts` with template-made shortcuts.
 3. `proposals.ts` and `execute.ts`: proposal = today's `Card` plus version, epoch, resolved terms, `supersedes`, `simulated`, idempotency key; `answer(cardId)` becomes `confirm(proposalId, idempotencyKey)`. `store.ts` on `node:sqlite` when restart recovery is needed. Test duplicate taps and an ambiguous submit before Demo.
 4. `bybit.ts`: the missing calls of §11 (open orders, cancel, reduce-only close with `positionIdx`, take profit, kline, query-api, the extra position and instrument fields); verify each mutation and ROI parity on Demo.

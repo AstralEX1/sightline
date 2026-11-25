@@ -8,6 +8,7 @@ import { tokenProblem } from './config.ts'
 import { assertTestnet, createBybit } from './bybit.ts'
 import { demoExchange } from './fake-exchange.ts'
 import { transcribe } from './stt.ts'
+import { STARTER_RULES, VOICE_SEEDS } from './registry.ts'
 
 const TICK_MS = 2000
 const env = process.env
@@ -42,7 +43,7 @@ if (mode === 'bybit') {
 
 // One file per exchange mode, so demo shortcuts and alerts never mix with a real account's.
 const store = createStore(fileURLToPath(new URL(`../data/${mode}.db`, import.meta.url)))
-store.seed()
+store.seed([...STARTER_RULES, ...VOICE_SEEDS])
 const notifier = createNotifier({ store, token: env.TELEGRAM_BOT_TOKEN || undefined })
 const session = createSession(ex, store, Date.now, notifier.route)
 

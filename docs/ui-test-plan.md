@@ -32,13 +32,13 @@ Shared server: several testers run at once. Prefix every shortcut you create wit
 | P09 | Close action | tap close amount | 25/50/75/100/Custom, one choice; Custom opens numeric sheet; note `Market order, reduce-only` |
 | P10 | | add 2nd condition, remove it | `or` token on line 2, remove buttons on both; after removal one line, no remove button |
 | P11 | 2 conditions | operator → `and` | every operator token shows `and`; saved rule `logic: ALL` (check via API) |
-| P12 | | Apply to | 4 options with `3 now`; One position → picker `BTCUSDT · Long · 0.050 BTC`; collapses to `BTCUSDT · Long` |
+| P12 | | Apply to | 5 options (All orders included) with `3 now`; One position → picker `BTCUSDT · Long · 0.050 BTC`; collapses to `BTCUSDT · Long` |
 | P13 | Profit OR Near liquidation | pick Increase Position from `Needs changes` | liquidation line red + `Incompatible`; title Increase Position; back → `Discard changes?` dialog; nothing saved |
 | P14 | | Profit AND Loss | a line marked; cannot save |
 | P15 | All positions | open action sheet | Open Position not offered; with One symbol it is |
 | P16 | Increase Position | Options | only `Once` selectable, others disabled with a reason |
 | P17 | editor open | change the same shortcut via `PUT /api/shortcuts/:id`, then save in UI | toast `Changed on another device. Reloaded.` |
-| P18 | a few alerts | History | grouped by day (`TODAY`…); statuses exactly as spec §5.11; empty state `No alerts yet.`; paging at end |
+| P18 | a few alerts | History | grouped by day (`TODAY`…); statuses as spec §5.11; empty state `No alerts yet.`; paging at end |
 | P19 | | Settings: toggle switches, reload | persisted (`GET /api/settings`); read-only rows not tappable; timing sheets bounded 10–300 |
 | P20 | | root font 200% (`document.documentElement.style.fontSize`) | one-column tiles, no clipped text, no overlapping targets |
 | P21 | | `prefers-color-scheme: dark` | dark tokens; text readable |

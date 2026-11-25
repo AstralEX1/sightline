@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { screen, previewText, alignRight, fit, iconOf, INNER_PX, type Outcome, type Screen, type View } from '../src/view.ts'
+import { screen, previewText, alignRight, fit, iconOf, pnlNumeral, INNER_PX, type Outcome, type Screen, type View } from '../src/view.ts'
 import { getTextWidth } from '@evenrealities/pretext'
 import type { Execution, ExecutionStatus, Position, Proposal, ServerState, Terms } from '../../server/src/types.ts'
 import type { ConditionType } from '../../server/src/registry.ts'
@@ -29,16 +29,21 @@ function card(o: Partial<Proposal> = {}): Proposal {
 }
 
 function st(o: Partial<ServerState> = {}): ServerState {
-  return { positions: [pos()], balance: null, dayPnl: 0, card: null, pending: 0, toast: null, error: null, updatedAt: 1, source: 'Demo data', ...o }
+  return { positions: [pos()], balance: null, card: null, pending: 0, toast: null, error: null, updatedAt: 1, source: 'Demo data', ...o } as ServerState
 }
 
 const exec = (status: ExecutionStatus, o: Partial<Execution> = {}): Execution =>
   ({ id: 'e1', proposalId: 'p1', idempotencyKey: 'lens:p1', terms: CLOSE, status, message: '', filledQty: 0, avgPrice: 0, createdAt: 0, updatedAt: 0, ...o })
 
+/** Strip Main's `>` / indent so assertions read the position, not the focus mark. */
+const bare = (s: string) => s.replace(/^(> | {3})/, '').trim()
 /** The table as the eye reads it: one line per row, empty cells left out. */
 const rows = (sc: Screen) => {
   const cols = ['name', 'price', 'loss', 'gain', 'flag'].map(b => sc.text[b].split('\n'))
-  return cols[0].map((_, i) => cols.map(c => (c[i] ?? '').trim()).filter(Boolean))
+  return cols[0].map((_, i) => cols.map((c, j) => {
+    const t = (c[i] ?? '').trim()
+    return j === 0 ? bare(t) : t
+  }).filter(Boolean))
 }
 const lines = (sc: Screen) => Object.entries(sc.text).flatMap(([box, t]) => t.split('\n').map(l => [box, l] as const))
 const alertOf = (c: Partial<Proposal> = {}, s: Partial<ServerState> = {}, v: View = {}) => screen(st({ card: card(c), pending: 1, ...s }), v)
@@ -82,27 +87,36 @@ test('main: closest to liquidation first', () => {
   assert.deepEqual(rows(screen(st({ positions: [none, far, near] }))).map(r => r[0]), ['BTC long', 'SOL long', 'ETH long'])
 })
 
-test('main: more than five, pages of four, a swipe turns them, both ends wrap', () => {
+test('main: more than five, pages of four; focus picks the page and wraps', () => {
   const many = st({ positions: Array.from({ length: 7 }, (_, i) => pos({ symbol: `C${i}USDT` })) })
-  const page = (n: number) => rows(screen(many, { page: n })).map(r => r[0])
-  assert.deepEqual(page(0), ['C0 long', 'C1 long', 'C2 long', 'C3 long', '1–4 of 7'])
-  assert.deepEqual(page(1), ['C4 long', 'C5 long', 'C6 long', '5–7 of 7'])
-  assert.deepEqual(page(2), page(0))
-  assert.deepEqual(page(-1), page(1))
+  const at = (n: number) => rows(screen(many, { focus: n })).map(r => r[0])
+  assert.deepEqual(at(0), ['C0 long', 'C1 long', 'C2 long', 'C3 long', '1–4 of 7'])
+  assert.deepEqual(at(4), ['C4 long', 'C5 long', 'C6 long', '5–7 of 7'])
+  assert.deepEqual(at(7), at(0))
+  assert.deepEqual(at(-1), at(6))
+})
+
+test('main: > marks the focused row; a swipe moves it', () => {
+  const two = st({ positions: [pos(), pos({ symbol: 'ETHUSDT', liqPrice: 4000, unrealisedPnl: 10 })] })
+  assert.match(screen(two).text.name.split('\n')[0], /^> /)
+  assert.match(screen(two).text.name.split('\n')[1], /^ {3}/)
+  const moved = screen(two, { focus: 1 })
+  assert.match(moved.text.name.split('\n')[0], /^ {3}/)
+  assert.match(moved.text.name.split('\n')[1], /^> /)
 })
 
 test('main: the top line names the account and the count, the time sits at its right edge', () => {
-  assert.equal(screen(st()).text.top, 'Demo data · 1 position')
-  assert.equal(screen(st({ positions: [pos(), pos({ symbol: 'ETHUSDT' })] })).text.top, 'Demo data · 2 positions')
+  assert.equal(screen(st()).text.top, 'Bybit Demo · 1 position')
+  assert.equal(screen(st({ positions: [pos(), pos({ symbol: 'ETHUSDT' })] })).text.top, 'Bybit Demo · 2 positions')
   const top = screen(st(), { now: new Date(2026, 10, 24, 14, 5).getTime() }).text.top
-  assert.match(top, /^Demo data · 1 position +14:05$/)
+  assert.match(top, /^Bybit Demo · 1 position +14:05$/)
   assert.ok(getTextWidth(top) <= INNER_PX.top && INNER_PX.top - getTextWidth(top) < getTextWidth(' '), `${getTextWidth(top)} px`)
   assert.equal(screen(st()).tone.top, 3)
 })
 
 test('main: no positions, an empty table', () => {
   const sc = screen(st({ positions: [] }))
-  assert.equal(sc.text.top, 'Demo data · no open positions')
+  assert.equal(sc.text.top, 'Bybit Demo · no open positions')
   assert.deepEqual([sc.text.name, sc.text.price, sc.text.loss, sc.text.gain, sc.text.flag], ['', '', '', '', ''])
 })
 
@@ -146,18 +160,55 @@ test('main: paused, alerts wait and the table stays', () => {
 })
 
 test('main: the hint line teaches for a moment, then leaves', () => {
-  assert.equal(screen(st(), { hints: true }).text.hint, 'tap: speak · double tap: exit · tap, hold: menu')
+  assert.equal(screen(st(), { hints: true }).text.hint, 'tap: details · double tap: exit · tap, hold: menu')
   assert.equal(screen(st()).text.hint, '')
-  assert.equal(screen(st({ voice: false }), { hints: true }).text.hint, 'double tap: exit · tap, hold: menu') // no speech key on the server
+  assert.equal(screen(st({ positions: [] }), { hints: true }).text.hint, 'double tap: exit · tap, hold: menu')
   const many = st({ positions: Array.from({ length: 7 }, (_, i) => pos({ symbol: `C${i}USDT` })) })
-  assert.equal(screen(many, { hints: true }).text.hint, 'swipe: more · tap: speak · double tap: exit · tap, hold: menu')
+  assert.equal(screen(many, { hints: true }).text.hint, 'swipe: choose · tap: details · double tap: exit · tap, hold: menu')
   assert.equal(screen(null, { hints: true }).text.hint, '') // nothing to gesture at yet
   assert.equal(screen(st(), { hints: true }).tone.hint, 2)
 })
 
 test('main: no loss meter and no dollars on the lens', () => {
-  const sc = screen(st({ dayPnl: -150, positions: [pos({ unrealisedPnl: -150 })] }), { hints: true })
+  const sc = screen(st({ positions: [pos({ unrealisedPnl: -150 })] }), { hints: true })
   for (const [box, l] of lines(sc)) assert.doesNotMatch(l, /[█▒$]|limit/i, `${box}: ${l}`)
+})
+
+// ── Detail ─────────────────────────────────────────────────
+
+test('detail: Weather layout with size, liq, stop or × no stop, big PnL numeral', () => {
+  const sc = screen(st({ balance: { equity: 5000, available: 2140 } }), { detail: true })
+  assert.equal(sc.layout, 'detail')
+  assert.equal(sc.key, 'detail:BTCUSDT:0')
+  assert.equal(sc.text.top, 'BTC long · 10×')
+  assert.deepEqual(sc.text.table.split('\n'), ['0.05 BTC', 'liq 57,623', 'stop 59,600'])
+  assert.equal(sc.text.loud.split('\n').every(l => !l.trim()), true)
+  assert.equal(sc.text.label, 'PnL')
+  assert.equal(sc.numeral, '▼13.00')
+  assert.equal(sc.text.unit, 'USDT · ROI −4.2%')
+  assert.equal(sc.text.info, 'balance 2,140 USDT')
+  assert.equal(sc.text.hint, 'double tap: back')
+  assert.equal(sc.icon, '')
+})
+
+test('detail: missing stop is bright on loud; place in the queue; swipe hint with several', () => {
+  const eth = pos({ symbol: 'ETHUSDT', side: 'Sell', stopLoss: 0, markPrice: 3198, liqPrice: 4000, unrealisedPnl: 89.28, positionIM: 372, leverage: 15 })
+  const sc = screen(st({ positions: [pos(), eth] }), { detail: true, focus: 1, onCount: 3 })
+  assert.match(sc.text.top, /ETH short · 15× +2\/2/)
+  assert.equal(sc.text.loud.split('\n').find(l => l.includes('no stop')), '× no stop')
+  assert.equal(sc.text.info, '3 shortcuts on')
+  assert.equal(sc.text.hint, 'swipe: next position · double tap: back')
+  assert.equal(sc.numeral, '▲89.28')
+})
+
+test('detail: an alert still wins over an open Detail', () => {
+  assert.equal(screen(st({ card: card(), pending: 1 }), { detail: true }).layout, 'alert')
+})
+
+test('pnlNumeral: cents, whole numbers, thousands', () => {
+  assert.equal(pnlNumeral(-8.6), '▼8.60')
+  assert.equal(pnlNumeral(1234.5), '▲1,235')
+  assert.equal(pnlNumeral(-12_300), '▼12.3k')
 })
 
 // ── Alert ──────────────────────────────────────────────────
@@ -181,7 +232,7 @@ test('alert: every condition wears its icon, names the position and the reason, 
     assert.equal(sc.layout, 'alert')
     assert.equal(sc.icon, icon, reasonType)
     assert.equal(sc.text.who, 'BTC long')
-    assert.equal(sc.text.why, why.charAt(0).toUpperCase() + why.slice(1))
+    assert.equal(sc.text.why, reasonType === 'NEAR_LIQUIDATION' ? '3.2% to liquidation' : why.charAt(0).toUpperCase() + why.slice(1))
     assert.equal(sc.text.opt1, '> Dismiss')
     assert.equal(sc.text.opt2, `   ${opt2}`)
     assert.deepEqual(sc.choices, ['dismiss', 'confirm'])
@@ -329,6 +380,18 @@ test('result: stays on the same page as its alert, so the lens only updates text
   assert.equal(sc.at, 0)
 })
 
+test('result: the receipt sits under OK once the server has it, and nothing above it moves', () => {
+  const filled = { filledQty: 0.025, avgPrice: 61180 }
+  const sc = result({ execution: exec('FILLED', { ...filled, receipt: '0.05 → 0.025 BTC · liq 2.5% → 4.1%' }) })
+  assert.deepEqual([sc.text.why, sc.text.opt1, sc.text.opt2], ['Closed 0.025 BTC · avg 61,180', '> OK', '   0.05 → 0.025 BTC · liq 2.5% → 4.1%'])
+  assert.deepEqual(sc.choices, ['close']) // a line, not a second choice
+  assert.equal(sc.key, result({ execution: exec('FILLED', filled) }).key) // same page: the receipt is a text update
+  assert.equal(result({ execution: exec('FILLED', filled) }).text.opt2, '')
+  assert.equal(result({ execution: exec('SUBMITTING', { receipt: 'x' }) }).text.opt2, '') // Sent has no row at all
+  const long = result({ execution: exec('FILLED', { ...filled, receipt: `123,456,789 → 0 1000PEPE${'X'.repeat(60)} · position closed` }) })
+  assert.ok(getTextWidth(long.text.opt2) <= INNER_PX.opt2)
+})
+
 test('result: holds the lens over the next alert until OK, and the next alert waits', () => {
   assert.equal(result({ execution: exec('FILLED', { filledQty: 0.025, avgPrice: 61180 }) }).text.why, 'Closed 0.025 BTC · avg 61,180')
   assert.equal(screen(st(), { outcome: { card: card() }, offline: true }).layout, 'main') // offline: nothing to answer
@@ -357,14 +420,15 @@ test('every line fits its box with long tickers and 6-digit prices', () => {
     const sc = screen(s, v)
     for (const [box, l] of lines(sc)) if (box !== 'frame') assert.ok(getTextWidth(l) <= INNER_PX[box], `${box} too wide: ${l} (${getTextWidth(l)} > ${INNER_PX[box]})`)
   }
-  assert.equal(rows(screen(st({ positions: [pepe] })))[0][0], '1000PEPE short')
-  assert.match(rows(screen(st({ positions: [pos({ symbol: '1000000MOGUSDT', side: 'Sell' })] })))[0][0], /^1000000… short$/) // the ticker is cut, never the side
+  // `>` takes a few characters of the name column; the side word is never cut.
+  assert.match(rows(screen(st({ positions: [pepe] })))[0][0], /^1000P… short$/)
+  assert.match(rows(screen(st({ positions: [pos({ symbol: '1000000MOGUSDT', side: 'Sell' })] })))[0][0], /… short$/)
 })
 
 test('every string of spec §5 and §6 fits its box', () => {
   const at: [string, string[]][] = [
     ['why', ['Sent · waiting for the fill', 'Closed 0.025 BTC · avg 61,180', 'Partly filled · 0.015 of 0.025 BTC', 'Rejected: below 0.001 BTC',
-      'No answer from Bybit yet', 'Expired · nothing sent', 'Bybit data is stale', 'Test only · nothing was sent', 'Liquidation distance 3.2%']],
+      'No answer from Bybit yet', 'Expired · nothing sent', 'Bybit data is stale', 'Test only · nothing was sent', '3.2% to liquidation']],
     ['opt2', ['   Close 50% · 0.025 BTC', '   Move ETH stop to entry 3,412', '   Cancel the rest · 0.015 BTC', '   Review long · 500 USDT']],
     ['terms', ['0.0055 BTC · 500 USDT · 5×', 'Margin ≈ 100 USDT · stop 88,200', 'Stop 3,280 stays']],
     ['top', ['Bybit data stale since 14:02 · retrying', 'No connection to your server · retrying', 'Bybit demo · no open positions']],
@@ -375,7 +439,7 @@ test('every string of spec §5 and §6 fits its box', () => {
 // ── Phone preview ──────────────────────────────────────────
 
 test('phone preview lists the same lines', () => {
-  assert.equal(previewText(screen(st(), { hints: true })), 'Demo data · 1 position\nBTC long  61,240  ▼ 4.2%  liq 5.9%\n\ntap: speak · double tap: exit · tap, hold: menu')
-  assert.equal(previewText(alertOf({}, { pending: 2 })), 'BTC long   1/2\nLiquidation distance 3.2%\n\n> Dismiss\n   Close 50% · 0.025 BTC\n\nswipe: choose · tap: confirm')
+  assert.equal(previewText(screen(st(), { hints: true })), 'Bybit Demo · 1 position\n> BTC long  61,240  ▼ 4.2%  liq 5.9%\n\ntap: details · double tap: exit · tap, hold: menu')
+  assert.equal(previewText(alertOf({}, { pending: 2 })), 'BTC long   1/2\n3.2% to liquidation\n\n> Dismiss\n   Close 50% · 0.025 BTC\n\nswipe: choose · tap: confirm')
   assert.equal(previewText(result({})), 'BTC long\nSent\n\nwaiting for Bybit…')
 })

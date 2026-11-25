@@ -3,7 +3,7 @@
  * No I/O and no timers: the caller passes the clock. Spec: docs/shortcuts-architecture.md §5, §8.
  */
 import { isEvent, LIMITS, SEVERITY } from './registry.ts'
-import type { Condition, ConditionType, Dec, PriceSource, ShortcutRule } from './registry.ts'
+import type { ClosedBy, Condition, ConditionType, Dec, PriceSource, ShortcutRule } from './registry.ts'
 import type { Side } from './types.ts'
 
 export interface Quote { price: number; ts: number }
@@ -36,6 +36,14 @@ export interface Facts {
   position?: PositionFacts
   /** The target order's new execution in this poll: comes from diffing two polls, so never from the first one. */
   event?: { kind: 'FILLED' | 'PARTIAL'; orderId: string; execId: string }
+  /** VOLUME_SPIKE: the multiple of the window's volume over the hour before it; null when unknown. */
+  volumeRatio?: (windowSec: number) => number | null
+  /** The symbol's next funding: rate in percent (positive: longs pay) and when it is charged. */
+  funding?: { ratePct: number; at: number; ts: number }
+  /** ORDER_STALE: the target order, and whether it is still open. */
+  order?: { open: boolean; createdAt?: number }
+  /** This poll's close of the target position by its stop, take profit or a liquidation; `orderId` dedupes split fills. */
+  closed?: { by: ClosedBy; orderId: string; price: number }
 }
 
 export type Verdict = 'TRUE' | 'FALSE' | 'UNKNOWN' | 'NOT_APPLICABLE'
@@ -117,6 +125,30 @@ export function evaluateCondition(c: Condition, f: Facts, o: EvalOpts): Conditio
     case 'ORDER_FILLED':
     case 'ORDER_PARTIAL':
       return is(f.event?.kind === (c.type === 'ORDER_FILLED' ? 'FILLED' : 'PARTIAL'))
+    case 'VOLUME_SPIKE': {
+      const x = f.volumeRatio?.(c.windowSec) ?? null
+      if (x === null) return UNKNOWN
+      const n = Number(c.multiplier)
+      return is(x >= n - ofLevel(n), x)
+    }
+    case 'FUNDING': {
+      const fd = f.funding && fresh(f.funding.ts) ? f.funding : undefined
+      const left = fd && fd.at - o.now
+      if (!fd || left === undefined || left < 0) return UNKNOWN // past the charge: the ticker has not rolled over yet
+      // A position pays when its side matches the rate's sign; a symbol alone watches either side.
+      const pays = f.position ? (p ? d * fd.ratePct : null) : Math.abs(fd.ratePct)
+      if (pays === null) return UNKNOWN
+      const n = Number(c.ratePct)
+      return is(left <= c.minutesBefore * 60_000 && pays >= n - ofLevel(n), pays)
+    }
+    case 'ORDER_STALE': {
+      if (!f.order || f.order.createdAt === undefined) return UNKNOWN
+      if (!f.order.open) return NOT_APPLICABLE
+      const age = (o.now - f.order.createdAt) / 60_000
+      return is(age >= c.minutes, age)
+    }
+    case 'POSITION_CLOSED':
+      return is(f.closed?.by === c.by, f.closed?.price)
   }
 }
 
@@ -130,7 +162,8 @@ export interface GroupResult {
   events: string[]
 }
 
-const eventKey = (c: Condition, f: Facts) => (c.type === 'PRICE' ? `${c.source}@${f.prices[c.source]?.ts}` : `exec:${f.event?.execId}`)
+const eventKey = (c: Condition, f: Facts) =>
+  c.type === 'PRICE' ? `${c.source}@${f.prices[c.source]?.ts}` : c.type === 'POSITION_CLOSED' ? `close:${f.closed?.orderId}` : `exec:${f.event?.execId}`
 
 /** A rule's conditions with the §8 truth rules. No items (voice-only) is UNKNOWN. Pure. */
 export function evaluateGroup(g: ShortcutRule['conditions'], f: Facts, o: EvalOpts): GroupResult {
@@ -239,4 +272,22 @@ export class PriceWindow {
     if (i < 0) return null
     return (pts[i + 1]?.[0] ?? now) - pts[i][0] > GAP_MS ? null : pts[i][1]
   }
+}
+
+/** Minutes of volume the window is measured against. */
+export const VOLUME_BASE_MIN = 60
+
+/**
+ * VOLUME_SPIKE's number: average volume per minute of the last `windowSec` of closed candles, over that of the hour before.
+ * `at` is when the candles were read, so the candle still open then never counts. Null without enough history. Pure.
+ */
+export function volumeRatio(candles: { start: number; volume?: number }[], windowSec: number, at: number): number | null {
+  const ks = candles.filter(k => k.volume !== undefined && k.start + MINUTE_MS <= at).sort((a, b) => a.start - b.start)
+  const n = windowSec / 60
+  const recent = ks.slice(-n)
+  const base = ks.slice(-n - VOLUME_BASE_MIN, -n)
+  if (recent.length < n || base.length < VOLUME_BASE_MIN / 2) return null
+  const avg = (xs: typeof ks) => xs.reduce((sum, k) => sum + k.volume!, 0) / xs.length
+  const b = avg(base)
+  return b > 0 ? avg(recent) / b : null
 }

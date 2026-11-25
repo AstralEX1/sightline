@@ -6,6 +6,7 @@ import type { Action, Condition, Target } from './registry.ts'
 import type { Balance, Execution, Instrument, Order, Position, Proposal, Side, Slot, Terms, Ticker } from './types.ts'
 import { toStep } from './bybit.ts'
 import { coin, dollars, money, price } from './format.ts'
+import { liqDistancePct } from './rules.ts'
 
 /** One target of a shortcut's scope, as the poll saw it. */
 export interface TargetRef {
@@ -64,8 +65,9 @@ export function resolve(action: Action, t: TargetRef, m: Market, authorized?: Te
   const ordersOn = (q: Position) => m.orders.filter(o => o.symbol === q.symbol && o.positionIdx === q.positionIdx)
   const linkId = authorized?.type === 'order' ? authorized.orderLinkId : newId()
   // A stop must sit behind both prices it can be checked against, a take profit ahead of both.
-  const behind = (side: Side, px: number) => dir(side) * ((side === 'Buy' ? Math.min(last, mark) : Math.max(last, mark)) - px) > 0
-  const ahead = (side: Side, px: number) => dir(side) * (px - (side === 'Buy' ? Math.max(last, mark) : Math.min(last, mark))) > 0
+  // A price at or under zero (a short's take profit at 100 %) is no price: Bybit would drop or refuse it.
+  const behind = (side: Side, px: number) => px > 0 && dir(side) * ((side === 'Buy' ? Math.min(last, mark) : Math.max(last, mark)) - px) > 0
+  const ahead = (side: Side, px: number) => px > 0 && dir(side) * (px - (side === 'Buy' ? Math.max(last, mark) : Math.min(last, mark))) > 0
 
   /** Open and Increase: size, notional, margin and attached stops of the authorized qty. */
   const grow = (o: Extract<Terms, { type: 'order' }>, lev: number): Resolved | null => {
@@ -185,7 +187,17 @@ export function reasonText(c: Condition, value = NaN): string {
     case 'SL_MISSING': return 'no stop loss'
     case 'ORDER_FILLED': return 'order filled'
     case 'ORDER_PARTIAL': return 'order partly filled'
+    case 'VOLUME_SPIKE': return `volume ${value.toFixed(1)}× in ${c.windowSec / 60} min`
+    case 'FUNDING': return `funding ${value >= 0 ? '' : '−'}${Math.abs(value).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}% due within ${c.minutesBefore} min`
+    case 'ORDER_STALE': return `order open ${duration(value)}`
+    case 'POSITION_CLOSED': return `${c.by === 'LIQUIDATION' ? 'liquidated' : `closed by ${c.by === 'SL' ? 'stop loss' : 'take profit'}`} at ${price(value)}`
   }
+}
+
+/** 45 → "45 min", 135 → "2 h 15 min". */
+const duration = (min: number) => {
+  const m = Math.floor(min)
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`
 }
 
 /** History's status and the lens result for an execution (§9). */
@@ -207,6 +219,25 @@ export function executionLine(e: Execution): string {
   }
 }
 
+/**
+ * What a done write changed, from the position before the tap and Bybit's position after it. Liquidation shows only when
+ * its price moved: the distance alone drifts with every tick. Undefined for a cancel, or a target that never had a position.
+ */
+export function receiptLine(t: Terms, before: Position | undefined, after: Position | undefined): string | undefined {
+  if (t.type === 'cancel') return undefined
+  const name = coin(t.symbol)
+  if (!after) return before && `${before.size} → 0 ${name} · position closed`
+  const pct = (p: Position) => (p.liqPrice > 0 ? `${liqDistancePct(p).toFixed(1)}%` : 'none')
+  const liq = !before ? (after.liqPrice > 0 ? [`liq ${pct(after)}`] : []) : before.liqPrice !== after.liqPrice ? [`liq ${pct(before)} → ${pct(after)}`] : []
+  const level = (n = 0) => (n > 0 ? price(n) : 'none')
+  switch (t.type) {
+    case 'order': return [`${before?.size ?? 0} → ${after.size} ${name}`, ...liq].join(' · ')
+    case 'setStop': return `stop ${level(before?.stopLoss)} → ${level(after.stopLoss)}`
+    case 'setTakeProfit': return `take profit ${level(before?.takeProfit)} → ${level(after.takeProfit)}`
+    case 'addMargin': return liq[0] ?? `liq ${pct(after)}`
+  }
+}
+
 /** The tile's one line: "Liq. < 5% or ROI < −20%", or `Say "protect all"` for a voice-only shortcut. */
 export function conditionSummary(r: { conditions: { logic: 'ALL' | 'ANY'; items: Condition[] }; voicePhrase?: string }): string {
   if (!r.conditions.items.length) return `Say "${r.voicePhrase ?? ''}"`
@@ -225,6 +256,10 @@ export function conditionSummary(r: { conditions: { logic: 'ALL' | 'ANY'; items:
       case 'SL_MISSING': return 'No stop loss'
       case 'ORDER_FILLED': return 'Order filled'
       case 'ORDER_PARTIAL': return 'Order partly filled'
+      case 'VOLUME_SPIKE': return `Volume ${c.multiplier}× in ${c.windowSec / 60} min`
+      case 'FUNDING': return `Funding > ${c.ratePct}% due within ${c.minutesBefore} min`
+      case 'ORDER_STALE': return `Open > ${duration(c.minutes)}`
+      case 'POSITION_CLOSED': return c.by === 'LIQUIDATION' ? 'Liquidated' : `Closed by ${c.by === 'SL' ? 'stop loss' : 'take profit'}`
     }
   }
   return r.conditions.items.map(one).join(r.conditions.logic === 'ALL' ? ' and ' : ' or ')

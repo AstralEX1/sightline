@@ -13,9 +13,9 @@ import {
   type EvenAppBridge,
 } from '@evenrealities/even_hub_sdk'
 import type { ExecutionStatus, Proposal, ServerState } from '../../server/src/types.ts'
-import { previewText, screen, ROWS, type Layout, type Outcome, type Screen } from './view.ts'
+import { previewText, screen, rankPositions, clampFocus, type Layout, type Outcome, type Screen } from './view.ts'
 import * as api from './api.ts'
-import { png, svg, type IconName } from './icons.ts'
+import { png, svg, numeralPng, type IconName } from './icons.ts'
 import { startPhonePage } from './phone/index.ts'
 import { LIFECYCLE, createDedupe, exitStep, type Exit } from './lifecycle.ts'
 
@@ -39,13 +39,24 @@ const EXPIRY_SLACK_MS = 3000
 const FINAL: ExecutionStatus[] = ['FILLED', 'APPLIED', 'REJECTED', 'SIMULATED']
 /** Results that went through: the lens goes back to Main on its own after NOTE_MS. */
 const DONE: ExecutionStatus[] = ['FILLED', 'APPLIED']
+/** How long a done result waits for its receipt (the server reads Bybit's position on its next 2 s poll). */
+const RECEIPT_WAIT_MS = 6000
+/** When the result on the lens turned done; 0 until then. */
+let doneAt = 0
+/** Polling the execution stops at a final status, and for a done one once its receipt is in or RECEIPT_WAIT_MS passed. */
+const settled = (o: Outcome) => {
+  const e = o.execution
+  if (!e || !FINAL.includes(e.status)) return false
+  return !DONE.includes(e.status) || !!e.receipt || (doneAt > 0 && Date.now() - doneAt > RECEIPT_WAIT_MS)
+}
 
 let state: ServerState | null = null
 let offline = false
 let pageSince = 0
 let pausedUntil = 0
 let needToken = false
-let pageNo = 0
+let focus = 0
+let detailOpen = false
 let lastSwipe = 0
 let blinked = ''
 let listenEnds = 0
@@ -62,6 +73,7 @@ let shown: Record<string, string> = {}
 /** Brightness the lens draws each box at right now, like `shown` for text. */
 let shownTone: Record<string, number> = {}
 let shownIcon = ''
+let shownNumeral = ''
 let outcome: Outcome | null = null
 let execId = ''
 let review = ''
@@ -101,6 +113,16 @@ const LAYOUTS: Record<Layout, Box[]> = {
     { name: 'flag', x: 392, y: 56, w: 168, h: 144 },
     HINT,
   ],
+  // Weather layout: short table left, one big dotted PnL right (glasses-shortcuts §4).
+  detail: [
+    { name: 'top', x: 16, y: 16, w: 544, h: 32, capture: true },
+    { name: 'table', x: 16, y: 64, w: 272, h: 112 },
+    { name: 'loud', x: 16, y: 64, w: 272, h: 112 },
+    { name: 'label', x: 320, y: 64, w: 240, h: 32 },
+    { name: 'unit', x: 320, y: 152, w: 240, h: 32 },
+    { name: 'info', x: 16, y: 208, w: 544, h: 32 },
+    HINT,
+  ],
   // The frame is the notification; declared first, so it sits behind the text it holds. The choices sit under it.
   alert: [
     { name: 'frame', x: 16, y: 16, w: 544, h: 96 },
@@ -121,7 +143,9 @@ const LAYOUTS: Record<Layout, Box[]> = {
   ],
 }
 const ICON_AT: Partial<Record<Layout, { x: number; y: number }>> = { alert: { x: 32, y: 40 }, review: { x: 32, y: 48 } }
+const BIG_AT = { x: 320, y: 96, w: 240, h: 56 }
 const ICON = { id: 21, name: 'icon', px: 48 }
+const BIG = { id: 22, name: 'big' }
 const PAD = 2
 const FRAME_COLOR = 11 // brightness 3 of 4 on the border's 0–15 scale, like the text it holds
 const MENU_PAUSE = 1
@@ -140,9 +164,14 @@ function voiceText(): string {
   return Date.now() < voiceNote.until ? voiceNote.text : ''
 }
 
+const onCount = () => {
+  const ranked = state ? rankPositions(state.positions) : []
+  const p = ranked[clampFocus(focus, ranked.length)]
+  return p && state?.onByPosition ? state.onByPosition[`${p.symbol}:${p.positionIdx}`] : undefined
+}
 const current = () => screen(state, {
-  offline, voice: voiceText(), pausedMin: pausedMin(), page: pageNo, needToken, hints: Date.now() < hintsUntil, now: Date.now(),
-  outcome: outcome ?? undefined, review, hide, cursor,
+  offline, voice: voiceText(), pausedMin: pausedMin(), focus, detail: detailOpen, needToken, hints: Date.now() < hintsUntil, now: Date.now(),
+  outcome: outcome ?? undefined, review, hide, cursor, onCount: onCount(),
 })
 /** A new key needs a rebuild: another layout or card, and a rebuild is the only way to set the menu. */
 const pageKey = (sc: Screen) => `${sc.key}:${pausedMin() > 0 ? 'paused' : ''}${noVoice() ? ':novoice' : ''}`
@@ -177,14 +206,16 @@ async function blink(who: string) {
 function layout(sc: Screen, text: Record<string, string>) {
   const boxes = LAYOUTS[sc.layout]
   const at = ICON_AT[sc.layout]
+  const big = sc.layout === 'detail'
   return {
-    containerTotalNum: boxes.length + (at ? 1 : 0),
+    containerTotalNum: boxes.length + (at || big ? 1 : 0),
     textObject: boxes.map(b => new TextContainerProperty({
       xPosition: b.x, yPosition: b.y, width: b.w, height: b.h, paddingLength: PAD,
       ...(b.name === 'frame' ? { borderWidth: 2, borderColor: FRAME_COLOR, borderRadius: 4 } : { borderWidth: 0 }),
       containerID: idOf(b.name), containerName: b.name, content: text[b.name], isEventCapture: b.capture ? 1 : 0, textColor: sc.tone[b.name],
     })),
     ...(at && { imageObject: [new ImageContainerProperty({ xPosition: at.x, yPosition: at.y, width: ICON.px, height: ICON.px, containerID: ICON.id, containerName: ICON.name })] }),
+    ...(big && { imageObject: [new ImageContainerProperty({ xPosition: BIG_AT.x, yPosition: BIG_AT.y, width: BIG_AT.w, height: BIG_AT.h, containerID: BIG.id, containerName: BIG.name })] }),
     menuObject: menu(),
   }
 }
@@ -196,6 +227,15 @@ async function sendIcon(name: IconName) {
     const imageData = await png(name, ICON.px)
     await timed(bridge!.updateImageRawData(new ImageRawDataUpdate({ containerID: ICON.id, containerName: ICON.name, imageData })))
   } catch { /* the placeholder stays empty */ }
+}
+
+/** Detail's big PnL: only resent when the rounded numeral string changes. */
+async function sendNumeral(text: string) {
+  shownNumeral = text
+  try {
+    const imageData = await numeralPng(text, BIG_AT.w, BIG_AT.h)
+    await timed(bridge!.updateImageRawData(new ImageRawDataUpdate({ containerID: BIG.id, containerName: BIG.name, imageData })))
+  } catch { /* the label and unit still say PnL */ }
 }
 
 let drawing = false
@@ -221,8 +261,10 @@ async function draw() {
         shown = want
         shownTone = { ...sc.tone }
         shownIcon = '' // a rebuild empties image containers
+        shownNumeral = ''
         pageSince = Date.now() // the page just reached the lens, with `>` on Dismiss
         if (sc.icon) await sendIcon(sc.icon)
+        if (sc.numeral) await sendNumeral(sc.numeral)
         if (sc.layout === 'alert' && sc.card && sc.card.id !== blinked) { blinked = sc.card.id; await blink(want.who) } // once per alert
         continue
       }
@@ -236,6 +278,7 @@ async function draw() {
         shownTone[name] = sc.tone[name]
       }
       if (sc.icon && sc.icon !== shownIcon) await sendIcon(sc.icon) // the picture last, so text never waits on it
+      if (sc.numeral && sc.numeral !== shownNumeral) await sendNumeral(sc.numeral)
     } while (redraw)
   } catch {
     // a failed or unanswered BLE call: `shown` and `page` keep what is known, so the next poll sends the rest again
@@ -264,10 +307,11 @@ async function poll() {
   if (was && !outcome && state && state.card?.id !== was.id && state.card?.supersedes !== was.id && was.id !== hide &&
     was.expiresAt <= state.updatedAt + EXPIRY_SLACK_MS) outcome = { card: was, expired: true }
   const o = outcome
-  if (o && execId && !FINAL.includes(o.execution?.status as ExecutionStatus)) {
+  if (o && execId && !settled(o)) {
     try {
       o.execution = await api.getExecution(execId)
-      if (DONE.includes(o.execution.status)) setTimeout(() => { if (outcome === o) void closeOutcome() }, NOTE_MS) // back to Main in 5 s
+      if (DONE.includes(o.execution.status)) doneAt ||= Date.now()
+      if (settled(o) && DONE.includes(o.execution.status)) setTimeout(() => { if (outcome === o) void closeOutcome() }, NOTE_MS) // back to Main in 5 s
     } catch { /* the next poll asks again */ }
   }
   const n = state?.positions.length ?? 0
@@ -386,8 +430,19 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
       bridge?.shutDownPageContainer(1).then(ok => { if (!ok) exiting = 'none' }, () => { exiting = 'none' })
       return
     }
-    if (is(OsEventTypeList.CLICK_EVENT)) return startListening()
-    if (swipe !== null) return turnPage(swipe ? 1 : -1)
+    if (offline || needToken) return // only the problem line is on screen: a tap or swipe must not move the hidden table
+    if (is(OsEventTypeList.CLICK_EVENT)) {
+      const n = state?.positions.length ?? 0
+      if (!n) return // nothing to open; Speak is on the menu
+      detailOpen = true
+      return draw()
+    }
+    if (swipe !== null) return moveFocus(swipe ? 1 : -1)
+    return
+  }
+  if (sc.layout === 'detail') {
+    if (is(OsEventTypeList.DOUBLE_CLICK_EVENT)) { detailOpen = false; return draw() }
+    if (swipe !== null) return moveFocus(swipe ? 1 : -1)
     return
   }
   // Only the page on the lens, once it has settled: a tap meant for the previous alert cannot answer a new one.
@@ -419,6 +474,7 @@ function act(sc: Screen, i: number) {
 function closeOutcome() {
   outcome = null
   execId = ''
+  doneAt = 0
   return draw()
 }
 
@@ -439,6 +495,7 @@ async function confirmCard(card: Proposal) {
   const o: Outcome = { card } // Sent, until the server answers
   outcome = o
   execId = ''
+  doneAt = 0
   review = ''
   await draw()
   try {
@@ -452,13 +509,16 @@ async function confirmCard(card: Proposal) {
   return poll()
 }
 
-/** A swipe on the table shows the next or previous rows; with everything on screen it says so. */
-function turnPage(dir: 1 | -1) {
+/** A swipe moves Main `>` / Detail to the next or previous position (liquidation order). */
+function moveFocus(dir: 1 | -1) {
   if (Date.now() - lastSwipe < SWIPE_GATE_MS) return
   lastSwipe = Date.now()
   const n = state?.positions.length ?? 0
-  if (n > ROWS) pageNo += dir
-  else note(n ? `All ${n} positions are on screen` : 'No open positions', 2000)
+  if (n <= 1) {
+    note(n ? 'Only one position' : 'No open positions', 2000)
+    return draw()
+  }
+  focus = clampFocus(focus + dir, n)
   return draw()
 }
 
@@ -486,6 +546,7 @@ async function startGlasses() {
     page = pageKey(sc)
     pageSince = Date.now()
     if (sc.icon) await sendIcon(sc.icon)
+    if (sc.numeral) await sendNumeral(sc.numeral)
   }
   if (result === null) page = '-' // no reply: the page may exist, so the next draw rebuilds it
   $('glasses').textContent = result === 0 ? 'Glasses connected' : result === null ? 'Glasses not answering' : `Glasses not connected (code ${result})` // a plain browser lands here too

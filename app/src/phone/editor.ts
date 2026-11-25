@@ -14,7 +14,7 @@ import {
   rangeText, scopeChoices, setCompare, setMetric, setNumber, triggerChoices, type Draft, type Range,
 } from './model.ts'
 import { actionParts, compareMenu, conditionParts, fmt, metricWord, optionsSummary, parseDec, titleOf, type Part, type Tok } from './sentence.ts'
-import { app, dialog, getCatalog, h, isOffline, menu, rowSwitch, sheet, toast } from './ui.ts'
+import { app, dialog, getCatalog, h, isOffline, keepFocus, menu, rowSwitch, sheet, toast } from './ui.ts'
 
 type Pos = Position & { epoch: string }
 type State = {
@@ -28,7 +28,6 @@ type State = {
 let el: HTMLElement
 let cat: Catalog
 let s: State
-let pending: Draft | null = null
 let seq = 0
 let timer: ReturnType<typeof setTimeout> | undefined
 /** Marker messages already announced: a marker is read out once per new issue (spec §8). */
@@ -47,12 +46,6 @@ function toDraft(r: Draft): Draft {
   return d
 }
 
-/** A template with values to choose: opens unsaved (spec §5.10). */
-export function openDraft(d: Draft) {
-  pending = d
-  location.hash = '#/shortcut/new'
-}
-
 export async function enterEditor(section: HTMLElement, param: string) {
   el = section
   el.replaceChildren(h('div', { class: 'nav nav--editor' }, backBtn()))
@@ -66,8 +59,7 @@ export async function enterEditor(section: HTMLElement, param: string) {
   try {
     cat = await getCatalog()
     if (param === 'new') {
-      s = fresh(pending ?? emptyDraft())
-      pending = null
+      s = fresh(emptyDraft())
     } else {
       app.tiles = await api.listShortcuts()
       const t = app.tiles.find(x => x.id === param)
@@ -92,6 +84,14 @@ export async function enterEditor(section: HTMLElement, param: string) {
 /** Router hook before leaving the editor: false keeps it open (spec §7.1). */
 export async function leaveEditor(): Promise<boolean> {
   if (!s || s.readOnly || s.done || !changed()) return true
+  leaving = true
+  try { return await saveOrAsk() } finally { leaving = false }
+}
+
+/** Back pressed again while the save is in flight would step history once more (to History, say). */
+let leaving = false
+
+async function saveOrAsk(): Promise<boolean> {
   clearTimeout(timer)
   seq++
   let ok: boolean
@@ -106,8 +106,8 @@ export async function leaveEditor(): Promise<boolean> {
   if (leaveDecision(true, ok) === 'save') {
     try {
       const d = s.draft as EditableShortcut
-      if (s.id) await api.updateShortcut(s.id, d, s.version!)
-      else await api.createShortcut({ ...d, enabled: false })
+      const r = s.id ? await api.updateShortcut(s.id, d, s.version!) : await api.createShortcut({ ...d, enabled: false })
+      toast(r.enabled ? 'Saved' : 'Saved. Off until you turn it on in Shortcuts')
       return true
     } catch (e) {
       if ((e as ApiError).status === 409) {
@@ -177,11 +177,12 @@ function marks() {
 }
 
 let announce = new Set<string>()
-function marker(issues: Issue[], text = 'Incompatible') {
+function marker(issues: Issue[]) {
   if (!issues.length) return null
   const msg = issues.map(i => i.message).join('. ')
   announce.add(msg)
-  return h('p', { class: 'marker', role: shown.has(msg) ? undefined : 'alert', 'aria-label': msg }, h('span', { html: WARN }), text)
+  // the reason is visible text: aria-label on a <p> is not read by every screen reader, and sighted users need it too
+  return h('p', { class: shown.has(msg) ? 'marker' : 'marker is-new', role: shown.has(msg) ? undefined : 'alert' }, h('span', { html: WARN }), h('span', {}, msg))
 }
 
 function render() {
@@ -195,7 +196,7 @@ function render() {
 
 /** Focus a control by its data-fk after a re-render, unless a sheet or dialog holds focus. */
 function focusFk(fk: string) {
-  if (app.root.querySelector('.sheet:not(.is-closing), .dialog-scrim, .menu')) return
+  if (app.root.querySelector('.sheet:not(.is-closing), .dialog-scrim:not(.is-closing), .menu:not(.is-closing)')) return
   el.querySelector<HTMLElement>(`[data-fk="${CSS.escape(fk)}"]`)?.focus({ preventScroll: true })
 }
 const back = (fk: string) => () => focusFk(fk)
@@ -203,7 +204,7 @@ const back = (fk: string) => () => focusFk(fk)
 function backBtn() {
   return h('button', {
     class: 'circle-btn', type: 'button', 'aria-label': 'Back to Shortcuts', 'data-fk': 'back', html: icon('back', 20, 2.4),
-    onclick: () => (app.from === '#/' ? history.back() : location.replace('#/')),
+    onclick: () => leaving || (app.from === '#/' ? history.back() : location.replace('#/')),
   })
 }
 
@@ -211,7 +212,7 @@ function nav() {
   const d = s.draft
   const a = d.action && ACTION_ICON[d.action.type]
   const chip = a
-    ? h('span', { class: 'chip chip--action chip--lg', style: `color: ${a.color}`, html: icon(a.icon, 15, 2.4) })
+    ? h('span', { class: 'chip chip--lg', style: `--c: ${a.color}`, html: icon(a.icon, 15, 2.4) })
     : h('span', { class: 'chip chip--new chip--lg', html: icon('plus', 14, 3) })
   const title = h('span', { class: 'title-pill__text' }, titleOf(d))
   const pill = s.id && !s.readOnly
@@ -224,6 +225,7 @@ function nav() {
 function scopeValue(sc: Scope): { text: string; missing?: boolean } {
   switch (sc.type) {
     case 'ALL_POSITIONS': return { text: 'All positions' }
+    case 'ALL_ORDERS': return { text: 'All orders' }
     case 'POSITION': {
       if (!sc.symbol) return { text: 'Choose position', missing: true }
       const p = s.positions.find(x => x.symbol === sc.symbol && x.positionIdx === sc.positionIdx)
@@ -255,7 +257,7 @@ function applyTo(issues: Issue[]) {
       head.setAttribute('aria-label', `Apply to, ${v.text}. ${s.applyOpen ? 'Hide' : 'Show'} options`)
     },
   },
-  h('span', { class: 'chip chip--when', html: icon('scope', 14, 2.4) }),
+  h('span', { class: 'chip', html: icon('scope', 14, 2.4) }),
   h('span', { class: 'disclosure__label' }, 'Apply to'),
   h('span', { class: `disclosure__value${v.missing ? ' is-error' : ''}` }, v.text),
   h('span', { class: 'disclosure__chev', html: icon('down', 14, 2.6) }))
@@ -264,7 +266,7 @@ function applyTo(issues: Issue[]) {
     return h('button', { class: 'radio-row', type: 'button', role: 'radio', 'aria-checked': String(on), onclick: () => pickScope(t) },
       h('span', { class: 'radio-row__check', html: on ? icon('check', 20, 2.4) : '' }),
       h('span', { class: 'radio-row__label' }, label),
-      t === 'ALL_POSITIONS' ? h('span', { class: 'radio-row__detail' }, `${s.positions.length} now`) : h('span', { class: 'radio-row__detail', html: icon('right', 14, 2.6) }))
+      t === 'ALL_POSITIONS' || t === 'ALL_ORDERS' ? h('span', { class: 'radio-row__detail' }, `${t === 'ALL_POSITIONS' ? s.positions.length : s.orders.length} now`) : h('span', { class: 'radio-row__detail', html: icon('right', 14, 2.6) }))
   }
   wrap.append(head, h('div', { class: 'disclosure__body' },
     h('div', { id: 'apply-options', class: 'disclosure__list', role: 'radiogroup', 'aria-label': 'Apply to' },
@@ -275,6 +277,7 @@ function applyTo(issues: Issue[]) {
 function pickScope(t: Scope['type']) {
   const set = (sc: Scope) => { s.applyOpen = false; commit(d => { d.scope = sc }) }
   if (t === 'ALL_POSITIONS') return set({ type: 'ALL_POSITIONS' })
+  if (t === 'ALL_ORDERS') return set({ type: 'ALL_ORDERS' })
   if (t === 'POSITION') return picker('One position', s.positions.map(p => ({
     title: p.symbol, sub: `${p.side === 'Buy' ? 'Long' : 'Short'} · ${p.size} ${p.symbol.replace(/USDT$/, '')}`,
     detail: p.positionIM ? `ROI ${p.unrealisedPnl >= 0 ? '+' : '−'}${Math.abs((100 * p.unrealisedPnl) / p.positionIM).toFixed(1)}%` : '',
@@ -341,7 +344,7 @@ function whenCard(m: ReturnType<typeof marks>) {
   const lines: Node[] = items.map((c, i) => {
     const issues = m.cond.get(c.id) ?? []
     const lead: Node[] = i === 0
-      ? [h('span', { class: 'chip chip--when', html: icon('when', 14, 2.6) }), h('span', { class: issues.length ? 'word is-error' : 'word' }, 'When'), document.createTextNode(' ')]
+      ? [h('span', { class: 'chip', html: icon('when', 14, 2.6) }), h('span', { class: issues.length ? 'word is-error' : 'word' }, 'When'), document.createTextNode(' ')]
       : [token({ key: 'logic', text: d.conditions.logic === 'ALL' ? 'and' : 'or', aria: `Group operator, ${d.conditions.logic === 'ALL' ? 'and' : 'or'}, edit` }, c.id, false), document.createTextNode(' ')]
     return h('div', { class: 'row-line' },
       h('div', { class: 'row-line__main' }, h('p', {}, ...lead, ...sentence(conditionParts(c), c.id, issues.length > 0)), marker(issues)),
@@ -352,7 +355,7 @@ function whenCard(m: ReturnType<typeof marks>) {
       }) : null)
   })
   if (!items.length) {
-    lines.push(h('p', {}, h('span', { class: 'chip chip--when', html: icon('when', 14, 2.6) }), 'When',
+    lines.push(h('p', {}, h('span', { class: 'chip', html: icon('when', 14, 2.6) }), 'When',
       d.voicePhrase ? h('span', {}, ' you say ', h('em', { class: 'phrase' }, d.voicePhrase)) : null))
   }
   return h('div', { class: 'card card--when sentence' }, ...lines,
@@ -366,13 +369,13 @@ function doCard(issues: Issue[]) {
   const a = s.draft.action
   if (!a) {
     return h('div', { class: 'card card--when sentence' },
-      h('p', {}, h('span', { class: 'chip chip--action', style: 'color: var(--tile-text-2)', html: icon('do-empty', 14, 2.6) }), 'Do'),
+      h('p', {}, h('span', { class: 'chip', html: icon('do-empty', 14, 2.6) }), 'Do'),
       s.readOnly ? null : h('button', { class: 'add-btn', type: 'button', 'data-fk': 'add-action', html: icon('plus-circle', 20, 2), onclick: () => actionSheet('add-action') }, 'Add action'))
   }
   const ic = ACTION_ICON[a.type]
   return h('div', { class: 'card sentence' }, h('div', { class: 'row-line' },
     h('div', { class: 'row-line__main' },
-      h('p', {}, h('span', { class: 'chip chip--action', style: `color: ${ic.color}`, html: icon(ic.icon, 14, 2.4) }),
+      h('p', {}, h('span', { class: 'chip', style: `--c: ${ic.color}`, html: icon(ic.icon, 14, 2.4) }),
         h('span', { class: issues.length ? 'word is-error' : 'word' }, 'Do'), ' ', ...sentence(actionParts(a), undefined, issues.length > 0)),
       marker(issues)),
     s.readOnly ? null : h('button', { class: 'remove', type: 'button', 'aria-label': 'Remove action', 'data-fk': 'rm:action', html: REMOVE, onclick: () => commit(d => { delete d.action }) })))
@@ -384,7 +387,7 @@ function optionsRow(issues: Issue[]) {
       h('span', { class: 'options-row__label' }, 'Options'),
       h('span', { class: 'options-row__value' }, optionsSummary(s.draft)),
       h('span', { class: 'options-row__chev', html: icon('right', 14, 2.6) })),
-    issues.length ? marker(issues, issues.map(i => i.message).join('. ')) : null)
+    marker(issues))
 }
 
 function confirmLine() {
@@ -472,7 +475,7 @@ function actionSheet(fk: string) {
         if (key) numericSheet(key, undefined, `a:${key}`)
       },
     },
-    h('span', { class: 'chip chip--action chip--row', style: `color: ${ic.color}`, html: icon(ic.icon, 16, 2.4) }),
+    h('span', { class: 'chip chip--row', style: `--c: ${ic.color}`, html: icon(ic.icon, 16, 2.4) }),
     h('span', { class: 'choice-row__text' }, h('span', {}, a.title), a.reason ? h('span', { class: 'choice-row__sub' }, a.reason) : null),
     cur === a.type ? h('span', { class: 'radio-row__check', html: icon('check', 20, 2.4) }) : null)
   }
@@ -487,11 +490,13 @@ function nowLine(c?: Condition): string {
   if (!c) return ''
   const vals = s.targets.flatMap(t => (typeof t.values[c.id] === 'number' ? [{ label: t.label, v: t.values[c.id] as number }] : []))
   if (!vals.length) return ''
-  const raw = 'threshold' in c ? c.threshold : 'distancePct' in c ? c.distancePct : 'percent' in c ? c.percent : ''
+  const raw = 'threshold' in c ? c.threshold : 'distancePct' in c ? c.distancePct : 'percent' in c ? c.percent
+    : 'multiplier' in c ? c.multiplier : 'ratePct' in c ? c.ratePct : 'minutes' in c ? String(c.minutes) : ''
   const goal = raw === '' ? NaN : Number(raw) * (c.type === 'LOSS' ? -1 : 1)
   const best = Number.isNaN(goal) ? vals[0] : vals.reduce((a, b) => (Math.abs(b.v - goal) < Math.abs(a.v - goal) ? b : a))
   const n = (v: number, d: number) => `${v < 0 ? '−' : ''}${Math.abs(v).toLocaleString('en-US', { maximumFractionDigits: d })}`
-  const v = c.type === 'PRICE' ? `${n(best.v, 2)} USDT` : (c.type === 'PROFIT' || c.type === 'LOSS') && c.unit === 'USDT' ? `${n(best.v, 2)} USDT` : `${n(best.v, 1)}%`
+  const v = c.type === 'PRICE' ? `${n(best.v, 2)} USDT` : (c.type === 'PROFIT' || c.type === 'LOSS') && c.unit === 'USDT' ? `${n(best.v, 2)} USDT`
+    : c.type === 'VOLUME_SPIKE' ? `${n(best.v, 1)}×` : c.type === 'ORDER_STALE' ? `${Math.floor(best.v)} min` : c.type === 'FUNDING' ? `${n(best.v, 4)}%` : `${n(best.v, 1)}%`
   const distance = c.type === 'NEAR_LIQUIDATION' || c.type === 'NEAR_SL' || c.type === 'NEAR_TP'
   return distance ? `From mark price · now ${v} on ${best.label}` : `Now ${v} on ${best.label}`
 }
@@ -543,11 +548,11 @@ function closeSheet(fk: string) {
   let pick = a.percent
   const presets = ['25', '50', '75', '100']
   const group = h('div', { class: 'group', role: 'radiogroup', 'aria-label': 'Close amount' })
-  const paint = () => group.replaceChildren(
+  const paint = () => keepFocus(group, () => group.replaceChildren(
     ...presets.map(p => h('button', { class: 'radio-row', type: 'button', role: 'radio', 'aria-checked': String(pick === p), onclick: () => { pick = p; paint() } },
       h('span', { class: 'radio-row__label num' }, `${p}%`), pick === p ? h('span', { class: 'radio-row__check', html: icon('check', 20, 2.4) }) : null)),
     h('button', { class: 'radio-row', type: 'button', role: 'radio', 'aria-checked': String(!presets.includes(pick)), onclick: () => { sh.close(); numericSheet('close', undefined, fk) } },
-      h('span', { class: 'radio-row__label' }, presets.includes(pick) ? 'Custom' : `Custom · ${pick}%`), h('span', { class: 'radio-row__detail', html: icon('right', 14, 2.6) })))
+      h('span', { class: 'radio-row__label' }, presets.includes(pick) ? 'Custom' : `Custom · ${pick}%`), h('span', { class: 'radio-row__detail', html: icon('right', 14, 2.6) }))))
   const sh = sheet({
     title: 'Close amount', back: back(fk), body: [group, h('p', { class: 'footnote' }, 'Market order, reduce-only')],
     onDone: () => commit(d => { (d.action as typeof a).percent = pick }),
@@ -566,11 +571,21 @@ function targetSheet(fk: string) {
   const px = h('input', { class: 'inline-input', type: 'text', inputmode: 'decimal', 'aria-label': 'Price, USDT', value: t.kind === 'PRICE' ? t.price : '' })
   const priceOk = s.draft.scope.type !== 'ALL_POSITIONS'
   const L = cat.limits
+  const priceRange = { gt: 0, lt: 1e9 }
+  const percentRange = tp ? { gt: L.tpPct.min, le: L.tpPct.max } : { gt: 0, lt: L.stopPct.max }
   const value = (): Target | null => {
     if (kind === 'entry') return { kind: 'ENTRY_OFFSET', percent: '0' }
-    if (kind === 'price') { const v = checkNum(px.value, { gt: 0, lt: 1e9 }); return v ? { kind: 'PRICE', price: v } : null }
-    const v = checkNum(pct.value, tp ? { gt: L.tpPct.min, le: L.tpPct.max } : { gt: 0, lt: L.stopPct.max })
+    if (kind === 'price') { const v = checkNum(px.value, priceRange); return v ? { kind: 'PRICE', price: v } : null }
+    const v = checkNum(pct.value, percentRange)
     return v ? { kind: 'ENTRY_OFFSET', percent: side === 'adverse' && !tp ? `-${v}` : v } : null
+  }
+  const note = h('p', { class: 'footnote is-error', 'aria-live': 'polite', hidden: true })
+  const check = () => {
+    const valid = value() !== null
+    const typed = kind === 'pct' ? pct.value.trim() : kind === 'price' ? px.value.trim() : ''
+    note.hidden = valid || !typed
+    note.textContent = note.hidden ? '' : rangeText(kind === 'pct' ? percentRange : priceRange)
+    sh.setDone(valid)
   }
   const group = h('div', { class: 'group', role: 'radiogroup', 'aria-label': tp ? 'Take profit' : 'Stop loss' })
   const radio = (k: typeof kind, label: string, disabled?: string) => h('button', {
@@ -581,24 +596,24 @@ function targetSheet(fk: string) {
   const seg = () => h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Side of entry' },
     ...(['adverse', 'favorable'] as const).map(x => h('button', { type: 'button', role: 'radio', 'aria-checked': String(side === x), onclick: () => { side = x; paint() } }, cap(x))))
   const paint = () => {
-    group.replaceChildren(
+    keepFocus(group, () => group.replaceChildren(
       ...(tp ? [] : [radio('entry', 'Entry price')]),
       radio('pct', '% from entry'),
       kind === 'pct' ? h('div', { class: 'sub-row' }, h('label', { class: 'inline-field' }, pct, h('span', {}, '%')), tp ? null : seg()) : '',
       radio('price', 'Price', priceOk ? undefined : 'Needs one symbol or position'),
-      kind === 'price' ? h('div', { class: 'sub-row' }, h('label', { class: 'inline-field' }, px, h('span', {}, 'USDT'))) : '')
-    sh.setDone(!!value())
+      kind === 'price' ? h('div', { class: 'sub-row' }, h('label', { class: 'inline-field' }, px, h('span', {}, 'USDT'))) : ''))
+    check()
   }
   const sh = sheet({
     title: tp ? 'Take profit' : 'Stop loss', back: back(fk),
-    body: [group, h('p', { class: 'footnote' }, `${a.type === 'MOVE_SL' ? 'Moves only closer. ' : ''}The exact price shows on Even G2 before you confirm.`)],
+    body: [group, note, h('p', { class: 'footnote' }, `${a.type === 'MOVE_SL' ? 'Moves only closer. ' : ''}The exact price shows on Even G2 before you confirm.`)],
     onDone: () => {
       const v = value()
       if (!v) return false
       commit(d => { (d.action as typeof a).target = v })
     },
   })
-  for (const i of [pct, px]) i.addEventListener('input', () => sh.setDone(!!value()))
+  for (const i of [pct, px]) i.addEventListener('input', check)
   paint()
 }
 
@@ -611,13 +626,13 @@ function optionsSheet() {
     autocapitalize: 'none', autocomplete: 'off', 'aria-label': 'Voice phrase',
   })
   const fires = h('div', { class: 'group', role: 'radiogroup', 'aria-label': 'When it fires' })
-  const paint = () => fires.replaceChildren(...triggerChoices({ ...s.draft, trigger: o.trigger }).map(c => h('button', {
+  const paint = () => keepFocus(fires, () => fires.replaceChildren(...triggerChoices({ ...s.draft, trigger: o.trigger }).map(c => h('button', {
     class: 'radio-row', type: 'button', role: 'radio', 'aria-checked': String(o.trigger.mode === c.mode), disabled: !!c.why,
     onclick: () => { o.trigger = c.mode === 'REPEAT' ? { mode: 'REPEAT', intervalSec: cat.limits.repeatSec.default } : { mode: c.mode }; paint() },
   },
   h('span', { class: 'radio-row__check', html: o.trigger.mode === c.mode ? icon('check', 20, 2.4) : '' }),
   h('span', { class: 'radio-row__label' }, c.mode === 'REPEAT' ? `Repeat every ${cat.limits.repeatSec.default / 60} min` : { ON_ENTRY: 'On entry', ON_EVENT: 'On event', ONCE: 'Once' }[c.mode]),
-  h('span', { class: 'radio-row__detail' }, c.why ?? HINT[c.mode]))))
+  h('span', { class: 'radio-row__detail' }, c.why ?? HINT[c.mode])))))
   // shortcut: Repeat uses the 5 min default, add an interval token when someone needs another
   const saved = !!s.id
   const sh = sheet({
@@ -686,7 +701,7 @@ async function testAlert() {
 async function remove() {
   if (!s.id) return
   const pick = await dialog({ title: 'Delete this shortcut?', text: 'It stops at once. History keeps its alerts.', buttons: [{ label: 'Delete', danger: true }, { label: 'Cancel', primary: true }] })
-  if (pick !== 0) return
+  if (pick !== 0) return focusFk('title') // the menu item it opened from is gone
   try {
     await api.deleteShortcut(s.id, s.version!)
     s.done = true

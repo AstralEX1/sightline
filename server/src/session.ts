@@ -3,13 +3,13 @@
  * engine, a fired one raises an alert and (for trades) a proposal; a tap confirms it through the executor.
  * Spec: docs/shortcuts-architecture.md §8, §9.
  */
-import type { AlertRecord, Balance, Channel, Exchange, Fill, Order, Position, Proposal, SessionState, Ticker } from './types.ts'
-import type { Condition, ConditionType, PriceSource, ShortcutRule } from './registry.ts'
+import type { AlertRecord, Balance, Candle, Channel, Exchange, Fill, Order, Position, Proposal, SessionState, Ticker } from './types.ts'
+import type { ClosedBy, Condition, ConditionType, PriceSource, ShortcutRule } from './registry.ts'
 import { ACTION_TITLE, LIMITS, priority } from './registry.ts'
 import type { Store } from './store.ts'
 import type { EditableShortcut } from './validate.ts'
-import { decide, evaluateCondition, evaluateGroup, initialTriggerState, PriceWindow, type Facts, type Protection, type Quote } from './engine.ts'
-import { isMarket, positionLabel, queueOrder, reasonText, resolve, sameTerms, type Market, type Resolved, type TargetRef } from './proposals.ts'
+import { decide, evaluateCondition, evaluateGroup, initialTriggerState, PriceWindow, VOLUME_BASE_MIN, volumeRatio, type Facts, type Protection, type Quote } from './engine.ts'
+import { executionLine, isMarket, positionLabel, queueOrder, reasonText, receiptLine, resolve, sameTerms, type Market, type Resolved, type TargetRef } from './proposals.ts'
 import { closeProposal, createExecutor, type ConfirmResult } from './execute.ts'
 import { matchShortcut, normalizePhrase } from './rules.ts'
 import { coin, price } from './format.ts'
@@ -41,7 +41,6 @@ const SLOW_POLL_MS = 10_000
 const TOAST_MS = 5_000
 // shortcut: past this a flood drops its oldest waiting toast; trigger policies stop most floods
 const MAX_TOASTS = 4
-const DAY_MS = 86_400_000
 /** An input older than this is UNKNOWN, and the lens says the data is stale. */
 const STALE_MS = 15_000
 /** Fills are read with this overlap and deduped by execId, so one at a poll boundary is never lost. */
@@ -49,6 +48,11 @@ const FILL_OVERLAP_MS = 60_000
 const RECENT_FILLS = 500
 const SOURCES: PriceSource[] = ['LAST', 'MARK', 'INDEX']
 const TRIGGER_BY: Record<string, PriceSource> = { LastPrice: 'LAST', MarkPrice: 'MARK', IndexPrice: 'INDEX' }
+/** Volume candles are read once a minute per symbol; older than this they are UNKNOWN. */
+const VOLUME_POLL_MS = 60_000
+const VOLUME_STALE_MS = 3 * VOLUME_POLL_MS
+/** A write that is not done by then gets no receipt: History already says what happened. */
+const RECEIPT_TTL_MS = 5 * 60_000
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
@@ -68,7 +72,7 @@ function protection(p: Position, orders: Order[], kind: 'StopLoss' | 'TakeProfit
 
 /** Crossings must still be on the triggered side and fills already happened: what a confirm checks again (§9 step 2). */
 const asStates = (items: Condition[]): Condition[] => items.flatMap((c): Condition[] =>
-  c.type === 'ORDER_FILLED' || c.type === 'ORDER_PARTIAL' ? []
+  c.type === 'ORDER_FILLED' || c.type === 'ORDER_PARTIAL' || c.type === 'POSITION_CLOSED' ? []
     : c.type === 'PRICE' && c.operator === 'UP_CROSS' ? [{ ...c, operator: 'GTE' }]
     : c.type === 'PRICE' && c.operator === 'DOWN_CROSS' ? [{ ...c, operator: 'LTE' }]
     : [c])
@@ -79,7 +83,6 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
   let orders: Order[] = []
   let balance: Balance | null = null
   let tickers: Record<string, Ticker> = {}
-  let closed = 0
   let lastSlow = -Infinity
   let lastPositionsKey = ''
   // From the oldest open execution: an order acknowledged before a restart still reconciles from its fills.
@@ -95,7 +98,14 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
   const warmed = new Set<string>()
   /** This poll's newest fresh execution per orderId: the ORDER_FILLED / ORDER_PARTIAL event. */
   let events = new Map<string, Fill>()
+  /** This poll's closes by stop, take profit or liquidation, keyed by the position's target key. */
+  type Close = { by: ClosedBy; orderId: string; price: number; symbol: string; side: Position['side']; idx: number; epoch: string }
+  let closes = new Map<string, Close>()
+  /** Last-price 1-minute candles per symbol for VOLUME_SPIKE, and when they were read. */
+  const volumes = new Map<string, { at: number; candles: Candle[] }>()
   const epochs = new Map(Object.entries(store.epochs()))
+  // shortcut: in memory, so a restart between the tap and the fill leaves that one without a receipt; store `before` on the execution if that matters
+  const receipts = new Map<string, { before?: Position; at: number }>()
   let toasts: string[] = []
   let headSince = 0
   let error: string | null = null
@@ -112,7 +122,6 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     else toasts.push(text)
     if (toasts.length > MAX_TOASTS) toasts.splice(1, 1) // keep the one on screen, drop the oldest waiting
   }
-  const dayPnl = () => closed + positions.reduce((sum, p) => sum + p.unrealisedPnl, 0)
   const ctxNow = (): Ctx => ({ positions, orders, balance, tickers })
   const routeOf: Route = route ?? (a => (a.delivery.glasses ? ['glasses'] : []))
 
@@ -141,7 +150,21 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
         const p = o && !o.reduceOnly ? ps.find(p => p.symbol === o.symbol && p.positionIdx === o.positionIdx && p.side === o.side) : undefined
         return [{ key: `ord:${s.orderId}`, symbol: s.symbol, label: `${coin(s.symbol)} order`, order: o, position: p, epoch: p && epochOf(p) }]
       }
+      case 'ALL_ORDERS': // no position: its actions are Cancel and Notify
+        return os.filter(o => !o.stopOrderType && o.leavesQty > 0).map(o => ({ key: `ord:${o.orderId}`, symbol: o.symbol, label: `${coin(o.symbol)} order`, order: o }))
     }
+  }
+
+  /** Positions this poll closed by stop, take profit or liquidation that are gone now: targets for POSITION_CLOSED only. */
+  function closedTargets(rule: ShortcutRule, live: TargetRef[]): TargetRef[] {
+    if (!rule.conditions.items.some(c => c.type === 'POSITION_CLOSED')) return []
+    const s = rule.scope
+    return [...closes].flatMap(([key, c]) => {
+      if (live.some(t => t.key === key)) return [] // a partial close: the live target carries it
+      if (s.type === 'POSITION' && (s.symbol !== c.symbol || s.positionIdx !== c.idx || s.epoch !== c.epoch)) return []
+      if (s.type !== 'POSITION' && s.type !== 'ALL_POSITIONS') return []
+      return [{ key, symbol: c.symbol, label: positionLabel(c), epoch: c.epoch }]
+    })
   }
 
   function factsOf(t: TargetRef, now: number, os: Order[]): Facts {
@@ -157,6 +180,13 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
         stopLoss: protection(p, os, 'StopLoss'), takeProfit: protection(p, os, 'TakeProfit'), epoch: t.epoch ?? '', ts: now,
       },
       event: f && { kind: f.leavesQty > 0 ? 'PARTIAL' : 'FILLED', orderId: f.orderId, execId: f.id },
+      volumeRatio: sec => {
+        const v = volumes.get(t.symbol)
+        return v && now - v.at <= VOLUME_STALE_MS ? volumeRatio(v.candles, sec, v.at) : null
+      },
+      funding: tickers[t.symbol]?.funding && { ...tickers[t.symbol].funding!, ts: quotes[t.symbol]?.LAST?.ts ?? 0 },
+      order: t.order && { open: os.some(o => o.orderId === t.order!.orderId), createdAt: t.order.createdAt },
+      closed: closes.get(t.key),
     }
   }
 
@@ -197,8 +227,11 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
         r = resolve(a, t, await market(t.symbol, a.type === 'OPEN_POSITION', c))
       } catch (e) {
         error = `${coin(t.symbol)}: ${errorText(e)}`
-        return { alert, proposal, retry: true } // nothing saved: the next tick tries again
+        return { alert, proposal, error: 'Could not read Bybit, try again' } // nothing saved: the next tick tries again
       }
+      // A phrase or the menu asking for what a card already asks: that card answers it, a second one would ask twice.
+      const same = r.ok && why.voice && store.pendingProposals().find(q => q.targetKey === t.key && !q.simulated && sameTerms(q.terms, r.terms))
+      if (same) return { alert, proposal: same }
       if (!r.ok) alert.skip = { code: r.code, reason: r.reason }
       else {
         const kind = why.voice ? `voice:${a.type === 'SET_SL' ? 'stop' : a.type === 'MOVE_SL' ? 'lock' : 'say'}`
@@ -212,7 +245,9 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
         }
       }
     }
-    store.transaction(() => {
+    const saved = store.transaction(() => {
+      const current = store.getShortcut(rule.id)
+      if (!current || current.version !== rule.version || (!why.simulated && !current.enabled)) return false
       const old = proposal && store.pendingProposals().find(q => q.shortcutId === rule.id && q.targetKey === t.key && q.simulated === proposal.simulated)
       if (old && proposal) {
         proposal.supersedes = old.id
@@ -222,9 +257,11 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       alert.status = alertStatus(alert, proposal)
       store.saveAlert(alert)
       if (proposal) store.saveProposal(proposal)
+      return true
     })
+    if (!saved) return { alert, proposal: undefined, error: 'Shortcut changed' }
     if (a.type === 'NOTIFY' && rule.delivery.glasses && store.settings().notifications.glasses) say(`${alert.title} · ${alert.target} · ${alert.reason}`)
-    return { alert, proposal, retry: false }
+    return { alert, proposal }
   }
 
   /**
@@ -282,21 +319,21 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     const rules = store.listShortcuts().filter(r => r.enabled)
     const settings = store.settings()
     let fills: Fill[]
+    // A failed fills read must not blind the position rules: they still run, and the fills come next tick (deduped by id).
+    let fillsError: unknown = null
     try {
-      const [ps, os, fl] = await Promise.all([ex.positions(), ex.openOrders(), ex.fillsSince(lastFillTime - FILL_OVERLAP_MS)])
-      // A close or partial close moves PnL from unrealised to closed: refresh closed now, not in 10 s.
+      const [ps, os, fl] = await Promise.all([ex.positions(), ex.openOrders(), ex.fillsSince(lastFillTime - FILL_OVERLAP_MS).catch(e => { fillsError = e; return [] })])
+      // A close or partial close changes the balance: refresh it now, not in 10 s.
       const positionsKey = ps.map(p => `${p.symbol}:${p.positionIdx}:${p.size}`).sort().join()
       if (now - lastSlow >= SLOW_POLL_MS || positionsKey !== lastPositionsKey) {
-        const [c, b] = await Promise.all([ex.closedPnlSince(Math.floor(now / DAY_MS) * DAY_MS), ex.balance().catch(() => balance)])
-        closed = c
-        balance = b
+        balance = await ex.balance().catch(() => balance)
         lastSlow = now
         lastPositionsKey = positionsKey
       }
       positions = ps
       orders = os
       fills = fl
-      error = null
+      error = fillsError === null ? null : errorText(fillsError)
     } catch (e) {
       error = errorText(e) // keep the last good data, skip the rules on a partial read
       gap = true // the next good sample must not make a crossing with one from before the gap
@@ -322,7 +359,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     for (const rule of rules) {
       for (const c of rule.conditions.items) {
         if (c.type !== 'PRICE_CHANGE') continue
-        for (const s of rule.scope.type === 'ALL_POSITIONS' ? positions.map(p => p.symbol) : [rule.scope.symbol]) {
+        for (const s of 'symbol' in rule.scope ? [rule.scope.symbol] : positions.map(p => p.symbol)) {
           const key = `${s}:${c.source}`
           if (warmed.has(key)) continue
           try {
@@ -333,7 +370,18 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       }
     }
 
-    // Position epochs.
+    // Volume candles for VOLUME_SPIKE, once a minute per symbol.
+    const volumeSymbols = new Set(rules.filter(r => r.conditions.items.some(c => c.type === 'VOLUME_SPIKE'))
+      .flatMap(r => ('symbol' in r.scope ? [r.scope.symbol] : positions.map(p => p.symbol))))
+    for (const s of volumeSymbols) {
+      if (now - (volumes.get(s)?.at ?? -Infinity) < VOLUME_POLL_MS) continue
+      try {
+        volumes.set(s, { at: now, candles: await ex.kline(s, 'LAST', LIMITS.volumeWindowSec.max / 60 + VOLUME_BASE_MIN + 1) })
+      } catch { /* UNKNOWN until a later tick reads it */ }
+    }
+
+    // Position epochs; the ones before this poll name the positions a close in it ended.
+    const before = new Map(epochs)
     const live = new Set<string>()
     for (const p of positions) {
       const k = `${p.symbol}:${p.positionIdx}`
@@ -344,7 +392,8 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
         store.saveEpoch(k, e)
       }
     }
-    for (const k of [...epochs.keys()]) if (!live.has(k)) { epochs.delete(k); store.saveEpoch(k, null) }
+    // Without this poll's fills a gone position's close comes next tick, and must still find the epoch it ended.
+    if (fillsError === null) for (const k of [...epochs.keys()]) if (!live.has(k)) { epochs.delete(k); store.saveEpoch(k, null) }
 
     // Fills: deduped by execId; only fresh ones are events (never an old reconciled one, §8).
     const unseen = fills.filter(f => !seenExec.has(f.id)).sort((a, b) => a.time - b.time)
@@ -355,11 +404,38 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     if (seenExec.size > 4 * RECENT_FILLS) { seenExec.clear(); for (const f of recentFills) seenExec.add(f.id) }
     if (unseen.length) lastFillTime = Math.max(lastFillTime, unseen[unseen.length - 1].time)
     events = new Map(fresh.filter(f => now - f.time <= STALE_MS).map(f => [f.orderId, f]))
+    closes = new Map()
+    for (const f of fresh) {
+      if (!f.closedBy || now - f.time > STALE_MS) continue
+      const side = f.side === 'Buy' ? 'Sell' : 'Buy' // a close trades against the position
+      // shortcut: a liquidation's order is not listed, so its slot is the one this side held; hedge mode with both sides of one symbol is fine, two slots of one side cannot happen
+      const idx = known.get(f.orderId)?.positionIdx ?? [0, 1, 2].find(i => before.get(`${f.symbol}:${i}`)?.startsWith(`${side}:`))
+      const epoch = idx === undefined ? undefined : before.get(`${f.symbol}:${idx}`)
+      if (!epoch?.startsWith(`${side}:`)) continue // opened and closed between two polls: no position to name
+      closes.set(`pos:${f.symbol}:${idx}:${epoch}`, { by: f.closedBy, orderId: f.orderId, price: f.price, symbol: f.symbol, side, idx: idx!, epoch })
+    }
     for (const o of orders) known.set(o.orderId, o)
     // shortcut: forgets the oldest orders past 1000; keep only ORDER-scope ones if a trader keeps more
     while (known.size > 1000) known.delete(known.keys().next().value!)
 
-    executor.reconcile(recentFills, positions)
+    await executor.reconcile(recentFills, positions)
+
+    // Receipts: a done write against positions read after it was done, so the after side is Bybit's, not a guess.
+    for (const [id, r] of receipts) {
+      const e = store.execution(id)
+      if (!e || e.status === 'REJECTED' || e.status === 'SIMULATED' || now - r.at > RECEIPT_TTL_MS) { receipts.delete(id); continue }
+      if ((e.status !== 'FILLED' && e.status !== 'APPLIED') || e.updatedAt >= now) continue
+      receipts.delete(id)
+      const t = e.terms
+      const after = t.type === 'cancel' ? undefined : positions.find(p => p.symbol === t.symbol && p.positionIdx === t.positionIdx)
+      const receipt = receiptLine(t, r.before, after)
+      if (!receipt) continue
+      store.transaction(() => {
+        store.saveExecution({ ...e, receipt })
+        const a = store.alert(store.proposal(e.proposalId)?.alertId ?? '')
+        if (a) store.saveAlert({ ...a, status: `${executionLine(e)} · ${receipt}` })
+      })
+    }
 
     // Pending proposals: expiry, then a recheck that withdraws or refreshes any that changed (§9).
     const head = store.pendingProposals().sort(queueOrder)[0] // what the lens shows, expired or not
@@ -382,7 +458,8 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     // shortcut: trigger_state keeps a row per rule and position epoch for good; prune closed epochs if the table grows
     for (const rule of rules) {
       if (!rule.conditions.items.length) continue
-      for (const t of targetsOf(rule, positions, orders)) {
+      const live = targetsOf(rule, positions, orders)
+      for (const t of [...live, ...closedTargets(rule, live)]) {
         const key = `${rule.id}:${t.key}`
         const saved = store.trigger(key)
         const s = saved?.version === rule.version ? saved : initialTriggerState(rule.version)
@@ -391,7 +468,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
         if (d.fire) {
           const cond = rule.conditions.items.find(c => c.id === g.reason?.id)
           const r = await raise(rule, t, { reason: cond ? reasonText(cond, g.reason?.value) : 'matched', type: cond?.type, matched: g.matched }, c)
-          if (r.retry) continue // a read error must not use up a Once shortcut or start its cooldown
+          if (r.error) continue // a read error must not use up a Once shortcut or start its cooldown
           if (r.proposal) waiting.add(key)
         }
         if (!saved || JSON.stringify(d.next) !== JSON.stringify(saved)) store.saveTrigger(key, d.next)
@@ -424,20 +501,40 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     state(): SessionState {
       dropShown()
       const q = queue()
+      const enabled = store.listShortcuts().filter(r => r.enabled)
+      const onByPosition: Record<string, number> = {}
+      for (const p of positions) {
+        const key = `${p.symbol}:${p.positionIdx}`
+        onByPosition[key] = enabled.filter(r =>
+          targetsOf(r, positions, orders).some(t => t.position?.symbol === p.symbol && t.position.positionIdx === p.positionIdx)).length
+      }
       return {
         positions,
         balance,
-        dayPnl: dayPnl(),
         card: q[0] ?? null,
         pending: q.length,
         toast: toasts[0] ?? null,
         error: error ?? (updatedAt && clock() - updatedAt > STALE_MS ? `No fresh data for ${Math.round((clock() - updatedAt) / 1000)}s` : null),
         updatedAt,
+        onByPosition,
       }
     },
 
     async confirm(proposalId, idempotencyKey) {
+      const p = store.proposal(proposalId)
+      const t = p?.terms
+      // Only a first tap: a resend gets the old execution back, and the last poll would already be its after side.
+      const first = !store.executionByKey(idempotencyKey) && !store.executionByProposal(proposalId)
+      // the last poll is what the alert showed: the before side of the receipt
+      const before = t && t.type !== 'cancel' ? positions.find(p => p.symbol === t.symbol && p.positionIdx === t.positionIdx) : undefined
       const r = await executor.confirm(proposalId, idempotencyKey)
+      if (first && r.execution && t?.type !== 'cancel') receipts.set(r.execution.id, { before, at: clock() })
+      // Nothing was sent because a read failed: offer the card again once reads recover, not never (a Once shortcut stays fired).
+      if (p && r.execution?.status === 'REJECTED' && r.execution.message.startsWith('could not check the position')) {
+        const key = `${p.shortcutId}:${p.targetKey}`
+        const s = store.trigger(key)
+        if (s) store.saveTrigger(key, { ...s, phase: 'armed', lastAlertAt: null })
+      }
       say(r.message, true)
       return r
     },
@@ -455,10 +552,11 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     async test(shortcutId) {
       const rule = store.getShortcut(shortcutId)
       if (!rule) return { ok: false, message: 'No such shortcut' }
+      if (rule.draft) return { ok: false, message: 'Complete the shortcut before testing it' }
       const t = targetsOf(rule, positions, orders)[0]
       if (!t) return { ok: false, message: 'Nothing to test on now: no position or order it applies to' }
-      const { alert, proposal, retry } = await raise(rule, t, { reason: 'Test alert', matched: [], simulated: true }, ctxNow())
-      if (retry) return { ok: false, message: 'Could not read Bybit, try again' }
+      const { alert, proposal, error } = await raise(rule, t, { reason: 'Test alert', matched: [], simulated: true }, ctxNow())
+      if (error) return { ok: false, message: error }
       return { ok: !alert.skip, message: alert.status, alertId: alert.id, proposalId: proposal?.id }
     },
 

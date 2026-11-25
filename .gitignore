@@ -6,3 +6,5 @@ references/repos/
 *.ehpk
 .superpowers/
 .DS_Store
+.playwright-cli/
+/*.png

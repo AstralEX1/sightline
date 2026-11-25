@@ -15,7 +15,6 @@ test('a reduce-only close reduces the position, then removes it, and never flips
   await ex.placeOrder(order({ qty: '0.03' }))
   assert.equal(ex.list[0].size, 0.02)
   assert.equal(ex.list[0].positionIM, 120)
-  assert.equal(ex.closed, 30) // (61000 - 60000) * 0.03
   await assert.rejects(ex.placeOrder(order({ qty: '0.021' })), { name: 'ExchangeRejected', message: /110017/ })
   await assert.rejects(ex.placeOrder(order({ side: 'Buy' })), { name: 'ExchangeRejected', message: /110017/ })
   await ex.placeOrder(order({ qty: '0.02' }))

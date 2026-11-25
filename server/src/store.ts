@@ -6,7 +6,7 @@ import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { randomBytes } from 'node:crypto'
-import { VOICE_SEEDS, type ShortcutRule } from './registry.ts'
+import { TEMPLATES, VOICE_SEEDS, type Draft, type ShortcutRule } from './registry.ts'
 import { validateShortcut, type Issue } from './validate.ts'
 import type { TriggerState } from './engine.ts'
 import {
@@ -61,6 +61,7 @@ export interface Store {
   /** Current version; null when missing or deleted. */
   getShortcut(id: string): ShortcutRule | null
   createShortcut(input: unknown): SaveResult
+  createFromTemplate(templateId: string): ShortcutRule
   /** Throws StoreError not_found, or conflict when baseVersion is not the current one. Keeps enabled. */
   updateShortcut(id: string, input: unknown, baseVersion: number): SaveResult
   /** A new version too, so pausing invalidates proposals. Enabling validates the stored draft again (conflict when it fails). */
@@ -68,8 +69,8 @@ export interface Store {
   /** Soft delete: versions stay for History, the phrase is free again. */
   deleteShortcut(id: string, baseVersion: number): void
   phrasesInUse(exceptId?: string): string[]
-  /** First start only: VOICE_SEEDS as enabled shortcuts; never again, even after the user deletes them. */
-  seed(): void
+  /** First start only: `drafts` (VOICE_SEEDS unless given) as enabled shortcuts; never again, even after the user deletes them. */
+  seed(drafts?: Draft[]): void
   trigger(key: string): TriggerState | null
   saveTrigger(key: string, s: TriggerState): void
   /** Position key 'BTCUSDT:0' → epoch. */
@@ -213,6 +214,19 @@ export function createStore(path: string, clock: () => number = Date.now): Store
     listShortcuts: () => many<ShortcutRule>(`${CURRENT} ORDER BY s.created_at, s.rowid`, ACCOUNT),
     getShortcut: scId => one<ShortcutRule>(`${CURRENT} AND s.id = ?`, ACCOUNT, scId),
 
+    createFromTemplate: templateId => store.transaction(() => {
+      const template = TEMPLATES.find(t => t.id === templateId)
+      if (!template) throw new StoreError('not_found', 'No such template')
+      const v = validateShortcut(template.draft)
+      const rule: ShortcutRule = {
+        schemaVersion: 1, id: id('sc_'), accountId: ACCOUNT, version: 1, enabled: false,
+        ...(v.value ?? structuredClone(template.draft)), ...(!v.ok && { draft: true }),
+      }
+      run('INSERT INTO shortcuts VALUES (?, ?, 0, NULL, ?, NULL)', rule.id, ACCOUNT, clock())
+      writeVersion(rule, 'created')
+      return rule
+    }),
+
     createShortcut: input => store.transaction(() => {
       const v = validateShortcut(input, { phrasesInUse: store.phrasesInUse() })
       if (!v.ok || !v.value) return { ok: false, issues: v.issues }
@@ -258,11 +272,11 @@ export function createStore(path: string, clock: () => number = Date.now): Store
       ACCOUNT, exceptId ?? null,
     ).map(r => r.voice_phrase as string),
 
-    seed: () => store.transaction(() => {
+    seed: (drafts = VOICE_SEEDS) => store.transaction(() => {
       if (get(`SELECT 1 FROM meta WHERE key = 'seeded'`)) return
-      for (const draft of VOICE_SEEDS) {
+      for (const draft of drafts) {
         const r = store.createShortcut({ ...draft, enabled: true })
-        if (!r.ok) throw new Error(`Voice seed "${draft.voicePhrase}" is invalid: ${r.issues.map(i => i.message).join('. ')}`)
+        if (!r.ok) throw new Error(`Seed "${draft.voicePhrase ?? draft.action.type}" is invalid: ${r.issues.map(i => i.message).join('. ')}`)
       }
       run(`INSERT INTO meta VALUES ('seeded', ?)`, String(clock()))
     }),

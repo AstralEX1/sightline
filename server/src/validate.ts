@@ -62,6 +62,7 @@ export function validateShortcut(input: unknown, ctx: { phrasesInUse?: string[] 
     return null
   }
   if (s?.type === 'ALL_POSITIONS') scope = { type: 'ALL_POSITIONS' }
+  else if (s?.type === 'ALL_ORDERS') scope = { type: 'ALL_ORDERS' }
   else if (s?.type === 'SYMBOL') {
     const sym = symbol(s.symbol, 'scope.symbol')
     if (sym) scope = { type: 'SYMBOL', symbol: sym }
@@ -89,6 +90,14 @@ export function validateShortcut(input: unknown, ctx: { phrasesInUse?: string[] 
       return price === null ? null : { kind: 'PRICE', price }
     }
     add('bad_value', 'Choose a price or a percent from entry', { field })
+    return null
+  }
+
+  /** Whole minutes in [min, max], returned times `unit` (60 for a window in seconds), or null with an issue. */
+  const minutes = (v: unknown, min: number, max: number, unit: number, what: string, at: { conditionId?: string; field: string }) => {
+    const n = typeof v === 'number' ? v / unit : NaN
+    if (Number.isInteger(n) && n >= min && n <= max) return v as number
+    add('bad_value', `${what} must be whole minutes from ${min} to ${max}`, at)
     return null
   }
 
@@ -144,6 +153,27 @@ export function validateShortcut(input: unknown, ctx: { phrasesInUse?: string[] 
       case 'ORDER_FILLED':
       case 'ORDER_PARTIAL':
         out = { id, type: x.type }
+        break
+      case 'VOLUME_SPIKE': {
+        const multiplier = dec(x.multiplier, 'a multiple of the usual volume', { gt: LIMITS.volumeX.min, le: LIMITS.volumeX.max }, at('multiplier'))
+        const windowSec = minutes(x.windowSec, LIMITS.volumeWindowSec.min / 60, LIMITS.volumeWindowSec.max / 60, 60, 'Time window', at('windowSec'))
+        if (multiplier && windowSec !== null) out = { id, type: 'VOLUME_SPIKE', multiplier, windowSec }
+        break
+      }
+      case 'FUNDING': {
+        const ratePct = dec(x.ratePct, 'a funding rate in percent', { gt: LIMITS.fundingPct.min, le: LIMITS.fundingPct.max }, at('ratePct'))
+        const minutesBefore = minutes(x.minutesBefore, LIMITS.fundingMin.min, LIMITS.fundingMin.max, 1, 'Time before funding', at('minutesBefore'))
+        if (ratePct && minutesBefore !== null) out = { id, type: 'FUNDING', ratePct, minutesBefore }
+        break
+      }
+      case 'ORDER_STALE': {
+        const m = minutes(x.minutes, LIMITS.orderAgeMin.min, LIMITS.orderAgeMin.max, 1, 'Order age', at('minutes'))
+        if (m !== null) out = { id, type: 'ORDER_STALE', minutes: m }
+        break
+      }
+      case 'POSITION_CLOSED':
+        if (oneOf(x.by, ['SL', 'TP', 'LIQUIDATION'] as const)) out = { id, type: 'POSITION_CLOSED', by: x.by }
+        else add('bad_value', 'Choose stop loss, take profit or liquidation', at('by'))
         break
       default:
         add('bad_condition', 'Unknown condition', at('type'))
@@ -243,7 +273,8 @@ export function validateShortcut(input: unknown, ctx: { phrasesInUse?: string[] 
       else if (CONDITION_ACTION[x.type][action.type] === 'N') add('incompatible_action', `${conditionLabel(x)} is incompatible with ${title}`, { conditionId: x.id })
     }
     const onPosition = action.type !== 'CANCEL_ORDER' && action.type !== 'NOTIFY'
-    if (scope.type === 'ORDER' && onPosition && !items.some(x => x.type === 'ORDER_FILLED' || x.type === 'ORDER_PARTIAL')) {
+    const incompatible = issues.some(i => i.code === 'incompatible_action') // one problem at a time
+    if (scope.type === 'ORDER' && onPosition && !incompatible && !items.some(x => x.type === 'ORDER_FILLED' || x.type === 'ORDER_PARTIAL')) {
       add('needs_fill', `${title} on one order needs Order filled or Order partly filled`, { field: 'action' })
     }
     const priceTargets = [action.type === 'OPEN_POSITION' ? [action.sl, action.tp] : [], 'target' in action ? [action.target] : []].flat()
@@ -279,8 +310,8 @@ export function validateShortcut(input: unknown, ctx: { phrasesInUse?: string[] 
 
   if (trigger && action && items.length) {
     const hasEvent = items.some(isEvent)
-    if (hasEvent && trigger.mode !== 'ON_EVENT' && trigger.mode !== 'ONCE') add('needs_on_event', 'A crossing or a fill fires On event or Once', { field: 'trigger.mode' })
-    if (!hasEvent && trigger.mode === 'ON_EVENT') add('needs_event', 'On event needs a price crossing or a fill', { field: 'trigger.mode' })
+    if (hasEvent && trigger.mode !== 'ON_EVENT' && trigger.mode !== 'ONCE') add('needs_on_event', 'A crossing, a fill or a close fires On event or Once', { field: 'trigger.mode' })
+    if (!hasEvent && trigger.mode === 'ON_EVENT') add('needs_event', 'On event needs a price crossing, a fill or a close', { field: 'trigger.mode' })
     if ((action.type === 'OPEN_POSITION' || action.type === 'INCREASE_POSITION') && trigger.mode !== 'ONCE') {
       add('needs_once', `${ACTION_TITLE[action.type]} fires Once`, { field: 'trigger.mode' })
     }
@@ -325,6 +356,12 @@ function sameMetric(x: Condition, y: Condition, logic: 'ALL' | 'ANY', add: (code
     return
   }
   if (x.type === 'NEAR_LIQUIDATION' || x.type === 'NEAR_SL' || x.type === 'NEAR_TP') return add('redundant', `${label} twice: keep one`, at)
+  if (x.type === 'POSITION_CLOSED') {
+    if (logic === 'ALL') add('needs_or', `A position closes one way at a time: use or`, at)
+    return
+  }
+  if (x.type === 'VOLUME_SPIKE' && y.type === 'VOLUME_SPIKE' && x.windowSec !== y.windowSec) return
+  return add('redundant', `${label} twice: keep one`, at) // funding, order age, volume in one window
 }
 
 /** For the editor: is this condition type, on its own, allowed for this action and scope? */

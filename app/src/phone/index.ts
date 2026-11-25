@@ -27,13 +27,14 @@ export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<un
     history: h('main', { class: 'screen', 'aria-label': 'History' }),
     settings: h('main', { class: 'screen', 'aria-label': 'Settings' }),
   }
-  for (const el of Object.values(screens)) el.hidden = true
+  for (const el of Object.values(screens)) { el.hidden = true; el.tabIndex = -1 } // focusable by script only: a route change moves focus here
   root.append(...Object.values(screens), h('div', { class: 'toast', role: 'status', 'aria-live': 'polite' }))
   buildSettings(screens.settings)
   document.addEventListener('touchstart', () => {}, { passive: true }) // iOS applies :active press feedback only with a touch listener
 
   let current: { name: keyof typeof screens; hash: string } | null = null
   let restoring = false
+  let routed = false
   let homeTimer: ReturnType<typeof setTimeout> | undefined
 
   const refreshHome = async (first: boolean) => {
@@ -57,6 +58,10 @@ export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<un
     current = { name, hash }
     for (const [k, el] of Object.entries(screens)) el.hidden = k !== name
     scrollTo(0, 0)
+    // the pressed link is hidden now: name the screen and move focus to it, or a screen reader stays on the old one
+    document.title = `${screens[name].getAttribute('aria-label')} · Sightline`
+    if (routed) screens[name].focus({ preventScroll: true })
+    routed = true
     if (name === 'home') void refreshHome(true)
     if (name === 'editor') void enterEditor(screens.editor, decodeURIComponent(m![1]))
     if (name === 'history') { setBadge(); void renderHistory(screens.history) }
@@ -72,19 +77,19 @@ export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<un
     if (app.unseen) btn.append(h('span', { class: 'badge', 'aria-hidden': 'true' }, String(app.unseen)))
   }
 
-  const banner = h('a', { class: 'banner', href: '#/history', role: 'status' })
+  const banner = h('a', { class: 'banner', href: '#/history', 'aria-live': 'polite' }) // role=status would hide that it is a link
   root.append(banner)
   let bannerTimer: ReturnType<typeof setTimeout> | undefined
   /** In-app banner (§4.12): the alert and where to answer it; never a confirm button. */
-  const showBanner = (a: AlertRecord) => {
+  const showBanner = (a: AlertRecord, more = 0) => {
     const where = actionOf(a) === 'NOTIFY' ? 'Shows on Even G2' : 'Confirm on Even G2'
-    banner.setAttribute('aria-label', `${a.title}, ${a.target}, ${a.reason}. ${where}. Open History`)
+    banner.setAttribute('aria-label', `${a.title}, ${a.target}, ${a.reason}. ${where}. Open History${more ? `, and ${more} more alert${more > 1 ? 's' : ''}` : ''}`)
     banner.replaceChildren(chip(a, 20),
       h('span', { class: 'banner__text' },
         h('span', { class: 'banner__title' }, [a.title, a.target].filter(Boolean).join(' · ')),
         h('span', { class: 'banner__sub' }, a.reason),
         h('span', { class: 'banner__where', html: icon('glasses', 15, 2) }, where)),
-      h('span', { class: 'banner__time' }, 'now'))
+      h('span', { class: 'banner__time' }, more ? `now · +${more} more` : 'now'))
     banner.classList.add('is-on')
     clearTimeout(bannerTimer)
     bannerTimer = setTimeout(() => banner.classList.remove('is-on'), BANNER_MS)
@@ -101,7 +106,7 @@ export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<un
       if (!fresh.length) return
       after = fresh[fresh.length - 1].createdAt
       if (current?.name !== 'history') { app.unseen += fresh.length; setBadge() }
-      showBanner(fresh[fresh.length - 1])
+      showBanner(fresh[fresh.length - 1], fresh.length - 1)
     } catch (e) {
       if (!isOffline(e)) console.warn('alerts', e)
     }

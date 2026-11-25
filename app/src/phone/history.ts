@@ -25,7 +25,7 @@ const time = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2
 
 export function chip(a: Pick<AlertRecord, 'shortcutId' | 'title'>, size: number) {
   const { icon: name, color } = ACTION_ICON[actionOf(a)]
-  return h('span', { class: 'chip chip--action chip--row', style: `color: ${color}`, html: icon(name, size, 2.2) })
+  return h('span', { class: 'chip chip--row', style: `--c: ${color}`, html: icon(name, size, 2.2) })
 }
 
 function row(a: AlertRecord) {

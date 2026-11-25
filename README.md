@@ -10,18 +10,18 @@ Bybit **demo / testnet only**: the server refuses any other host at startup. A b
 
 ## What it does
 
-- **Phone (Even Hub app page)**: your shortcuts as tiles with an on/off switch, 15 templates, an editor that only offers compatible choices and marks the row that is not, a test alert, History with every alert's last status, Settings (Bybit key rights, notifications, Telegram, cooldown and expiry).
+- **Phone (Even Hub app page)**: your shortcuts as tiles with an on/off switch, 25 templates, an editor that only offers compatible choices and marks the row that is not, a test alert, History with every alert's last status, Settings (Bybit key rights, notifications, Telegram, cooldown and expiry).
 - **Lens**: positions with ROI and the one flag that matters (`liq 4.1%`, `no stop`); an alert names the position, the strongest reason and the exact command; Review before any Open or Increase; the real result from the exchange (Sent → Filled / Partly filled / Rejected / Unknown).
 - **Voice**: any shortcut can carry a phrase. Tap the lens and say "protect all" or "lock profits": the shortcut raises its proposals at once; each still needs its own tap.
 - **Telegram**: when the glasses are off, alerts go to a linked chat as plain text. Telegram can never confirm a trade.
 
-10 conditions (price, price change, profit, loss, liquidation, stop and take-profit distance, missing stop, order filled, partly filled) × 9 actions (close, move stop, set stop, set take profit, add margin, open, increase, cancel order, notify), checked by three compatibility tables.
+14 conditions (price, price change, volume spike, funding, profit, loss, liquidation, stop and take-profit distance, missing stop, closed by stop / take profit / liquidation, order filled, partly filled, order open too long) × 9 actions (close, move stop, set stop, set take profit, add margin, open, increase, cancel order, notify), checked by three compatibility tables.
 
 ## Safety model
 
 - Every exchange write is a proposal the user authorizes on the lens: `confirm(proposalId, idempotencyKey)`. A second tap, a resend or two taps at once return the same execution; the proposal is consumed before the first network call.
 - Terms are resolved once (qty, stop price, margin) and never adjusted silently. A confirm rechecks fresh exchange state; if the terms changed, a new proposal replaces the old one (`NEW` on the lens) and the old tap does nothing.
-- Unknown results (timeout, 5xx, Bybit 10000/10016) are never retried blindly; the position is blocked until the next read settles it.
+- Unknown results (timeout, 5xx, Bybit 10000/10016) are never retried blindly; the position is blocked until Bybit settles it (orders, stops and cancels are looked up 30 s later). An unknown add margin has nothing to look up: it blocks only another add margin until the position closes, a Close still goes out.
 - Stops only tighten and must sit behind the price; a close never exceeds one market order; Open needs the leverage you set; Add Margin needs isolated margin.
 - Test alerts are simulated end to end and cannot reach the exchange adapter.
 - No withdrawals, no transfers, no live host, no secrets on the phone.
@@ -94,7 +94,7 @@ Start with `docs/handoff.md`: purpose, sources of truth, commands, current state
 
 ## Known limits
 
-- Tried against the demo exchange and the simulator; Bybit demo mutations, ROI parity with the Bybit app and real glasses still need a run.
+- Tried against the demo exchange and the simulator; every mutation ran on Bybit testnet and a real Telegram bot delivered an alert; ROI parity with the Bybit app and real glasses still need a run.
 - The packaged app has no Vite proxy: put your server's https origin in `app/app.json` (network whitelist) before `npm run pack`.
 - One account per server; REST polling (WebSockets are the planned upgrade when fills arrive too late).
 - Every other known limit is a `shortcut:` comment in the code.

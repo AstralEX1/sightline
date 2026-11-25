@@ -1,4 +1,4 @@
-import type { Candle, Exchange, Fill, Instrument, Order, OrderRequest, Position, Terms } from './types.ts'
+import type { Candle, Exchange, Fill, Instrument, Order, OrderRequest, OrderState, Position, Terms } from './types.ts'
 import type { PriceSource } from './registry.ts'
 import { toStep } from './bybit.ts'
 
@@ -9,7 +9,6 @@ const LEVERAGE = 10
 /** In-memory exchange for tests, local work without keys and the demo video. */
 export class FakeExchange implements Exchange {
   list: Position[] = []
-  closed = 0
   fills: Fill[] = []
   /** Open orders, plain and conditional */
   orders: Order[] = []
@@ -21,10 +20,14 @@ export class FakeExchange implements Exchange {
   leverage: Record<string, number> = {}
   /** Instrument rules per symbol, INSTRUMENT when missing */
   instruments: Record<string, Instrument> = {}
+  /** Next funding per symbol: rate in percent and when it is charged; none when missing */
+  funding: Record<string, { ratePct: number; at: number }> = {}
   /** 1-minute candles per symbol, the same for every price source */
   candles: Record<string, Candle[]> = {}
   /** What was written, in order */
   calls: Terms[] = []
+  /** Bybit's order records by orderLinkId and by orderId; a market order lands here as Filled */
+  placed = new Map<string, OrderState>()
   /** The next write throws: a string is a clear exchange rejection, an Error is thrown as is. */
   failNext: string | Error | null = null
   /** Every read throws with this message while set. */
@@ -64,13 +67,12 @@ export class FakeExchange implements Exchange {
   async balance() { return this.read({ equity: this.equity, available: this.available }) }
   async positions() { return this.read(this.list) }
   async openOrders() { return this.read(this.orders) }
-  async closedPnlSince(_ms: number) { return this.read(this.closed) }
   async fillsSince(ms: number) { return this.read(this.fills.filter(f => f.time > ms)) }
 
   async ticker(symbol: string) {
     const last = this.last(symbol)
     const mark = this.list.find(p => p.symbol === symbol)?.markPrice ?? last
-    return this.read({ last, mark, index: this.index[symbol] ?? mark })
+    return this.read({ last, mark, index: this.index[symbol] ?? mark, ...(this.funding[symbol] && { funding: this.funding[symbol] }) })
   }
 
   async kline(symbol: string, _source: PriceSource, limit: number) { return this.read((this.candles[symbol] ?? []).slice(-limit)) }
@@ -117,10 +119,11 @@ export class FakeExchange implements Exchange {
     const price = this.last(o.symbol)
     this.calls.push({ type: 'order', ...o })
     const orderId = crypto.randomUUID()
+    const state = { orderId, status: 'Filled', cumExecQty: qty, avgPrice: price }
+    this.placed.set(o.orderLinkId, state).set(orderId, state)
     this.fills.push({ id: crypto.randomUUID(), orderId, orderLinkId: o.orderLinkId, symbol: o.symbol, side: o.side, qty, price, leavesQty: 0, time: this.now() })
 
     if (p && o.reduceOnly) {
-      this.closed += (price - p.entryPrice) * qty * (p.side === 'Buy' ? 1 : -1)
       const size = Number(toStep(p.size - qty, (this.instruments[o.symbol] ?? INSTRUMENT).qtyStep, Math.round)) // no 1e-17 leftovers
       if (size === 0) this.list.splice(this.list.indexOf(p), 1)
       else Object.assign(p, { positionIM: (p.positionIM * size) / p.size, size })
@@ -145,14 +148,26 @@ export class FakeExchange implements Exchange {
     if (i < 0) throw rejected('Order does not exist (Bybit 110001)')
     this.calls.push({ type: 'cancel', symbol, orderId })
     this.orders.splice(i, 1)
+    this.placed.set(orderId, { orderId, status: 'Cancelled', cumExecQty: 0, avgPrice: 0 })
+  }
+
+  async order(_symbol: string, ref: { orderLinkId: string } | { orderId: string }) {
+    const open = 'orderId' in ref && this.orders.find(o => o.orderId === ref.orderId)
+    if (open) return this.read<OrderState>({ orderId: open.orderId, status: 'New', cumExecQty: open.qty - open.leavesQty, avgPrice: 0 })
+    return this.read(this.placed.get('orderId' in ref ? ref.orderId : ref.orderLinkId) ?? null)
   }
 }
 
-/** Demo scenario: SOL in profit, ETH without a stop, BTC sliding towards liquidation. */
+/**
+ * Demo scenario: SOL in profit, ETH without a stop, BTC sliding towards liquidation; XRP has no position, so Open Position can be tried.
+ * BTC longs pay 0.06% funding in 20 min, and SOL's last 5 minutes traded 4× its usual volume.
+ */
 export function demoExchange(now: number): { ex: FakeExchange; stop: () => void } {
   const ex = new FakeExchange()
-  ex.closed = -40
-  ex.prices = { BTCUSDT: 61800, ETHUSDT: 3080, SOLUSDT: 145 }
+  ex.prices = { BTCUSDT: 61800, ETHUSDT: 3080, SOLUSDT: 145, XRPUSDT: 2.5 }
+  ex.funding = { BTCUSDT: { ratePct: 0.06, at: now + 20 * 60_000 }, ETHUSDT: { ratePct: 0.01, at: now + 20 * 60_000 } }
+  const minute = Math.floor(now / 60_000) * 60_000
+  ex.candles.SOLUSDT = Array.from({ length: 70 }, (_, i) => ({ start: minute - (70 - i) * 60_000, close: 145, volume: i >= 65 ? 4000 : 1000 }))
   ex.list = [
     { symbol: 'BTCUSDT', side: 'Buy', size: 0.05, entryPrice: 62000, markPrice: 61800, liqPrice: 59500, unrealisedPnl: -10, stopLoss: 0, takeProfit: 0, positionIM: 310, leverage: 10, isolated: true, positionIdx: 0, openedAt: now - 30_000 },
     { symbol: 'ETHUSDT', side: 'Sell', size: 1.2, entryPrice: 3100, markPrice: 3080, liqPrice: 3600, unrealisedPnl: 24, stopLoss: 0, takeProfit: 0, positionIM: 372, leverage: 10, isolated: false, positionIdx: 0, openedAt: now - 70_000 },

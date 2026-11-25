@@ -1,4 +1,4 @@
-import type { ConditionType, PriceSource } from './registry.ts'
+import type { ClosedBy, ConditionType, PriceSource } from './registry.ts'
 
 export type Side = 'Buy' | 'Sell'
 
@@ -35,6 +35,8 @@ export interface Fill {
   /** What the order still has to fill after this execution: 0 = filled */
   leavesQty: number
   time: number
+  /** Set when this execution closed a position by its stop loss, its take profit or a liquidation */
+  closedBy?: ClosedBy
 }
 
 /** An open order from /v5/order/realtime, plain or conditional (stops live here too). */
@@ -57,11 +59,17 @@ export interface Order {
   positionIdx: number
   /** Bybit orderStatus: 'New', 'PartiallyFilled', 'Untriggered', ... */
   status: string
+  /** When it was placed (Bybit createdTime); unknown: ORDER_STALE is UNKNOWN */
+  createdAt?: number
 }
 
-export interface Ticker { last: number; mark: number; index: number }
-/** A 1-minute candle: its start time and close price. */
-export interface Candle { start: number; close: number }
+export interface Ticker {
+  last: number; mark: number; index: number
+  /** Perpetuals: the next funding, rate in percent (positive: longs pay) and when it is charged */
+  funding?: { ratePct: number; at: number }
+}
+/** A 1-minute candle: its start time, close price and volume (last-price candles only; mark and index have none). */
+export interface Candle { start: number; close: number; volume?: number }
 /** Steps stay strings as the API sends them: String(1e-7) would be "1e-7" and lose the decimals. */
 export interface Instrument { tickSize: string; qtyStep: string; minOrderQty: number; maxMktOrderQty: number; minNotionalValue: number }
 /** One position slot of a symbol, also while flat: leverage is set per slot, and positionIdx 1 / 2 mean hedge mode. */
@@ -95,13 +103,14 @@ export interface SessionState {
   positions: Position[]
   /** null until the first read, or while the exchange does not answer it */
   balance: Balance | null
-  dayPnl: number
   /** The head of the proposal queue (§9 order); the lens shows it with its place */
   card: Proposal | null
   pending: number
   toast: string | null
   error: string | null
   updatedAt: number
+  /** Enabled shortcuts that currently apply to each open position, keyed `symbol:positionIdx` */
+  onByPosition?: Record<string, number>
 }
 
 /** What /api/state sends: the session plus facts only the server knows. A missing field (older server) reads as "on". */
@@ -117,7 +126,6 @@ export interface Exchange {
   balance(): Promise<Balance>
   positions(): Promise<Position[]>
   openOrders(): Promise<Order[]>
-  closedPnlSince(ms: number): Promise<number>
   fillsSince(ms: number): Promise<Fill[]>
   ticker(symbol: string): Promise<Ticker>
   /** The last `limit` 1-minute candles of one price source, in any order. */
@@ -132,7 +140,12 @@ export interface Exchange {
   /** Returns Bybit's orderId. A resend after a rate limit carries the same orderLinkId. */
   placeOrder(o: OrderRequest): Promise<{ orderId: string }>
   cancelOrder(symbol: string, orderId: string): Promise<void>
+  /** Bybit's record of one order, open or recently closed; null when Bybit has none. */
+  order(symbol: string, ref: { orderLinkId: string } | { orderId: string }): Promise<OrderState | null>
 }
+
+/** Bybit orderStatus: New, PartiallyFilled, Filled, Cancelled, PartiallyFilledCanceled, Rejected, Untriggered, Triggered, Deactivated */
+export interface OrderState { orderId: string; status: string; cumExecQty: number; avgPrice: number }
 
 // ── Shortcut runtime records (§9, §10) ─────────────────────
 
@@ -224,6 +237,8 @@ export interface Execution {
   avgPrice: number
   createdAt: number
   updatedAt: number
+  /** What a filled or applied write changed, read back from Bybit after it: "0.05 → 0.025 BTC", "stop none → 60,760" */
+  receipt?: string
 }
 
 /** Account settings shown in Settings (§9, §10). */

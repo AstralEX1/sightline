@@ -56,9 +56,10 @@ export function createNotifier(o: { store: NotifyStore; token?: string; fetch?: 
       const on = store.settings().notifications
       const lens = open('lens')
       const channels: Channel[] = []
+      // Telegram is the fallback: when the lens is closed, or open but nothing else carries this alert.
       if (alert.delivery.glasses && on.glasses && lens) channels.push('glasses')
       if (alert.delivery.phone && on.app && open('app')) channels.push('app')
-      if (alert.delivery.phone && on.telegram && token && store.telegram().chatId !== undefined && !lens) {
+      if (alert.delivery.phone && on.telegram && token && store.telegram().chatId !== undefined && (!lens || !channels.length)) {
         store.enqueue({ alertId: alert.id, channel: 'telegram', text: text(alert, proposal) })
         channels.push('telegram')
       }

@@ -161,7 +161,7 @@ test('ticker: last, mark and index; an unknown symbol is a rejection', async () 
 test('kline asks the path of each price source, 1-minute, and reads start and close', async () => {
   const rows = ok({ list: [['1700000060000', '61000', '61100', '60900', '61050.5', '12', '700000'], ['1700000000000', '60900', '61000', '60800', '61000', '9', '500000']] })
   const { ex, calls } = client({ '/v5/market/kline': rows, '/v5/market/mark-price-kline': rows, '/v5/market/index-price-kline': rows })
-  assert.deepEqual(await ex.kline('BTCUSDT', 'LAST', 2), [{ start: 1700000060000, close: 61050.5 }, { start: 1700000000000, close: 61000 }])
+  assert.deepEqual(await ex.kline('BTCUSDT', 'LAST', 2), [{ start: 1700000060000, close: 61050.5, volume: 12 }, { start: 1700000000000, close: 61000, volume: 9 }])
   await ex.kline('BTCUSDT', 'MARK', 5000)
   await ex.kline('BTCUSDT', 'INDEX', 30)
   assert.deepEqual(calls.map(c => c.url.pathname), ['/v5/market/kline', '/v5/market/mark-price-kline', '/v5/market/index-price-kline'])
@@ -258,15 +258,11 @@ test('requests carry a timeout signal', async () => {
   assert.ok(calls[0].init.signal instanceof AbortSignal)
 })
 
-test('sums closed pnl since a time', async () => {
-  const { ex, calls } = client({ '/v5/position/closed-pnl': ok({ list: [{ closedPnl: '-30.5' }, { closedPnl: '10' }] }) })
-  assert.equal(await ex.closedPnlSince(123), -20.5)
-  assert.equal(calls[0].url.searchParams.get('startTime'), '123')
-})
-
-test('maps fills with their order and what is still open', async () => {
-  const { ex } = client({ '/v5/execution/list': ok({ list: [{ execId: 'e1', orderId: 'o1', orderLinkId: 'p1-e1', symbol: 'BTCUSDT', side: 'Sell', execQty: '0.01', execPrice: '61000.5', leavesQty: '0.015', execTime: '1700000001000' }] }) })
-  assert.deepEqual(await ex.fillsSince(1), [{ id: 'e1', orderId: 'o1', orderLinkId: 'p1-e1', symbol: 'BTCUSDT', side: 'Sell', qty: 0.01, price: 61000.5, leavesQty: 0.015, time: 1700000001000 }])
+test('maps fills with their order and what is still open, a full page at a time', async () => {
+  const { ex, calls } = client({ '/v5/execution/list': ok({ list: [{ execId: 'e1', orderId: 'o1', orderLinkId: 'p1-e1', symbol: 'BTCUSDT', side: 'Sell', execQty: '0.01', execPrice: '61000.5', leavesQty: '0.015', execTime: '1700000001000' }] }) })
+  const got = await ex.fillsSince(1)
+  assert.equal(calls[0].url.searchParams.get('limit'), '100')
+  assert.deepEqual(got, [{ id: 'e1', orderId: 'o1', orderLinkId: 'p1-e1', symbol: 'BTCUSDT', side: 'Sell', qty: 0.01, price: 61000.5, leavesQty: 0.015, time: 1700000001000 }])
 })
 
 test('funding payments are not fills, a liquidation is', async () => {
@@ -284,6 +280,9 @@ test('positions ask for the 200 maximum: the default page is 20', async () => {
 test('assertTestnet accepts only testnet and demo hosts', () => {
   assert.throws(() => assertTestnet('https://api.bybit.com'))
   assert.throws(() => assertTestnet('https://api-testnet.bybit.com.evil.io'))
+  for (const base of ['http://api-testnet.bybit.com', 'https://api-demo.bybit.com:8443', 'https://user@api-testnet.bybit.com']) {
+    assert.throws(() => createBybit({ base, key: '', secret: '' }))
+  }
   assertTestnet('https://api-testnet.bybit.com')
   assertTestnet('https://api-demo.bybit.com')
 })
@@ -300,4 +299,38 @@ test('openedAt follows updatedTime: createdTime stays from the first trade of th
   const row = (updatedTime: string) => ({ symbol: 'ETHUSDT', side: 'Buy', size: '0.01', avgPrice: '1710', markPrice: '1710', liqPrice: '', unrealisedPnl: '0', stopLoss: '', tradeMode: 0, positionIdx: 0, createdTime: '1000', updatedTime })
   const { ex } = client({ '/v5/position/list': ok({ list: [row('1700000000500')] }), '/v5/account/info': ok({ marginMode: 'REGULAR_MARGIN' }) })
   assert.equal((await ex.positions())[0].openedAt, 1700000000500)
+})
+
+test('ticker reads the next funding as percent; a symbol without one has none', async () => {
+  const perp = ok({ list: [{ symbol: 'BTCUSDT', lastPrice: '61000', markPrice: '61000', indexPrice: '61000', fundingRate: '-0.00025', nextFundingTime: '1700003600000' }] })
+  const { ex } = client({ '/v5/market/tickers': [perp, ticker] })
+  assert.deepEqual((await ex.ticker('BTCUSDT')).funding, { ratePct: -0.025, at: 1700003600000 })
+  assert.equal((await ex.ticker('BTCUSDT')).funding, undefined)
+})
+
+test('fills say what closed the position: stop loss, trailing stop, take profit or liquidation', async () => {
+  const row = (execId: string, o: object) => ({ execId, orderId: 'o', symbol: 'BTCUSDT', side: 'Sell', execQty: '0.01', execPrice: '60000', leavesQty: '0', execTime: '1', execType: 'Trade', stopOrderType: '', ...o })
+  const { ex } = client({ '/v5/execution/list': ok({ list: [
+    row('a', { stopOrderType: 'StopLoss' }), row('b', { stopOrderType: 'TrailingStop' }), row('c', { stopOrderType: 'PartialTakeProfit' }),
+    row('d', { execType: 'BustTrade', stopOrderType: 'UNKNOWN' }), row('e', {}), row('f', { execType: 'Funding' }),
+  ] }) })
+  assert.deepEqual((await ex.fillsSince(0)).map(f => [f.id, f.closedBy]), [['a', 'SL'], ['b', 'SL'], ['c', 'TP'], ['d', 'LIQUIDATION'], ['e', undefined]])
+})
+
+test('openOrders keep when the order was placed', async () => {
+  const { ex } = client({ '/v5/order/realtime': ok({ list: [{ orderId: 'a', symbol: 'BTCUSDT', side: 'Buy', orderType: 'Limit', price: '1', qty: '1', leavesQty: '1', positionIdx: 0, orderStatus: 'New', createdTime: '1700000000000' }] }) })
+  assert.equal((await ex.openOrders())[0].createdAt, 1700000000000)
+})
+
+test('order lookup: realtime first, then history, null when Bybit has neither', async () => {
+  const row = { orderId: 'o9', orderStatus: 'Filled', cumExecQty: '0.025', avgPrice: '61000.5' }
+  const live = client({ '/v5/order/realtime': ok({ list: [row] }) })
+  assert.deepEqual(await live.ex.order('BTCUSDT', { orderLinkId: 'p1-e1' }), { orderId: 'o9', status: 'Filled', cumExecQty: 0.025, avgPrice: 61000.5 })
+  assert.equal(live.calls[0].url.searchParams.get('orderLinkId'), 'p1-e1')
+  assert.equal(live.calls[0].url.searchParams.get('symbol'), 'BTCUSDT')
+  const old = client({ '/v5/order/realtime': ok({ list: [] }), '/v5/order/history': ok({ list: [{ ...row, orderStatus: 'Cancelled' }] }) })
+  assert.equal((await old.ex.order('BTCUSDT', { orderId: 'o9' }))!.status, 'Cancelled')
+  assert.equal(old.calls[1].url.searchParams.get('orderId'), 'o9')
+  const none = client({ '/v5/order/realtime': ok({ list: [] }), '/v5/order/history': ok({ list: [] }) })
+  assert.equal(await none.ex.order('BTCUSDT', { orderLinkId: 'x' }), null)
 })

@@ -35,7 +35,7 @@ test('a token says its field, value and edit to a screen reader (P23)', () => {
 })
 
 test('a template value still to enter is a placeholder token (P04)', () => {
-  const t10 = TEMPLATES[9].draft
+  const t10 = TEMPLATES.find(t => t.id === 'tpl_10')!.draft
   const level = conditionParts(t10.conditions.items[0]).at(-1)!
   assert.deepEqual(level, { key: 'threshold', text: 'set price', aria: 'Price level, not set, edit', empty: true })
 })
@@ -57,4 +57,12 @@ test('tile subtitle and Options summary', () => {
   assert.equal(tileSub({ enabled: true, summary: 'Say "protect all"' }), 'Say "protect all"')
   assert.equal(optionsSummary({ trigger: { mode: 'ON_ENTRY' }, delivery: { glasses: true, phone: true } }), 'On entry · Glasses + phone')
   assert.equal(optionsSummary({ trigger: { mode: 'REPEAT', intervalSec: 300 }, delivery: { glasses: true, phone: false }, voicePhrase: 'protect all' }), 'Every 5 min · Glasses · Voice')
+})
+
+test('the new conditions read as sentences', () => {
+  const line = (x: NoId<Condition>) => conditionParts(c(x)).map(p => (typeof p === 'string' ? p : p.text)).join(' ')
+  assert.equal(line({ type: 'VOLUME_SPIKE', multiplier: '3', windowSec: 300 }), 'volume within 5 min is above 3× the hourly average')
+  assert.equal(line({ type: 'FUNDING', ratePct: '0.05', minutesBefore: 30 }), 'funding rate is above 0.05% with 30 min to payment')
+  assert.equal(line({ type: 'ORDER_STALE', minutes: 60 }), 'order is open for over 60 min')
+  assert.equal(line({ type: 'POSITION_CLOSED', by: 'LIQUIDATION' }), 'position is liquidated')
 })

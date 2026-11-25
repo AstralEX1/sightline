@@ -2,9 +2,10 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createSession } from '../src/session.ts'
 import { createStore, type Store } from '../src/store.ts'
-import { FakeExchange } from '../src/fake-exchange.ts'
-import { TEMPLATES, type Draft } from '../src/registry.ts'
-import { UNKNOWN_BLOCK_MS, closeProposal } from '../src/execute.ts'
+import { demoExchange, FakeExchange } from '../src/fake-exchange.ts'
+import { receiptLine } from '../src/proposals.ts'
+import { STARTER_RULES, TEMPLATES, VOICE_SEEDS, type Draft } from '../src/registry.ts'
+import { closeProposal } from '../src/execute.ts'
 import type { Position } from '../src/types.ts'
 
 const START = 1_800_000_000_000
@@ -18,7 +19,7 @@ function btc(o: Partial<Position> = {}): Position {
 
 /** Template n as an enabled shortcut, with optional changes to its draft. */
 const tpl = (n: number, change: (d: Draft) => void = () => {}) => {
-  const d = structuredClone(TEMPLATES[n - 1].draft)
+  const d = structuredClone(TEMPLATES.find(t => t.id === `tpl_${n}`)!.draft)
   change(d)
   return { ...d, enabled: true }
 }
@@ -46,14 +47,14 @@ test('a shortcut made in the editor raises a proposal from the poll, and a tap e
   await ticks()
   const card = s.state().card!
   assert.equal(card.title, 'BTC long · liquidation distance 2.5%')
-  assert.equal(card.question, 'Add 100 USDT margin to BTC?')
-  assert.deepEqual(card.terms, { type: 'addMargin', symbol: 'BTCUSDT', positionIdx: 0, usd: 100 })
+  assert.equal(card.question, 'Add 50 USDT margin to BTC?')
+  assert.deepEqual(card.terms, { type: 'addMargin', symbol: 'BTCUSDT', positionIdx: 0, usd: 50 })
   assert.equal(last(store).status, 'Waiting for a tap on Even G2')
   const r = await s.confirm(card.id, 'tap-1')
   assert.equal(r.ok, true)
   assert.deepEqual(ex.calls, [card.terms])
-  assert.equal(r.message, 'Done · added 100 USDT margin')
-  assert.equal(last(store).status, 'Done · added 100 USDT margin')
+  assert.equal(r.message, 'Done · added 50 USDT margin')
+  assert.equal(last(store).status, 'Done · added 50 USDT margin')
   assert.equal(s.state().card, null)
 })
 
@@ -85,7 +86,40 @@ test('an ambiguous submit is UNKNOWN, never retried, blocks the position, and th
   ex.list[0].stopLoss = (stop.terms as { price: number }).price // it did go through on Bybit
   await ticks()
   assert.equal(store.execution(r.execution!.id)!.status, 'APPLIED')
-  assert.equal(UNKNOWN_BLOCK_MS, 60_000)
+})
+
+test('an unresolved timeout still blocks a fresh proposal after a minute and a restart', async () => {
+  const { ex, store, s, ticks, advance, now } = setup()
+  await ticks()
+  ex.failNext = Object.assign(new Error('timeout'), { name: 'TimeoutError' })
+  assert.equal((await s.confirm(s.state().card!.id, 'first')).execution?.status, 'UNKNOWN')
+  advance(61_000)
+  assert.ok(store.createShortcut(tpl(7)).ok)
+  const restarted = createSession(ex, store, now)
+  await restarted.tick()
+  assert.match((await restarted.confirm(restarted.state().card!.id, 'second')).message, /unknown result/)
+  assert.equal(ex.calls.length, 0)
+})
+
+test('pausing while a poll is reading prevents stale alerts and proposals', async () => {
+  const { s, store } = setup()
+  const tick = s.tick()
+  store.setEnabled(store.listShortcuts()[0].id, false)
+  await tick
+  assert.equal(store.history().length, 0)
+  assert.equal(store.pendingProposals().length, 0)
+})
+
+test('editing while a voice shortcut resolves prevents a stale proposal', async () => {
+  const { s, store, ticks } = setup([btc({ stopLoss: 0 })], [])
+  store.seed()
+  await ticks()
+  const rule = store.listShortcuts().find(r => r.voicePhrase === 'protect all')!
+  const command = s.voice('protect all')
+  store.updateShortcut(rule.id, { ...rule, name: 'Updated' }, rule.version)
+  assert.equal((await command).ok, false)
+  assert.equal(store.history().length, 0)
+  assert.equal(store.pendingProposals().length, 0)
 })
 
 test('a clear rejection says why and sends nothing more', async () => {
@@ -216,7 +250,7 @@ test('a voice phrase raises proposals only for targets whose guards pass; a voic
 })
 
 test('a value wobbling inside the hysteresis band fires once', async () => {
-  const { ex, store, s, ticks } = setup([btc()], [tpl(6, d => { d.action = { type: 'NOTIFY' } })])
+  const { ex, store, ticks } = setup([btc()], [tpl(6, d => { d.action = { type: 'NOTIFY' } })])
   for (const mark of [61000, 62800, 62600, 62900, 62700]) { // liq distance 2.5%, 5.3%, 5.0%, 5.4%, 5.1%: never clears 5.5%
     ex.setMark('BTCUSDT', mark)
     await ticks()
@@ -306,7 +340,7 @@ test('an order fill raises Set TP on the position that order opened', async () =
   ex.list = [btc({ entryPrice: 61000 })]
   ex.fills.push({ id: 'e1', orderId: 'o1', orderLinkId: '', symbol: 'BTCUSDT', side: 'Buy', qty: 0.05, price: 61000, leavesQty: 0, time: now() })
   await ticks()
-  assert.equal(s.state().card!.question, 'Set BTC take profit at 64,050?')
+  assert.equal(s.state().card!.question, 'Set BTC take profit at 62,830?')
   await ticks(2) // the same execution never fires twice
   assert.equal(s.state().pending, 1)
 })
@@ -418,4 +452,165 @@ test('closing a proposal does nothing once a tap has authorized it', async () =>
   store.saveProposal({ ...p, status: 'AUTHORIZED' })
   assert.equal(closeProposal(store, p, 'SUPERSEDED', 'Withdrawn · test'), false)
   assert.equal(store.proposal(p.id)!.status, 'AUTHORIZED')
+})
+
+// ---- Closes, order age, funding, volume ----
+
+const slOrder = { orderId: 'sl1', orderLinkId: '', symbol: 'BTCUSDT', side: 'Sell' as const, orderType: 'Market', price: 0, qty: 0.05, leavesQty: 0.05, reduceOnly: true, stopOrderType: 'StopLoss', triggerBy: 'LastPrice', triggerPrice: 60000, positionIdx: 0, status: 'Untriggered' }
+
+test('a position closed by its stop loss alerts once after it is gone, split fills included', async () => {
+  const { ex, store, ticks, now } = setup([btc()], [tpl(17), tpl(18)])
+  ex.orders = [slOrder]
+  await ticks()
+  ex.list = []
+  ex.orders = []
+  ex.fills.push(
+    { id: 'e1', orderId: 'sl1', orderLinkId: '', symbol: 'BTCUSDT', side: 'Sell', qty: 0.03, price: 60000, leavesQty: 0.02, time: now(), closedBy: 'SL' },
+    { id: 'e2', orderId: 'sl1', orderLinkId: '', symbol: 'BTCUSDT', side: 'Sell', qty: 0.02, price: 59990, leavesQty: 0, time: now(), closedBy: 'SL' },
+  )
+  await ticks(3)
+  const h = store.history()
+  assert.deepEqual(h.map(a => [a.target, a.reason]), [['BTC long', 'closed by stop loss at 59,990']]) // the take-profit shortcut stays quiet
+})
+
+test('a liquidation names the slot its side held, without a listed order', async () => {
+  const { ex, store, ticks, now } = setup([btc()], [tpl(19)])
+  await ticks()
+  ex.list = []
+  ex.fills.push({ id: 'e1', orderId: 'bust', orderLinkId: '', symbol: 'BTCUSDT', side: 'Sell', qty: 0.05, price: 59500, leavesQty: 0, time: now(), closedBy: 'LIQUIDATION' })
+  await ticks()
+  assert.equal(store.history()[0].reason, 'liquidated at 59,500')
+})
+
+test('All orders: an order open too long gets a cancel proposal; a fresh one does not', async () => {
+  const limit = { ...slOrder, stopOrderType: '', orderType: 'Limit', price: 58000, side: 'Buy' as const, reduceOnly: false, status: 'New' }
+  const { ex, s, ticks } = setup([], [tpl(24)])
+  ex.orders = [{ ...limit, orderId: 'old', createdAt: START - 61 * 60_000 }, { ...limit, orderId: 'new', createdAt: START - 5 * 60_000 }]
+  await ticks()
+  assert.equal(s.state().pending, 1)
+  assert.deepEqual(s.state().card!.terms, { type: 'cancel', symbol: 'BTCUSDT', orderId: 'old' })
+  assert.equal(s.state().card!.why, 'order open 1 h 1 min')
+})
+
+test('funding: a long paying the next funding inside the window is told so', async () => {
+  const { ex, store, ticks } = setup([btc()], [tpl(20)])
+  ex.funding.BTCUSDT = { ratePct: 0.08, at: START + 20 * 60_000 }
+  await ticks()
+  assert.equal(store.history()[0].reason, 'funding 0.08% due within 30 min')
+})
+
+test('volume spike: the last 5 minutes against the hour before, read from last-price candles', async () => {
+  const { ex, store, ticks } = setup([], [tpl(22, d => { d.scope = { type: 'SYMBOL', symbol: 'BTCUSDT' } })])
+  const minute = Math.floor(START / 60_000) * 60_000
+  ex.candles.BTCUSDT = Array.from({ length: 70 }, (_, i) => ({ start: minute - (70 - i) * 60_000, close: 61000, volume: i >= 65 ? 40 : 10 }))
+  await ticks()
+  assert.equal(store.history()[0].reason, 'volume 4.0× in 5 min')
+})
+
+// ── Receipts, starter rules ────────────────────────────────
+
+test('a done write gets a receipt from the position Bybit shows after it, on the next poll, in History too', async () => {
+  const { s, store, ticks } = setup() // template 7: add 50 USDT margin at liquidation distance 2.5%
+  await ticks()
+  const r = await s.confirm(s.state().card!.id, 'tap')
+  assert.equal(r.execution!.status, 'APPLIED')
+  assert.equal(r.execution!.receipt, undefined) // the poll before the tap cannot know the after side
+  await ticks(2) // the first poll started in the same ms as the write, so only the next one is surely after it
+  assert.equal(store.execution(r.execution!.id)!.receipt, 'liq 2.5% → 4.1%')
+  assert.equal(last(store).status, 'Done · added 50 USDT margin · liq 2.5% → 4.1%')
+  assert.equal((await s.confirm(r.execution!.proposalId, 'tap')).execution!.receipt, 'liq 2.5% → 4.1%') // a resend gets it as it is
+})
+
+test('a close gets its size receipt only once it is filled, and none for a rejection', async () => {
+  const { s, store, ticks } = setup([btc()], [tpl(6)])
+  await ticks()
+  const r = await s.confirm(s.state().card!.id, 'tap')
+  assert.equal(r.execution!.status, 'ACKNOWLEDGED')
+  await ticks(3)
+  assert.equal(store.execution(r.execution!.id)!.status, 'FILLED')
+  assert.equal(store.execution(r.execution!.id)!.receipt, '0.05 → 0.025 BTC') // isolated: liquidation stays where it was
+
+  const other = setup([btc()], [tpl(6)])
+  await other.ticks()
+  other.ex.failNext = 'Reduce-only order would not reduce the position (Bybit 110017)'
+  const no = await other.s.confirm(other.s.state().card!.id, 'tap')
+  assert.equal(no.execution!.status, 'REJECTED')
+  await other.ticks(2)
+  assert.equal(other.store.execution(no.execution!.id)!.receipt, undefined)
+  assert.equal(last(other.store).status, 'Rejected · Reduce-only order would not reduce the position (Bybit 110017)')
+})
+
+test('receipt lines: stops and take profits as Bybit shows them, an open from flat, a full close', () => {
+  const p = btc({ stopLoss: 0 })
+  assert.equal(receiptLine({ type: 'setStop', symbol: 'BTCUSDT', positionIdx: 0, price: 60760 }, p, { ...p, stopLoss: 60760 }), 'stop none → 60,760')
+  assert.equal(receiptLine({ type: 'setStop', symbol: 'BTCUSDT', positionIdx: 0, price: 61500 }, btc(), btc({ stopLoss: 61000 })), 'stop 60,000 → 61,000') // what Bybit kept, not what was asked
+  assert.equal(receiptLine({ type: 'setTakeProfit', symbol: 'BTCUSDT', positionIdx: 0, price: 65000 }, p, { ...p, takeProfit: 65000 }), 'take profit none → 65,000')
+  const open = { type: 'order', symbol: 'XRPUSDT', side: 'Buy', qty: '40', positionIdx: 0, reduceOnly: false, orderLinkId: 'l' } as const
+  assert.equal(receiptLine(open, undefined, btc({ symbol: 'XRPUSDT', size: 40, markPrice: 2.5, liqPrice: 2.25 })), '0 → 40 XRP · liq 10.0%')
+  assert.equal(receiptLine(open, undefined, btc({ symbol: 'XRPUSDT', size: 40, liqPrice: 0 })), '0 → 40 XRP')
+  const close = { ...open, symbol: 'BTCUSDT', side: 'Sell', qty: '0.05', reduceOnly: true } as const
+  assert.equal(receiptLine(close, btc(), undefined), '0.05 → 0 BTC · position closed')
+  assert.equal(receiptLine(close, btc(), btc({ size: 0.025, liqPrice: 55000 })), '0.05 → 0.025 BTC · liq 2.5% → 9.8%') // cross: it moved
+  assert.equal(receiptLine({ type: 'cancel', symbol: 'BTCUSDT', orderId: 'o' }, btc(), btc()), undefined)
+  assert.equal(receiptLine(open, undefined, undefined), undefined)
+})
+
+test('starter rules: on the demo account the lens has work at once, and the menu does not ask twice', async () => {
+  const { ex, stop } = demoExchange(START)
+  stop()
+  const store = createStore(':memory:', () => START)
+  store.seed([...STARTER_RULES, ...VOICE_SEEDS])
+  assert.deepEqual(store.listShortcuts().map(r => [r.action.type, r.enabled]),
+    [['CLOSE_POSITION', true], ['SET_SL', true], ['MOVE_SL', true], ['SET_SL', true], ['MOVE_SL', true]])
+  let now = START
+  const s = createSession(ex, store, () => now)
+  await s.tick()
+  now += 2000
+  const cards = () => store.pendingProposals().map(p => p.question).sort()
+  assert.deepEqual(cards(), ['Move SOL stop to entry 140?', 'Set BTC stop at 60,760?', 'Set ETH stop at 3,162?'])
+  assert.deepEqual(await s.command('stop'), { ok: true, message: 'Heard "protect all" · 2 proposals' }) // the cards already up
+  assert.deepEqual(await s.command('lock'), { ok: true, message: 'Heard "lock profits" · 1 proposal' })
+  assert.equal(cards().length, 3)
+  ex.setMark('BTCUSDT', 61200) // liquidation distance 2.8%: the third rule
+  ex.prices.BTCUSDT = 61200
+  await s.tick()
+  assert.ok(cards().includes('Close 50% · 0.025 BTC?'))
+  assert.equal(ex.calls.length, 0) // every one still waits for a tap
+})
+
+test('a tap whose fresh read fails sends nothing and offers the card again once reads recover', async () => {
+  const { ex, s, ticks } = setup()
+  await ticks()
+  const card = s.state().card!
+  ex.failReads = 'Bybit HTTP 502'
+  const r = await s.confirm(card.id, 'tap-1')
+  assert.match(r.message, /could not check the position/)
+  assert.equal(ex.calls.length, 0)
+  await ticks() // reads still failing: no card loop
+  assert.equal(s.state().card, null)
+  ex.failReads = null
+  await ticks()
+  assert.equal(s.state().card!.question, card.question)
+  assert.notEqual(s.state().card!.id, card.id)
+})
+
+test('a failed fills read does not blind the position rules', async () => {
+  const { ex, s, ticks } = setup()
+  ex.fillsSince = async () => { throw new Error('Bybit 10005') }
+  await ticks()
+  assert.equal(s.state().card!.question, 'Add 50 USDT margin to BTC?')
+  assert.match(s.state().error ?? '', /10005/)
+})
+
+test('a close whose fills read failed on the tick the position went still alerts on the next tick', async () => {
+  const { ex, store, ticks, now } = setup([btc()], [tpl(19)])
+  await ticks()
+  ex.list = []
+  const fillsSince = ex.fillsSince.bind(ex)
+  ex.fillsSince = async () => { throw new Error('Bybit HTTP 502') }
+  await ticks()
+  ex.fillsSince = fillsSince
+  ex.fills.push({ id: 'e1', orderId: 'bust', orderLinkId: '', symbol: 'BTCUSDT', side: 'Sell', qty: 0.05, price: 59500, leavesQty: 0, time: now(), closedBy: 'LIQUIDATION' })
+  await ticks()
+  assert.equal(store.history()[0]?.reason, 'liquidated at 59,500')
 })

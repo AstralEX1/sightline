@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { BAND_LEVEL_PCT, BAND_POINTS, PriceWindow, decide, evaluateCondition, evaluateGroup, initialTriggerState, rearm } from '../src/engine.ts'
+import { BAND_LEVEL_PCT, BAND_POINTS, PriceWindow, decide, evaluateCondition, evaluateGroup, initialTriggerState, rearm, volumeRatio } from '../src/engine.ts'
 import type { EvalOpts, Facts, GroupResult, PositionFacts, TriggerState } from '../src/engine.ts'
 import { LIMITS } from '../src/registry.ts'
 import type { Condition, ShortcutRule, TriggerMode } from '../src/registry.ts'
@@ -346,4 +346,50 @@ test('price window: warms from 1-minute candles, skips the open one, keeps only 
   const end = NOW + minutes * 60_000
   assert.equal(b.ago(max, end), 60)
   assert.equal(b.ago(max + 600, end), null) // older than the largest window: dropped
+})
+
+// ---- Volume, funding, order age, position closed ----
+
+test('volumeRatio: the window over the hour before it, closed candles only, null without history', () => {
+  const at = NOW
+  const k = (minsAgo: number, volume?: number) => ({ start: at - minsAgo * 60_000, volume })
+  const candles = [...Array.from({ length: 65 }, (_, i) => k(70 - i, 10)), ...[5, 4, 3, 2, 1].map(m => k(m, 30)), k(0, 999)] // k(0) is still open
+  close(volumeRatio(candles, 300, at)!, 3) // minutes 1–5 at 30 against the 60 before at 10
+  assert.equal(volumeRatio(candles.slice(-10), 300, at), null) // under half an hour of base
+  assert.equal(volumeRatio(candles.map(c => ({ start: c.start })), 300, at), null) // mark candles carry no volume
+})
+
+test('VOLUME_SPIKE: at or above the multiple, UNKNOWN without a ratio', () => {
+  const c = { type: 'VOLUME_SPIKE', multiplier: '3', windowSec: 300 } as const
+  assert.equal(ev(c, facts({ volumeRatio: () => 3.2 })).verdict, 'TRUE')
+  assert.equal(ev(c, facts({ volumeRatio: () => 2.9 })).verdict, 'FALSE')
+  assert.equal(ev(c, facts({ volumeRatio: () => null })).verdict, 'UNKNOWN')
+})
+
+test('FUNDING: what the position pays inside the window; a symbol alone watches either side', () => {
+  const c = { type: 'FUNDING', ratePct: '0.05', minutesBefore: 30 } as const
+  const soon = (ratePct: number, mins = 10) => ({ ratePct, at: NOW + mins * 60_000, ts: NOW })
+  assert.equal(ev(c, facts({ position: pos(), funding: soon(0.06) })).verdict, 'TRUE') // long pays a positive rate
+  assert.equal(ev(c, facts({ position: pos({ side: 'Sell' }), funding: soon(0.06) })).verdict, 'FALSE') // short receives it
+  assert.equal(ev(c, facts({ position: pos({ side: 'Sell' }), funding: soon(-0.06) })).verdict, 'TRUE')
+  assert.equal(ev(c, facts({ position: pos(), funding: soon(0.06, 45) })).verdict, 'FALSE') // too early
+  assert.equal(ev(c, facts({ funding: soon(-0.06) })).verdict, 'TRUE') // One symbol
+  assert.equal(ev(c, facts({ position: pos(), funding: soon(0.06, -1) })).verdict, 'UNKNOWN') // charged, ticker not rolled yet
+  assert.equal(ev(c, facts({ position: pos() })).verdict, 'UNKNOWN')
+})
+
+test('ORDER_STALE: open at least that long; a gone order is not applicable', () => {
+  const c = { type: 'ORDER_STALE', minutes: 60 } as const
+  assert.equal(ev(c, facts({ order: { open: true, createdAt: NOW - 61 * 60_000 } })).verdict, 'TRUE')
+  assert.equal(ev(c, facts({ order: { open: true, createdAt: NOW - 59 * 60_000 } })).verdict, 'FALSE')
+  assert.equal(ev(c, facts({ order: { open: false, createdAt: NOW - 61 * 60_000 } })).verdict, 'NOT_APPLICABLE')
+  assert.equal(ev(c, facts({ order: { open: true } })).verdict, 'UNKNOWN')
+})
+
+test('POSITION_CLOSED is an event keyed by the closing order, so split fills alert once', () => {
+  const c = cond({ type: 'POSITION_CLOSED', by: 'SL' })
+  const f = facts({ closed: { by: 'SL', orderId: 'o9', price: 60000 } })
+  const g = evaluateGroup({ logic: 'ALL', items: [c] }, f, OPTS)
+  assert.deepEqual([g.verdict, g.events], ['TRUE', ['close:o9']])
+  assert.equal(ev({ type: 'POSITION_CLOSED', by: 'TP' }, f).verdict, 'FALSE')
 })

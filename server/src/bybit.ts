@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto'
 import type { Exchange, Fill, Instrument, Order, Position, Side } from './types.ts'
+import type { ClosedBy } from './registry.ts'
 
 const RECV_WINDOW = '5000'
 const TIMEOUT_MS = 8000
@@ -12,8 +13,10 @@ export function sign(secret: string, payload: string): string {
 
 /** Money safety: testnet only, so a mainnet host stops the server. */
 export function assertTestnet(base: string): void {
-  const host = new URL(base).hostname
-  if (!TESTNET_HOSTS.includes(host)) throw new Error(`Refusing non-testnet Bybit host ${host}`)
+  const url = new URL(base)
+  if (!TESTNET_HOSTS.includes(url.hostname) || url.protocol !== 'https:' || url.port || url.username || url.password) {
+    throw new Error('Bybit requires an HTTPS testnet or demo endpoint on the default port without user info')
+  }
 }
 
 type Params = Record<string, string | number | boolean>
@@ -41,6 +44,13 @@ const RATE_LIMITED_CODE = 10006
 const KLINE_PATHS = { LAST: '/v5/market/kline', MARK: '/v5/market/mark-price-kline', INDEX: '/v5/market/index-price-kline' }
 
 const num = (v: unknown) => Number(v) || 0
+
+/** What closed a position in this execution: a liquidation, or the full or partial stop or take profit (a trailing stop is a stop). */
+function closedBy(r: Row): ClosedBy | undefined {
+  if (r.execType === 'BustTrade') return 'LIQUIDATION'
+  const t = String(r.stopOrderType ?? '')
+  return t === 'StopLoss' || t === 'PartialStopLoss' || t === 'TrailingStop' ? 'SL' : t === 'TakeProfit' || t === 'PartialTakeProfit' ? 'TP' : undefined
+}
 /** Rounds to a step and prints without float noise: 0.003, 60760 */
 export const toStep = (v: number, step: string, round: (x: number) => number) => {
   const decimals = (step.split('.')[1] ?? '').length
@@ -53,6 +63,7 @@ export function createBybit(o: {
   key: string; secret: string; base: string
   fetch?: typeof fetch; now?: () => number; sleep?: (ms: number) => Promise<void>
 }): Exchange {
+  assertTestnet(o.base)
   const doFetch = o.fetch ?? fetch
   const now = o.now ?? Date.now
   const sleep = o.sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)))
@@ -66,6 +77,7 @@ export function createBybit(o: {
     for (let attempt = 0; ; attempt++) {
       const ts = String(now())
       const res = await doFetch(`${o.base}${path}${query ? `?${query}` : ''}`, {
+        redirect: 'error',
         method,
         body,
         signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -172,33 +184,34 @@ export function createBybit(o: {
         triggerPrice: num(r.triggerPrice),
         positionIdx: Number(r.positionIdx),
         status: String(r.orderStatus),
+        ...(num(r.createdTime) > 0 && { createdAt: num(r.createdTime) }),
       }))
     },
 
-    async closedPnlSince(ms) {
-      // shortcut: first page only (100 trades per day), page with the cursor if a trader closes more
-      const rows = await list('/v5/position/closed-pnl', { startTime: ms, limit: 100 })
-      return rows.reduce((sum, r) => sum + num(r.closedPnl), 0)
-    },
-
     async fillsSince(ms): Promise<Fill[]> {
-      const rows = await list('/v5/execution/list', { startTime: ms })
+      const rows = await list('/v5/execution/list', { startTime: ms, limit: 100 }) // the default page is 50
       // Funding payments are listed too; liquidation (BustTrade) and ADL fills stay, the trader must see those.
       return rows.filter(r => r.execType !== 'Funding').map(r => ({
         id: String(r.execId), orderId: String(r.orderId), orderLinkId: String(r.orderLinkId ?? ''), symbol: String(r.symbol), side: r.side as Side,
         qty: num(r.execQty), price: num(r.execPrice), leavesQty: num(r.leavesQty), time: num(r.execTime),
+        ...(closedBy(r) && { closedBy: closedBy(r) }),
       }))
     },
 
     async ticker(symbol) {
       const [row] = await list('/v5/market/tickers', { symbol })
       if (!row) throw rejected(`Unknown symbol ${symbol}`)
-      return { last: num(row.lastPrice), mark: num(row.markPrice), index: num(row.indexPrice) }
+      const fundingAt = num(row.nextFundingTime)
+      return {
+        last: num(row.lastPrice), mark: num(row.markPrice), index: num(row.indexPrice),
+        ...(fundingAt > 0 && row.fundingRate !== '' && row.fundingRate !== undefined && { funding: { ratePct: 100 * num(row.fundingRate), at: fundingAt } }),
+      }
     },
 
     async kline(symbol, source, limit) {
       const res = await call<{ list: string[][] }>('GET', KLINE_PATHS[source], { category: 'linear', symbol, interval: '1', limit: Math.min(limit, 1000) })
-      return res.list.map(r => ({ start: Number(r[0]), close: Number(r[4]) })) // [startTime, open, high, low, close, ...]
+      // [startTime, open, high, low, close, volume, turnover]; mark and index candles stop at close
+      return res.list.map(r => ({ start: Number(r[0]), close: Number(r[4]), ...(r[5] !== undefined && { volume: Number(r[5]) }) }))
     },
 
     instrument,
@@ -244,6 +257,15 @@ export function createBybit(o: {
 
     async cancelOrder(symbol, orderId) {
       await call('POST', '/v5/order/cancel', { category: 'linear', symbol, orderId })
+    },
+
+    async order(symbol, ref) {
+      // realtime also lists recently closed orders (seen on testnet); history covers older ones
+      for (const path of ['/v5/order/realtime', '/v5/order/history']) {
+        const [r] = await list(path, { symbol, ...ref })
+        if (r) return { orderId: String(r.orderId), status: String(r.orderStatus), cumExecQty: num(r.cumExecQty), avgPrice: num(r.avgPrice) }
+      }
+      return null
     },
   }
 }

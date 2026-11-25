@@ -24,14 +24,14 @@ npm run typecheck && npm test && npm run build
 Needs Node >= 22.18 (runs `.ts` directly; `node:sqlite` prints an ExperimentalWarning on Node 22). CI: `.github/workflows/test.yml`.
 
 ## Current state
-Server: every endpoint of architecture §10, tested end to end against `FakeExchange` (duplicate and concurrent taps, ambiguous submits, supersede, expiry, simulated proposals, voice, hysteresis, crossings across a gap, kline warm-up, order fills, reconciliation). Phone page and lens built against it and checked in the browser and the Even Hub simulator. Not tried yet: Bybit demo mutations and ROI parity with the Bybit app, real glasses, a real Telegram bot.
+Server: every endpoint of architecture §10, tested end to end against `FakeExchange` (duplicate and concurrent taps, ambiguous submits, supersede, expiry, simulated proposals, voice, hysteresis, crossings across a gap, kline warm-up, order fills, reconciliation). Phone page and lens built against it and checked in the browser and the Even Hub simulator. Lens Main has row `>` + Detail (Weather layout, dotted PnL via `numeralPng`); Speak is on the menu. Not tried yet: Bybit demo mutations and ROI parity with the Bybit app, real glasses, a real Telegram bot.
 
 ## Limitations
 - Testnet/demo only by design; do not point `BYBIT_BASE` at a live host.
-- Known limits are `shortcut:` comments in the code (first page of open orders, Bybit's default stop trigger when the stop order is not listed, a 60 s block after an unknown result, history paging by millisecond, and others).
+- Known limits are `shortcut:` comments in the code (first page of open orders, Bybit's default stop trigger when the stop order is not listed, an unknown add margin blocking further add margin on its position until it closes (orders, stops and cancels settle from Bybit 30 s after the unknown result), history paging by millisecond, and others).
 - `VITE_APP_TOKEN` is dev only: never set it for a build you share.
 - Voice audio goes to OpenAI only after a tap.
 - The packaged app has no Vite proxy: put the server's https origin in `app/app.json` before `npm run pack`.
 
 ## Next steps
-Run every mutation on Bybit Demo and compare ROI with the Bybit app (architecture §13 step 4); try real glasses (redraw time vs `CARD_SETTLE_MS`, R1 input); link a real Telegram bot; WebSocket fills when polling turns out too slow.
+Done 24 Nov 2026 on Bybit testnet (XRPUSDT): open, duplicate `orderLinkId` refused (110072), set SL/TP each keeps the other, SL past mark rejected, limit order listed and cancelled, reduce-only half and oversize close (no flip), fills deduped by `execId`, add margin on isolated (110076 on cross, as expected). A real Telegram bot linked via `/start <code>` and delivered an alert. Left: compare ROI with the Bybit app (ours is `unrealisedPnl / positionIM`; after an isolated add-margin `positionIM` grows by the added amount, so ROI halves, while entry value / leverage stays put; check which one the app shows); try real glasses (Detail numeral transfer, redraw time vs `CARD_SETTLE_MS`, R1 input); WebSocket fills when polling turns out too slow.

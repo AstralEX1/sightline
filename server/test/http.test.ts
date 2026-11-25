@@ -32,7 +32,7 @@ async function serve(o: { transcribe?: Transcribe; source?: string } = {}) {
 }
 
 const auth = { Authorization: 'Bearer secret' }
-const draft = (n: number) => structuredClone(TEMPLATES[n - 1].draft)
+const draft = (n: number) => structuredClone(TEMPLATES.find(t => t.id === `tpl_${n}`)!.draft)
 
 test('every route needs the token, and OPTIONS answers CORS', async () => {
   const { call, base } = await serve()
@@ -66,9 +66,9 @@ test('shortcuts: create, list as tiles, edit with the version, pause, enable, de
   const made = await call('POST', '/shortcuts', { ...draft(6), enabled: true })
   assert.equal(made.status, 201)
   assert.equal(made.body.title, 'Close Position')
-  assert.equal(made.body.summary, 'Liq. < 5%')
+  assert.equal(made.body.summary, 'Liq. < 3%')
   const tiles = (await call('GET', '/shortcuts')).body
-  assert.deepEqual(tiles.map((t: { summary: string }) => t.summary), ['Say "protect all"', 'Say "lock profits"', 'Liq. < 5%'])
+  assert.deepEqual(tiles.map((t: { summary: string }) => t.summary), ['Say "protect all"', 'Say "lock profits"', 'Liq. < 3%'])
 
   const id = made.body.id
   const edit = { ...draft(6), name: 'Half off near liq', version: 1 }
@@ -84,6 +84,35 @@ test('shortcuts: create, list as tiles, edit with the version, pause, enable, de
   assert.equal((await call('DELETE', `/shortcuts/${id}?version=4`)).status, 204)
   assert.equal((await call('GET', `/shortcuts/${id}`)).status, 404)
   assert.equal((await call('POST', `/shortcuts/nope/enable`, {})).status, 404)
+})
+
+test('incomplete templates persist off until their required values are saved', async () => {
+  const { call } = await serve()
+  assert.equal((await call('POST', '/shortcuts', { templateId: 'unknown' })).status, 404)
+  assert.equal((await call('POST', '/shortcuts', draft(10))).status, 400)
+  const made = await call('POST', '/shortcuts', { templateId: 'tpl_10', enabled: true })
+  assert.equal(made.status, 201)
+  const { id } = made.body
+  assert.equal(made.body.draft, true)
+  assert.equal(made.body.enabled, false)
+  assert.equal((await call('GET', '/shortcuts')).body.find((tile: { id: string }) => tile.id === id).draft, true)
+  assert.equal((await call('GET', `/shortcuts/${id}`)).body.scope.symbol, '')
+  assert.equal((await call('POST', `/shortcuts/${id}/enable`, { version: 1 })).status, 409)
+  assert.equal((await call('POST', `/shortcuts/${id}/test`, {})).body.ok, false)
+
+  const value = made.body
+  value.scope.symbol = 'BTCUSDT'
+  value.conditions.items[0].threshold = '61000'
+  const saved = await call('PUT', `/shortcuts/${id}`, value)
+  assert.equal(saved.status, 200)
+  assert.equal(saved.body.draft, undefined)
+  assert.equal(saved.body.enabled, false)
+  assert.equal((await call('POST', `/shortcuts/${id}/enable`, { version: 2 })).body.enabled, true)
+
+  const complete = await call('POST', '/shortcuts', { templateId: 'tpl_1' })
+  assert.equal(complete.status, 201)
+  assert.equal(complete.body.draft, undefined)
+  assert.equal(complete.body.enabled, false)
 })
 
 test('two shortcuts cannot share a voice phrase', async () => {
@@ -120,7 +149,7 @@ test('the lens confirms with an idempotency key and dismisses; executions and hi
   store.createShortcut({ ...draft(7), enabled: true })
   await session.tick()
   const card = (await call('GET', '/state')).body.card
-  assert.equal(card.question, 'Add 100 USDT margin to BTC?')
+  assert.equal(card.question, 'Add 50 USDT margin to BTC?')
   assert.equal((await call('POST', `/proposals/${card.id}/confirm`, {})).status, 400)
   const r = (await call('POST', `/proposals/${card.id}/confirm`, { idempotencyKey: 'tap-1' })).body
   assert.equal(r.ok, true)
@@ -131,7 +160,7 @@ test('the lens confirms with an idempotency key and dismisses; executions and hi
   assert.equal((await call('GET', '/executions/nope')).status, 404)
   assert.equal((await call('POST', `/proposals/${card.id}/dismiss`, {})).body.ok, false)
   const history = (await call('GET', '/history')).body
-  assert.equal(history[0].status, 'Done · added 100 USDT margin')
+  assert.equal(history[0].status, 'Done · added 50 USDT margin')
   assert.deepEqual((await call('GET', `/history?before=${history[0].createdAt}`)).body, [])
 })
 
@@ -204,9 +233,9 @@ test('body over 64 KB is 413', async () => {
 test('catalog and templates are served', async () => {
   const { call } = await serve()
   const c = (await call('GET', '/catalog')).body
-  assert.equal(c.conditions.length, 10)
+  assert.equal(c.conditions.length, 14)
   assert.equal(c.conditionAction.LOSS.INCREASE_POSITION, 'N')
   const t = (await call('GET', '/templates')).body
-  assert.equal(t.length, 15)
+  assert.equal(t.length, 25)
   assert.equal(t[0].title, 'Move Stop Loss')
 })

@@ -24,6 +24,8 @@ export type ConditionChoice = { group: string; label: string; type: ConditionTyp
 const CONDITION_CHOICES: ConditionChoice[] = [
   { group: 'Price', label: 'Price', type: 'PRICE' },
   { group: 'Price', label: 'Price change', type: 'PRICE_CHANGE' },
+  { group: 'Market', label: 'Volume spike', type: 'VOLUME_SPIKE' },
+  { group: 'Market', label: 'Funding rate', type: 'FUNDING' },
   { group: 'Profit and loss', label: 'ROI', type: 'PROFIT', unit: 'ROI_PERCENT' },
   { group: 'Profit and loss', label: 'Profit in USDT', type: 'PROFIT', unit: 'USDT' },
   { group: 'Profit and loss', label: 'Loss in USDT', type: 'LOSS', unit: 'USDT' },
@@ -31,8 +33,10 @@ const CONDITION_CHOICES: ConditionChoice[] = [
   { group: 'Stop and target', label: 'Stop loss distance', type: 'NEAR_SL' },
   { group: 'Stop and target', label: 'Take profit distance', type: 'NEAR_TP' },
   { group: 'Stop and target', label: 'Stop loss is missing', type: 'SL_MISSING' },
+  { group: 'Stop and target', label: 'Position closed', type: 'POSITION_CLOSED' },
   { group: 'Orders', label: 'Order filled', type: 'ORDER_FILLED' },
   { group: 'Orders', label: 'Order partly filled', type: 'ORDER_PARTIAL' },
+  { group: 'Orders', label: 'Order open too long', type: 'ORDER_STALE' },
 ]
 
 const scopeRules = (cat: Catalog, t: Scope['type']) => cat.scopes.find(s => s.type === t)!
@@ -73,8 +77,8 @@ export function triggerChoices(d: Draft): { mode: TriggerMode; why?: string }[] 
   return MODES.map(mode => ({
     mode,
     why: onceOnly(d.action) && mode !== 'ONCE' ? `${d.action!.type === 'OPEN_POSITION' ? 'Open Position' : 'Increase Position'} fires Once`
-      : ev && (mode === 'ON_ENTRY' || mode === 'REPEAT') ? 'Not for crossings and fills'
-        : states && mode === 'ON_EVENT' ? 'Needs a price crossing or a fill' : undefined,
+      : ev && (mode === 'ON_ENTRY' || mode === 'REPEAT') ? 'Not for crossings, fills and closes'
+        : states && mode === 'ON_EVENT' ? 'Needs a price crossing, a fill or a close' : undefined,
   }))
 }
 
@@ -97,6 +101,10 @@ export function newCondition(id: string, type: ConditionType, unit: 'ROI_PERCENT
     case 'PRICE_CHANGE': return { id, type, source: 'LAST', direction: 'UP', percent: '', windowSec: 300 }
     case 'PROFIT': case 'LOSS': return { id, type, unit, threshold: '' }
     case 'NEAR_LIQUIDATION': case 'NEAR_SL': case 'NEAR_TP': return { id, type, distancePct: '' }
+    case 'VOLUME_SPIKE': return { id, type, multiplier: '', windowSec: 300 }
+    case 'FUNDING': return { id, type, ratePct: '', minutesBefore: 30 }
+    case 'ORDER_STALE': return { id, type, minutes: 60 }
+    case 'POSITION_CLOSED': return { id, type, by: 'SL' }
     default: return { id, type } as Condition
   }
 }
@@ -123,6 +131,7 @@ export function setCompare(c: Condition, word: string): Condition {
     }
     case 'ORDER_FILLED':
     case 'ORDER_PARTIAL': return { id: c.id, type: word === 'filled' ? 'ORDER_FILLED' : 'ORDER_PARTIAL' }
+    case 'POSITION_CLOSED': return { ...c, by: word === 'liquidated' ? 'LIQUIDATION' : word.endsWith('take profit') ? 'TP' : 'SL' }
     default: return c
   }
 }
@@ -170,6 +179,11 @@ export function numField(cat: Catalog, d: Draft, key: string, conditionId?: stri
       const roi = c.unit === 'ROI_PERCENT'
       return { title: roi ? 'ROI' : c.type === 'PROFIT' ? 'Profit' : 'Loss', word: c.type === 'LOSS' && roi ? 'Below' : 'Above', sign: c.type === 'LOSS' && roi ? '−' : undefined, unit: roi ? '%' : 'USDT', value: c.threshold, range: { gt: 0, lt: BIG } }
     }
+    if (c.type === 'VOLUME_SPIKE' && key === 'multiplier') return { title: 'Volume', word: 'Above', unit: '×', value: c.multiplier, range: { gt: L.volumeX.min, le: L.volumeX.max } }
+    if (c.type === 'VOLUME_SPIKE' && key === 'window') return { title: 'Time window', word: 'Within', unit: 'min', value: String(c.windowSec / 60), range: { ge: L.volumeWindowSec.min / 60, le: L.volumeWindowSec.max / 60 }, integer: true }
+    if (c.type === 'FUNDING' && key === 'rate') return { title: 'Funding rate', word: 'Above', unit: '%', value: c.ratePct, range: { gt: L.fundingPct.min, le: L.fundingPct.max } }
+    if (c.type === 'FUNDING' && key === 'minutes') return { title: 'Before funding', word: 'Within', unit: 'min', value: String(c.minutesBefore), range: { ge: L.fundingMin.min, le: L.fundingMin.max }, integer: true }
+    if (c.type === 'ORDER_STALE' && key === 'minutes') return { title: 'Order age', word: 'Over', unit: 'min', value: String(c.minutes), range: { ge: L.orderAgeMin.min, le: L.orderAgeMin.max }, integer: true }
     if ((c.type === 'NEAR_LIQUIDATION' || c.type === 'NEAR_SL' || c.type === 'NEAR_TP') && key === 'distance') {
       const w = metricWord(c)
       return { title: w[0].toUpperCase() + w.slice(1), word: 'Below', unit: '%', value: c.distancePct, range: { gt: L.pricePct.min, le: L.pricePct.max } }
@@ -188,7 +202,11 @@ export function setNumber(d: Draft, key: string, value: string, conditionId?: st
   const i = d.conditions.items.findIndex(x => x.id === conditionId)
   if (i >= 0) {
     const c = d.conditions.items[i]
-    if (key === 'window' && c.type === 'PRICE_CHANGE') d.conditions.items[i] = { ...c, windowSec: Number(value) * 60 }
+    if (key === 'window' && (c.type === 'PRICE_CHANGE' || c.type === 'VOLUME_SPIKE')) d.conditions.items[i] = { ...c, windowSec: Number(value) * 60 }
+    else if (key === 'multiplier' && c.type === 'VOLUME_SPIKE') d.conditions.items[i] = { ...c, multiplier: value }
+    else if (key === 'rate' && c.type === 'FUNDING') d.conditions.items[i] = { ...c, ratePct: value }
+    else if (key === 'minutes' && c.type === 'FUNDING') d.conditions.items[i] = { ...c, minutesBefore: Number(value) }
+    else if (key === 'minutes' && c.type === 'ORDER_STALE') d.conditions.items[i] = { ...c, minutes: Number(value) }
     else if (key === 'percent' && c.type === 'PRICE_CHANGE') d.conditions.items[i] = { ...c, percent: value }
     else if (key === 'distance' && 'distancePct' in c) d.conditions.items[i] = { ...c, distancePct: value }
     else if (key === 'threshold' && 'threshold' in c) d.conditions.items[i] = { ...c, threshold: value }

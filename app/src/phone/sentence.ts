@@ -5,7 +5,7 @@
 import { ACTION_TITLE, type Action, type Condition, type ShortcutRule, type Target } from '../../../server/src/registry.ts'
 
 /** Which editor a token opens. */
-export type Key = 'metric' | 'compare' | 'logic' | 'threshold' | 'percent' | 'window' | 'distance'
+export type Key = 'metric' | 'compare' | 'logic' | 'threshold' | 'percent' | 'window' | 'distance' | 'multiplier' | 'rate' | 'minutes'
   | 'action' | 'close' | 'target' | 'usdt' | 'notional' | 'leverage' | 'side'
 export type Tok = { key: Key; text: string; aria?: string; empty?: boolean }
 /** Plain grammar words are strings; tokens are buttons. */
@@ -44,9 +44,14 @@ export function metricWord(c: Condition): string {
     case 'NEAR_SL': return 'stop loss distance'
     case 'NEAR_TP': return 'take profit distance'
     case 'SL_MISSING': return 'stop loss is missing'
-    case 'ORDER_FILLED': case 'ORDER_PARTIAL': return 'order'
+    case 'ORDER_FILLED': case 'ORDER_PARTIAL': case 'ORDER_STALE': return 'order'
+    case 'VOLUME_SPIKE': return 'volume'
+    case 'FUNDING': return 'funding rate'
+    case 'POSITION_CLOSED': return 'position'
   }
 }
+
+const CLOSED_BY = { SL: 'closed by stop loss', TP: 'closed by take profit', LIQUIDATION: 'liquidated' } as const
 
 const PRICE_OPS = { GTE: 'above', LTE: 'below', UP_CROSS: 'crosses above', DOWN_CROSS: 'crosses below' } as const
 
@@ -57,6 +62,7 @@ export function compareMenu(c: Condition): { items: string[]; current: string } 
     case 'PRICE_CHANGE': return { items: ['rises', 'falls'], current: c.direction === 'UP' ? 'rises' : 'falls' }
     case 'PROFIT': case 'LOSS': return c.unit === 'ROI_PERCENT' ? { items: ['above', 'below'], current: c.type === 'PROFIT' ? 'above' : 'below' } : null
     case 'ORDER_FILLED': case 'ORDER_PARTIAL': return { items: ['filled', 'partly filled'], current: c.type === 'ORDER_FILLED' ? 'filled' : 'partly filled' }
+    case 'POSITION_CLOSED': return { items: Object.values(CLOSED_BY), current: CLOSED_BY[c.by] }
     default: return null
   }
 }
@@ -84,7 +90,15 @@ export function conditionParts(c: Condition): Part[] {
       return [metric, 'is below', num('distance', c.distancePct, '%', `${metricWord(c)[0].toUpperCase()}${metricWord(c).slice(1)} threshold`, 'set percent')]
     case 'SL_MISSING': return [metric]
     case 'ORDER_FILLED':
-    case 'ORDER_PARTIAL': return [metric, 'is', compare!]
+    case 'ORDER_PARTIAL':
+    case 'POSITION_CLOSED': return [metric, 'is', compare!]
+    case 'VOLUME_SPIKE':
+      return [metric, 'within', num('window', String(c.windowSec / 60), 'min', 'Time window', 'set time'), 'is above',
+        num('multiplier', c.multiplier, '×', 'Volume multiple', 'set multiple'), 'the hourly average']
+    case 'FUNDING':
+      return [metric, 'is above', num('rate', c.ratePct, '%', 'Funding rate', 'set rate'), 'with',
+        num('minutes', String(c.minutesBefore), 'min', 'Time before funding', 'set time'), 'to payment']
+    case 'ORDER_STALE': return [metric, 'is open for over', num('minutes', String(c.minutes), 'min', 'Order age', 'set time')]
   }
 }
 
@@ -130,6 +144,6 @@ export function optionsSummary(o: Opts): string {
 }
 
 /** Tile subtitle (spec §6.3): the server's summary, prefixed when off. */
-export const tileSub = (t: { enabled: boolean; summary: string }) => `${t.enabled ? '' : 'Off · '}${t.summary}`
+export const tileSub = (t: { enabled: boolean; draft?: boolean; summary: string }) => `${t.draft ? 'Draft · ' : t.enabled ? '' : 'Off · '}${t.summary}`
 
 export const titleOf = (r: { name?: string; action?: Action }) => r.name || (r.action ? ACTION_TITLE[r.action.type] : 'New Shortcut')

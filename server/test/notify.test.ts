@@ -215,3 +215,12 @@ test('the token never appears in an error message', async () => {
   assert.equal(store.retries.length, 1)
   assert.ok(!store.retries[0].error.includes(TOKEN))
 })
+
+test('lens open but nothing else carries the alert: Telegram is the fallback', () => {
+  const phoneOnly = setup({ tg: LINKED })
+  phoneOnly.n.seen('lens')
+  assert.deepEqual(phoneOnly.n.route(alert({ delivery: { glasses: false, phone: true } })), ['telegram'])
+  const glassesOff = setup({ tg: LINKED, notifications: { glasses: false, app: true, telegram: true } })
+  glassesOff.n.seen('lens')
+  assert.deepEqual(glassesOff.n.route(alert()), ['telegram'])
+})

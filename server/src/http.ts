@@ -137,7 +137,9 @@ export function createServer(d: {
         return send(res, 200, v.value ? { ...v, targets: session.preview(v.value) } : v)
       }
       if (route === 'POST /api/shortcuts') {
-        const r = store.createShortcut(await readJson(req))
+        const b = await readJson(req)
+        if (typeof b.templateId === 'string') return send(res, 201, tile(store.createFromTemplate(b.templateId)))
+        const r = store.createShortcut(b)
         return r.ok ? send(res, 201, tile(r.shortcut)) : send(res, 400, { error: r.issues[0]?.message ?? 'Invalid shortcut', issues: r.issues })
       }
       const shortcut = path.match(/^\/api\/shortcuts\/([\w-]+)(?:\/(enable|pause|test))?$/)

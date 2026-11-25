@@ -42,6 +42,7 @@ let toastTimer: ReturnType<typeof setTimeout> | undefined
 /** Bottom, above the safe area, 3 s, text only (§4.12). */
 export function toast(text: string, ms = 3000) {
   const el = app.root.querySelector<HTMLElement>('.toast')!
+  if (el.classList.contains('is-on') && el.textContent !== text) el.animate([{ opacity: .3 }, { opacity: 1 }], { duration: 120, easing: 'ease-out' }) // a new line in a shown toast: dip, not a cut
   el.textContent = text
   el.classList.add('is-on')
   clearTimeout(toastTimer)
@@ -87,41 +88,59 @@ export function sheet(o: { title: string; body: Kid[]; onDone?: () => boolean | 
     el.classList.add('is-closing')
     el.classList.remove('is-open')
     scrim.classList.remove('is-open')
+    el.inert = scrim.inert = true // screen readers and Tab leave it now, not after the slide
+    el.style.transition = el.style.transform = '' // a drag's spring-back can still hold them, and they would pin the sheet in place
+    el.removeAttribute('aria-modal')
     setTimeout(() => { el.remove(); scrim.remove() }, 350)
     o.back?.()
   }
   done?.addEventListener('click', () => { if (!done.disabled && o.onDone!() !== false) close() })
   scrim.addEventListener('click', close)
   trap(el, close)
-  drag(el, close)
+  drag(el, scrim, close)
   app.root.append(scrim, el)
   requestAnimationFrame(() => { el.classList.add('is-open'); scrim.classList.add('is-open') })
   ;(o.focus ?? el.querySelector<HTMLElement>(FOCUSABLE))?.focus({ preventScroll: true }) // `focus` opens the keyboard: only for a sheet that is one field
   return { close, el, setDone: on => { if (done) done.disabled = !on } }
 }
 
-/** Drag down from the grabber or nav: 1:1, dismiss past half the height or on a fast flick, else spring back. */
-function drag(el: HTMLElement, close: () => void) {
-  // shortcut: a CSS curve stands in for the velocity-handoff spring of §3.5, write the spring step if it feels off on a device
-  let y0 = 0, t0 = 0, dy = 0, on = false
+/** Drag down from the grabber or nav: 1:1, the scrim dims with it; dismiss past half the height or on a fast flick, else spring back. */
+function drag(el: HTMLElement, scrim: HTMLElement, close: () => void) {
+  // shortcut: a CSS curve stands in for the velocity-handoff spring of §3.5; under reduced motion nothing follows the finger, a release past the threshold still closes
+  const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches
+  let y0 = 0, dy = 0, on = false, still = false
+  let pts: { t: number; y: number }[] = [] // the last ~100 ms of moves, for the release velocity
   const grip = (e: PointerEvent) => (e.target as HTMLElement).closest('.sheet__grabber, .sheet__nav') && !(e.target as HTMLElement).closest('button')
   el.addEventListener('pointerdown', e => {
     if (!grip(e)) return
-    on = true; y0 = e.clientY; t0 = e.timeStamp; dy = 0
+    on = true; still = reduce(); y0 = e.clientY; dy = 0; pts = [{ t: e.timeStamp, y: e.clientY }]
     el.setPointerCapture(e.pointerId)
-    el.style.transition = 'none'
+    if (!still) el.style.transition = scrim.style.transition = 'none'
   })
   el.addEventListener('pointermove', e => {
     if (!on) return
     dy = Math.max(0, e.clientY - y0)
+    pts.push({ t: e.timeStamp, y: e.clientY })
+    while (pts.length > 2 && e.timeStamp - pts[1].t >= 100) pts.shift()
+    if (still) return
     el.style.transform = `translateY(${dy}px)`
+    scrim.style.opacity = String(Math.max(0, 1 - dy / el.offsetHeight))
   })
   const end = (e: PointerEvent) => {
     if (!on) return
     on = false
-    el.style.transition = el.style.transform = ''
-    const v = dy / Math.max(1, e.timeStamp - t0) // px per ms
-    if (dy + v * 200 > el.offsetHeight / 2) close() // projected end point
+    pts.push({ t: e.timeStamp, y: e.clientY })
+    while (pts.length > 2 && e.timeStamp - pts[1].t >= 100) pts.shift() // a finger that rested before lifting sent no moves
+    const v = (pts[pts.length - 1].y - pts[0].y) / Math.max(1, e.timeStamp - pts[0].t) // px per ms, downward
+    const fling = v > .5 || dy + v * 200 > el.offsetHeight / 2
+    if (still) { if (fling) close(); return }
+    el.style.transition = scrim.style.transition = scrim.style.opacity = '' // the scrim's own transition takes it on from here: back to 1, or out with the close
+    if (fling) { el.style.transform = ''; close(); return }
+    // spring back: overshoot a touch, then settle (cubic-bezier stands in for the §3.5 spring)
+    el.style.transition = 'transform .35s cubic-bezier(.2, 1.1, .3, 1)'
+    el.style.transform = 'translateY(0)'
+    const clear = (ev: TransitionEvent) => { if (ev.target !== el) return; el.style.transition = el.style.transform = ''; el.removeEventListener('transitionend', clear) } // a child's transitionend bubbles here too
+    el.addEventListener('transitionend', clear)
   }
   el.addEventListener('pointerup', end)
   el.addEventListener('pointercancel', end)
@@ -133,7 +152,14 @@ export type MenuItem = { label: string; checked?: boolean; danger?: boolean; dis
 export function menu(anchor: HTMLElement, items: MenuItem[], label: string, back?: () => void) {
   const radio = items.some(i => i.checked !== undefined)
   const scrim = h('div', { class: 'menu-scrim' })
-  const close = () => { scrim.remove(); box.remove(); back?.() }
+  const close = () => {
+    scrim.remove()
+    box.classList.remove('is-open')
+    box.classList.add('is-closing') // shrinks back into the anchor (transform-origin), then goes
+    box.inert = true
+    setTimeout(() => box.remove(), 150)
+    back?.()
+  }
   const box = h('div', { class: 'menu', role: 'menu', 'aria-label': label },
     ...items.map(i => h('button', {
       class: `menu__item${i.danger ? ' is-danger' : ''}`, type: 'button', role: radio ? 'menuitemradio' : 'menuitem',
@@ -158,7 +184,13 @@ export function menu(anchor: HTMLElement, items: MenuItem[], label: string, back
 export function dialog(o: { title: string; text?: string; buttons: { label: string; primary?: boolean; danger?: boolean }[] }): Promise<number> {
   return new Promise(resolve => {
     const before = document.activeElement as HTMLElement | null
-    const pick = (i: number) => { wrap.remove(); before?.focus(); resolve(i) }
+    const pick = (i: number) => {
+      wrap.classList.remove('is-open')
+      wrap.classList.add('is-closing')
+      wrap.inert = true
+      setTimeout(() => wrap.remove(), 150)
+      before?.focus(); resolve(i)
+    }
     const wrap = h('div', { class: 'dialog-scrim' },
       h('div', { class: 'dialog', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': 'dlg-title', 'aria-describedby': o.text ? 'dlg-text' : undefined },
         h('h2', { id: 'dlg-title', class: 'dialog__title' }, o.title),
@@ -168,14 +200,15 @@ export function dialog(o: { title: string; text?: string; buttons: { label: stri
         }, b.label))))
     trap(wrap, () => pick(-1)) // Escape picks nothing
     app.root.append(wrap)
-    wrap.querySelector<HTMLElement>('.is-primary, button')?.focus()
+    requestAnimationFrame(() => wrap.classList.add('is-open'))
+    ;(wrap.querySelector<HTMLElement>('.is-primary') ?? wrap.querySelector<HTMLElement>('button'))?.focus()
   })
 }
 
 /** Row switch 51 × 31 (Settings, Options). */
 export const rowSwitch = (on: boolean, labelledBy: string, onToggle: (on: boolean, el: HTMLButtonElement) => void, disabled = false) => {
   const el = h('button', { class: 'switch', type: 'button', role: 'switch', 'aria-checked': String(on), 'aria-labelledby': labelledBy, disabled },
-    h('span', { class: 'switch__knob' }))
+    h('span', { class: 'switch__track' }, h('span', { class: 'switch__knob' })))
   el.addEventListener('click', () => onToggle(el.getAttribute('aria-checked') !== 'true', el))
   return el
 }
@@ -185,3 +218,10 @@ export const subNav = (title: string, right?: Node) => h('div', { class: 'nav na
   h('a', { class: 'back-link', href: '#/', html: `${icon('back', 20, 2.6)}<span>Shortcuts</span>` }),
   h('h1', { class: 'nav-title' }, title),
   right ?? h('span'))
+
+/** Re-renders `el` and puts focus back on the button with the same text, which a replaceChildren would drop to <body>. */
+export function keepFocus(el: HTMLElement, render: () => void) {
+  const was = el.contains(document.activeElement) ? document.activeElement!.textContent : null
+  render()
+  if (was !== null) [...el.querySelectorAll<HTMLElement>('button')].find(b => b.textContent === was)?.focus()
+}

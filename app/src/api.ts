@@ -73,6 +73,7 @@ export const getTemplates = () => request<Template[]>('GET', '/api/templates')
 export const listShortcuts = () => request<Tile[]>('GET', '/api/shortcuts')
 /** Issues for the editor, plus the targets it matches now and each condition's value on them. `id` when editing. */
 export const validate = (draft: EditableShortcut & { id?: string }) => request<Validation & { targets?: Preview[] }>('POST', '/api/shortcuts/validate', draft)
+export const createFromTemplate = (templateId: string) => request<Tile>('POST', '/api/shortcuts', { templateId })
 export const createShortcut = (draft: EditableShortcut & { enabled?: boolean }) => request<Tile>('POST', '/api/shortcuts', draft)
 /** Fails with 409 when someone saved a newer version meanwhile. */
 export const updateShortcut = (shortcutId: string, draft: EditableShortcut, version: number) => request<Tile>('PUT', `/api/shortcuts/${id(shortcutId)}`, { ...draft, version })

@@ -2,7 +2,7 @@
 
 **Version 2.0 · 24 November 2026** · replaces v1.0 (`~/Downloads/bybit-shortcuts-spec.md`)
 **Audience:** the engineer building the phone page in `app/` (vanilla TypeScript, HTML/CSS, Vite, Even Hub WebView).
-**Status:** drawn and approved on the design canvas, not coded yet. Every color pair below was checked for contrast; nothing was tried on a device.
+**Status:** coded in `app/src/phone/` and checked in desktop Chrome at phone size. Every color pair below was checked for contrast; nothing was tried on a device.
 
 Design canvas: https://claude.ai/artifact/QkfLzCX64QKfdKRV6N2BUA (boards named in each section).
 
@@ -13,7 +13,7 @@ Design canvas: https://claude.ai/artifact/QkfLzCX64QKfdKRV6N2BUA (boards named i
 | Topic | Source of truth |
 |---|---|
 | Phone screens, tokens, components, copy, interactions | **this document**, then the canvas |
-| Rule model, condition and action registry, compatibility matrices, `validate()`, engine, proposals, API, the 15 templates as data | `docs/shortcuts-architecture.md` (§ numbers below as "arch §n") |
+| Rule model, condition and action registry, compatibility matrices, `validate()`, engine, proposals, API, the 25 templates as data | `docs/shortcuts-architecture.md` (§ numbers below as "arch §n") |
 | Lens screens, lens gestures | `docs/glasses-shortcuts.md` and its canvas |
 
 Where the canvas and this document differ, this document wins: it records decisions made after drawing. The G2 boards on the phone canvas are outdated; build the lens from `glasses-shortcuts.md`.
@@ -78,29 +78,26 @@ Dark values are drawn for the home screen only (board HomeDark); the contrast co
 | `--error` | `#C93434` | `#F07878` | incompatible row text and marker | on `--error-bg` 4.57 / 5.43 |
 | `--error-bg` | `#FDECEC` | `#3A2024` | incompatible token fill | — |
 | `--success` | `#4CB782` | `#4CB782` | status dot, always beside a word | decorative |
-| `--chip` | `#ECEDF0` | `#2A2C31` | neutral icon chip and remove circle; glyph `--text-2` | glyph 4.31 |
+| `--chip` | `#ECEDF0` | `#2A2C31` | remove circle, template badge, segmented and search fills; glyph `--text-2` | glyph 4.31 |
 | `--scrim` | `rgba(0,0,0,.35)` | `rgba(0,0,0,.55)` | behind sheets | — |
 | `--menu-scrim` | `rgba(34,35,38,.06)` | `rgba(0,0,0,.3)` | behind token menu | — |
-| `--tile-top` / `--tile-bottom` | `#2C2D33` / `#222326` | `#26272C` / `#1C1D21` | tile gradient (180deg), all tiles | — |
-| `--tile-edge` | `rgba(255,255,255,.06)` | `rgba(255,255,255,.08)` | tile inset outline | — |
-| `--tile-text` / `--tile-text-2` | `#FFFFFF` / `#B4B6BD` | same | tile title / subtitle | 13.7 / 6.77 |
-| `--tile-switch-on` / `--tile-switch-off` | `#6E78E0` / `#45464D` | same | switch track on a tile; knob `#FFFFFF` | on 3.55 vs tile |
+| `--chip-neutral` | `#8A8F98` | same | fill of chips without an action (Apply to, When, empty Do) | white glyph 3.25 |
 | `--switch-off` | `#D5D6DB` | `#3A3B40` | row switch track off | — |
 
-Action colors (glyphs on dark tiles and dark chips):
+Action colors are fills, the same in both themes: Linear hues deepened until white text on them is ≥ 4.6:1. One icon language everywhere, as in Apple Shortcuts: a fill in the action's color with a white glyph. Your shortcut's tile is the large form; every chip (title pill, Do row, action sheet, History, banner, template tile) is the small form. Fill: `linear-gradient(180deg, color-mix(in srgb, <color> 92%, #FFF), <color>)` over a plain `<color>` fallback, set through `--c`.
 
-| Token | Value | Action | Contrast on tile |
+| Token | Value | Action | White on it |
 |---|---|---|---|
-| `--act-stop` | `#8D95F0` | Move Stop Loss, Set Stop Loss, Set Take Profit | 5.03 |
-| `--act-close` | `#F2994A` | Close Position | 6.16 |
-| `--act-margin` | `#4EA7FC` | Add Margin | 5.4 |
-| `--act-grow` | `#4CB782` | Open Position, Increase Position | 5.49 |
-| `--act-cancel` | `#8A8F98` | Cancel Order; any tile that is off | 4.22 |
-| `--act-notify` | `#EB5757` | Notify | 3.94 (icon) |
+| `--act-stop` | `#5E6AD2` | Move Stop Loss, Set Stop Loss, Set Take Profit | 4.7 |
+| `--act-close` | `#B65D0D` | Close Position | 4.62 |
+| `--act-margin` | `#2675C9` | Add Margin | 4.7 |
+| `--act-grow` | `#34825C` | Open Position, Increase Position | 4.66 |
+| `--act-cancel` | `#6B6F76` | Cancel Order; any tile that is off | 5.05 |
+| `--act-notify` | `#CF3F3F` | Notify | 4.73 |
 
 ### 3.2 Typography
 
-Font: **Inter** variable (SIL OFL), bundled as `app/public/fonts/InterVariable.woff2` with `@font-face`; no Google Fonts at runtime (the WebView may be offline). Stack: `Inter, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif`. Every number uses `font-variant-numeric: tabular-nums`.
+Font: **Inter** variable (SIL OFL), latin subset bundled as `app/src/phone/fonts/InterVariable.woff2` with `@font-face` in `phone.css` (Vite emits it next to the build, so relative paths work in the `.ehpk`); no Google Fonts at runtime (the WebView may be offline). Stack: `Inter, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif`. Every number uses `font-variant-numeric: tabular-nums`.
 
 | Style | Size / line | Weight | Tracking | Use |
 |---|---|---|---|---|
@@ -111,7 +108,7 @@ Font: **Inter** variable (SIL OFL), bundled as `app/public/fonts/InterVariable.w
 | `body` | 16 / 22 | 400 | 0 | rows, menus, sheet nav |
 | `body-strong` | 16 / 22 | 500 | 0 | `Apply to`, `Options`, `Add condition`, `Add action` |
 | `tile-title` | 16 / 21 | 600 | −0.1 px | tile title |
-| `tile-sub` | 13 / 17 | 400 | 0 | tile subtitle, one line, ellipsis |
+| `tile-sub` | 13 / 17 | 400 | 0 | tile subtitle, up to two lines, then ellipsis |
 | `footnote` | 13 / 18 | 400 | 0 | sheet notes, status line is 15 / 20 |
 | `group-label` | 13 / 18 | 400 | 0, uppercase | History and Settings group headers |
 | `numeric` | 30 / 36 | 400 | 0 | numeric sheet value and unit |
@@ -137,7 +134,7 @@ Sizes are in `rem` from a 16 px root so text size settings scale the layout. On 
 | Tile switch | 40 × 24 visible, 50 × 44 target, top 4 right 2 | |
 | Row switch | 51 × 31 | Settings |
 
-Elevation: no shadows on cards or tiles. Cards: `box-shadow: inset 0 0 0 1px var(--border)`. Tiles: `inset 0 0 0 1px var(--tile-edge)`. Menu: border + `0 12px 32px rgba(34,35,38,.16)`.
+Elevation: no shadows on cards or tiles. Cards: `box-shadow: inset 0 0 0 1px var(--border)`. Your tiles: none, the fill is the edge. Template tiles: as cards. Menu: border + `0 12px 32px rgba(34,35,38,.16)`.
 
 ### 3.4 Icons
 
@@ -172,12 +169,13 @@ Follows Apple's fluid-interface rules: feedback on pointer-down, animate from th
 | Press (rows, text buttons, tokens) | on `pointerdown` opacity .55 at once; release fades back in 200 ms ease-out |
 | Press (tiles) | opacity .85 + `scale(.97)` at once; release 200 ms |
 | Sheet open / close | translateY spring, damping 1.0, response 0.35 s; scrim opacity follows progress |
-| Sheet drag down | 1:1 from the grabber with the grab offset kept; on release project the end point (`v/1000 · .998/(1−.998)`) and dismiss if it passes half the sheet height; hand the release velocity to the spring |
-| Token menu | scale .9 → 1 and opacity from the token's rect (`transform-origin` on the token); damping 1.0, response 0.25 s; closes back into the token |
+| Sheet drag down | 1:1 from the grabber with the grab offset kept; on release project the end point (`v/1000 · .998/(1−.998)`) and dismiss if it passes half the sheet height or the last 100 ms moved faster than .5 px/ms; the scrim dims with the drag; hand the release velocity to the spring |
+| Token menu | scale .9 → 1 and opacity from the token's rect (`transform-origin` on the token); damping 1.0, response 0.25 s; closes back into the token in 150 ms |
+| Dialog | scrim fades in, card scale .97 → 1 and opacity, 250 ms; leaves in 150 ms ease-out and takes no taps while it goes |
 | Apply to expand | height and chevron rotation, damping 1.0, response 0.3 s; tapping again mid-way reverses from the current height |
 | Switch | knob slides 150 ms |
 | Incompatible marker | 150 ms fade-in, no shake |
-| `prefers-reduced-motion` | all of the above become 150 ms opacity cross-fades |
+| `prefers-reduced-motion` | all of the above become 150 ms opacity cross-fades; a sheet drag does not follow the finger, but a release past the same distance or flick still closes it |
 | `prefers-reduced-transparency` | scrims solid at the same luminance |
 | `prefers-contrast: more` | `--border` and `--text-2` become `--text` |
 
@@ -197,7 +195,7 @@ Shared by your shortcuts and templates (canvas: Main).
 <div class="tile" data-state="on">                      <!-- on | off | draft -->
   <a class="tile__body" href="#/shortcut/sc_123"
      aria-label="Move Stop Loss, ROI above 30%. Edit">
-    <svg class="tile__glyph" style="color: var(--act-stop)">…</svg>
+    <svg class="tile__glyph">…</svg>                    <!-- white; the tile has style="--c: var(--act-stop)" -->
     <span class="tile__text">
       <span class="tile__title">Move Stop Loss</span>
       <span class="tile__sub">ROI above 30%</span>
@@ -207,11 +205,11 @@ Shared by your shortcuts and templates (canvas: Main).
 </div>
 ```
 
-- Body: column, `justify-content: space-between`; glyph top-left; title and subtitle bottom-left; gradient `--tile-top` → `--tile-bottom`, `--tile-edge` outline, radius 20, padding 12.
+- Body: column, `justify-content: space-between`; glyph top-left; title and subtitle bottom-left, all white; fill in the action color (§3.1), radius 20, padding 12. Switch on a tile: off track `rgba(0,0,0,.24)` with a white knob, on track white with a knob in the tile's color.
 - Switch sits over the top-right corner (50 × 44 target); the body link does not cover it for pointer events (`z-index` above). Tapping the switch never opens the editor.
-- `data-state="off"`: glyph `--act-cancel`, subtitle prefixed `Off · `, switch off. `data-state="draft"`: subtitle prefixed `Draft · `, switch `aria-disabled="true"`; tapping it opens the editor with the missing values marked (§5.10).
+- `data-state="off"`: fill `--act-cancel`, subtitle prefixed `Off · `, switch off. `data-state="draft"`: subtitle prefixed `Draft · `, switch `aria-disabled="true"`; tapping it opens the editor with the missing values marked (§5.10).
 - Busy: while `enable` / `pause` is in flight the switch shows the new position at 60% opacity; on failure it springs back and a toast shows the server's `Issue.message`.
-- Template variant `.tile--template`: the whole tile is one `<button>`, the switch is replaced by a 26 px badge (`rgba(255,255,255,.12)`, white `plus` 12 px, `aria-hidden`). `aria-label="Template: Move Stop Loss, ROI above 30%. Add"`.
+- Template variant `.tile--template`: the whole tile is one `<button>`, a plain card (`--surface`, `--border` outline, `--text` / `--text-2`) so your own shortcuts stand out; the glyph is a 34 px chip (radius 9) in the action color, and the switch is replaced by a 26 px badge (`--chip`, `plus` 12 px in `--text-2`, `aria-hidden`). `aria-label="Template: Move Stop Loss, ROI above 30%. Add"`.
 - Grid: 2 columns, 12 px gap. At root font size ≥ 22 px: 1 column.
 
 ### 4.3 Token `.token`
@@ -249,7 +247,7 @@ Under the offending line: `warn` 16 px + `Incompatible` in `marker` style, `--er
 
 ### 4.12 Toast, banner, dialog (boards HomeBanner, DiscardDialog, DeleteDialog; the toast is not drawn)
 - Toast (the page already has one): bottom, above the safe area, 3 s, text only.
-- In-app banner: a top card with the action glyph, `<Title> · <target> · <reason>` and `Confirm on Even G2`; it appears when `GET /notifications?after=` returns an alert while the app is open; tap → `#/history`. It never has a confirm button.
+- In-app banner: a top card with the action glyph, `<Title> · <target> · <reason>` and `Confirm on Even G2`; it appears when `GET /notifications?after=` returns an alert while the app is open; tap → `#/history`. Several alerts in one poll show the newest, with `now · +N more`. It never has a confirm button.
 - Dialog: centered, 270 wide, title + one line + two stacked buttons. Used only for discarding an edit (§7.1) and deleting a shortcut.
 
 ## 5. Screens
@@ -262,7 +260,7 @@ Top to bottom, page inset 16:
 3. Status line (15 / 20, `--text-2`, min height 28, a link to Settings): dot (`--success` when Bybit is connected, `--error` when not) + `Bybit · Demo` (`Bybit · Offline` when not connected) + `glasses` 18 + `G2` (`G2 off` when the lens has not polled `/state` in 10 s, arch §10).
 4. Your shortcuts: tile grid, 10 px below the status line, in creation order (oldest first; no reordering in the MVP).
 5. `Templates` (`title-section`), 24 px above.
-6. Template grid, 10 px below: the 15 templates of arch §12, in that order, as `.tile--template`.
+6. Template grid, 10 px below: the 25 templates of arch §12, in that order, as `.tile--template`.
 
 Data: `GET /shortcuts` (title, summary, enabled, draft flag), `GET /templates`, status from `GET /settings` and `GET /state`. Refetch on route enter and every 10 s while visible.
 
@@ -274,12 +272,12 @@ Interactions:
 States:
 - Loading: two empty tiles at 40% opacity, no shimmer.
 - No shortcuts: the shortcut grid is replaced by one line, `No shortcuts yet. Start from a template or tap +.` (`body`, `--text-2`); Templates stay.
-- Server offline: status line `● Server offline` in `--text-2`, switches and templates disabled (`aria-disabled`), retry every 5 s.
+- Server offline: status line `● Server offline` in `--text-2`, switches, templates and `+` disabled (`aria-disabled`), retry every 5 s.
 
 ### 5.2 Shortcut Editor (boards Editor, ApplyB)
 
 Full screen, pushed. Top to bottom:
-1. Nav row 56, grid `44px 1fr 44px`: back `.circle-btn` (`back`), `.title-pill` (chip in the action's color on `#222326`, title = `name` or the action label).
+1. Nav row 56, grid `44px 1fr 44px`: back `.circle-btn` (`back`), `.title-pill` (chip filled in the action's color, title = `name` or the action label).
 2. Apply to `.disclosure`, 12 px below (§5.3).
 3. When card, 24 px below: first line `[when chip] When <condition sentence>`; each further line starts with the group operator token (`or` / `and`); a remove button on every line while there are ≥ 2 lines, none when there is one; then `Add condition` (`body-strong`, `--accent-text`, circled `plus` 20, min height 44). Max 10 lines; `Add condition` hides at 10.
 4. Do card, 24 px below: `[action chip] Do <action sentence>` + remove button. Removing the action turns the card into the empty Do card of §5.6.
@@ -302,6 +300,7 @@ Data: the shortcut from `GET /shortcuts`, `GET /catalog`, and `POST /shortcuts/v
 | One position | `BTCUSDT · Long` | opens the position picker (`GET /positions`; rows `BTCUSDT · Long · 0.050 BTC`), then collapses |
 | One symbol | `BTCUSDT` | opens the symbol picker (search field + USDT perpetuals, recent first), then collapses |
 | One order | `BTCUSDT · Buy limit 88,500` | opens the order picker (`GET /orders/open`; rows `BTCUSDT · Buy limit 88,500 · 0.030`), then collapses |
+| All orders | `All orders` | sets `ALL_ORDERS` (order age only: Cancel Order or Notify), collapses |
 
 Long values end with an ellipsis; `aria-label` keeps the full value. Options that can never fit the current action are hidden (e.g. One order for Open Position; Open needs One symbol, Cancel needs One order, arch §7). A scope change that breaks a condition marks that line (§5.9); conditions are never removed silently.
 
@@ -367,10 +366,10 @@ A template creates a disabled shortcut (`Draft · ` on its tile). Templates 10�
 ### 5.11 History (board History)
 
 Nav: back link `Shortcuts` with `back` chevron (left), `History` (`nav-title`, centered), gear → Settings (right). Groups by local day: `TODAY`, `YESTERDAY`, then `MON 23 NOV` (`group-label`). Each row (padding 10 16, gap 12):
-- 28 px chip, radius 7, `#222326` fill, action glyph 18 in the action color;
+- 28 px chip, radius 7, filled in the action color, white action glyph 18;
 - line 1: action label (`body`, 17 on canvas → use 16) and time `HH:mm` right-aligned (`--text-2`, tabular);
 - line 2: target and reason (`--text-2`): `BTCUSDT long · liquidation distance 3.2%`, `Voice: protect all`;
-- line 3: last status (600), exact strings from arch §9: `Submitted · waiting for fill`, `Filled · 0.025 BTC at 88,412.0`, `Dismissed on Even G2`, `Sent to Telegram · glasses disconnected`, `Expired · not confirmed within 30 s`, `Skipped · partial stop orders on this position`, `Skipped · daily loss limit reached`, `Skipped · over your 500 USDT cap`, `Simulation · nothing sent to Bybit`.
+- line 3: last status (600), strings from arch §9, for example: `Submitted · waiting for fill`, `Filled · 0.025 BTC at 88,412.0`, `Dismissed on Even G2`, `Sent to Telegram · glasses disconnected`, `Expired · not confirmed within 30 s`, `Skipped · partial stop orders on this position`, `Skipped · daily loss limit reached`, `Skipped · over your 500 USDT cap`, `Simulation · nothing sent to Bybit`, `Shown on Even G2`, `Shown in the app`, `Withdrawn · shortcut changed`.
 
 Data: `GET /history?before=`, 30 per page, next page when the last row comes into view. Rows are not tappable in the MVP. Empty: `No alerts yet.`
 
@@ -393,7 +392,7 @@ Data: `GET /history?before=`, 30 per page, next page when the last row comes int
 | | Trade proposals expire | `30 s` → numeric sheet, 10–300 | |
 | | Other proposals expire | `60 s` → numeric sheet, 10–300 | |
 
-In-app notifications have no switch: they show whenever the app is open.
+In-app notifications have a switch (`In-app notifications`, Notifications group, `PUT /settings` `notifications.app`); when on, they show whenever the app is open.
 
 ## 6. Text rules
 
@@ -431,7 +430,7 @@ Template subtitles are fixed strings from arch §12 (`Near liquidation · half`,
 ### 7.1 Draft and save
 The editor works on a local copy (`structuredClone`). On back:
 - nothing changed → go back;
-- changed and validate `ok` → `PUT /shortcuts/:id` (or `POST /shortcuts` for a new one) with the `version` it was opened at, then go back. An enabled shortcut stays enabled; the server makes a new version and invalidates old proposals (arch §4);
+- changed and validate `ok` → `PUT /shortcuts/:id` (or `POST /shortcuts` for a new one) with the `version` it was opened at, toast `Saved` (or `Saved. Off until you turn it on in Shortcuts` when the shortcut is off), then go back. An enabled shortcut stays enabled; the server makes a new version and invalidates old proposals (arch §4);
 - changed and not `ok`, or a new shortcut with no condition or no action → dialog `Discard changes?` / `This shortcut has a problem that stops it from saving.` / `Keep editing` (primary) · `Discard`;
 - `409` (newer version on the server) → toast `Changed on another device. Reloaded.` and reload the editor;
 - network error → stay, toast, nothing lost.
