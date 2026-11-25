@@ -27,12 +27,12 @@ Bybit **demo / testnet only**: the server refuses any other host at startup. A b
 
 ## What it does
 
-- **Phone (Even Hub app page)**: your shortcuts as tiles with an on/off switch, 25 templates, an editor that only offers compatible choices and marks the row that is not, a test alert, History with every alert's last status, Settings (Bybit key rights, notifications, Telegram, cooldown and expiry).
-- **Lens**: positions with ROI and the one flag that matters (`liq 4.1%`, `no stop`); an alert names the position, the strongest reason and the exact command; Review before any Open or Increase; the real result from the exchange (Sent → Filled / Partly filled / Rejected / Unknown).
+- **Phone (Even Hub app page)**: your shortcuts as tiles with an on/off switch, 11 templates in four categories that fold away under their headings, an editor that only offers compatible choices and marks the row that is not, a test alert, History with every alert's last status, Settings (Bybit key rights, notifications, Telegram, cooldown and expiry).
+- **Lens**: positions with ROI and the one flag that matters (`liq 4.1%`); an alert names the position, the strongest reason and the exact command; Review before any Open or Increase; the real result from the exchange (Sent → Filled / Partly filled / Rejected / Unknown).
 - **Voice**: the G2 mic listens briefly when an actionable alert appears and voice answers are enabled. The server sends the audio to OpenAI for transcription. A “no” dismisses the alert. During the countdown after “yes”, a gesture or a spoken “no” cancels. The paper demo runs with voice off.
 - **Telegram**: when the glasses are off, alerts go to a linked chat as plain text. Telegram can never confirm a trade.
 
-14 conditions (price, price change, volume spike, funding, profit, loss, liquidation, stop and take-profit distance, missing stop, closed by stop / take profit / liquidation, order filled, partly filled, order open too long) × 9 actions (close, move stop, set stop, set take profit, add margin, open, increase, cancel order, notify), checked by three compatibility tables.
+13 conditions (price, price change, volume spike, funding, profit, loss, liquidation, stop and take-profit distance, closed by stop / take profit / liquidation, order filled, partly filled, order open too long) × 9 actions (close, move stop, set stop, set take profit, add margin, open, increase, cancel order, notify), checked by three compatibility tables.
 
 ## Safety model
 

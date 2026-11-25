@@ -21,3 +21,9 @@ export function usd(n: number): string {
 }
 
 export const coin = (symbol: string) => symbol.replace(/USDT$/, '')
+
+/** A decimal string as the user typed it, grouped: "90000" → "90,000", "-2" → "−2"; decimals as entered. */
+export function fmt(d: string): string {
+  const [i, f] = d.replace('-', '').split('.')
+  return (d.startsWith('-') ? '−' : '') + i.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (f ? `.${f}` : '')
+}

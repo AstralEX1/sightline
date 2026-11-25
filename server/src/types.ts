@@ -131,12 +131,16 @@ export interface Exchange {
   /** The last `limit` 1-minute candles of one price source, in any order. */
   kline(symbol: string, source: PriceSource, limit: number): Promise<Candle[]>
   instrument(symbol: string): Promise<Instrument>
+  /** Every USDT perpetual open for trading, sorted: the editor's symbol picker. */
+  symbols(): Promise<string[]>
   slots(symbol: string): Promise<Slot[]>
   apiKeyInfo(): Promise<ApiKeyInfo>
   setStop(symbol: string, positionIdx: number, price: number): Promise<void>
   /** Leaves the stop loss as it is. */
   setTakeProfit(symbol: string, positionIdx: number, price: number): Promise<void>
   addMargin(symbol: string, positionIdx: number, usd: number): Promise<void>
+  /** Both sides of the symbol to `leverage`; already there counts as done. */
+  setLeverage(symbol: string, leverage: number): Promise<void>
   /** Returns Bybit's orderId. A resend after a rate limit carries the same orderLinkId. */
   placeOrder(o: OrderRequest): Promise<{ orderId: string }>
   cancelOrder(symbol: string, orderId: string): Promise<void>
@@ -158,6 +162,8 @@ export type Terms =
     stopLoss?: number; takeProfit?: number
     /** Open and Increase: what the lens prints next to qty */
     notionalUsdt?: number; leverage?: number; marginUsdt?: number
+    /** Open: the symbol's leverage differs from `leverage`, so it is set before the order */
+    setLeverage?: boolean
   }
   | { type: 'setStop'; symbol: string; positionIdx: number; price: number }
   | { type: 'setTakeProfit'; symbol: string; positionIdx: number; price: number }
@@ -207,6 +213,8 @@ export interface Proposal extends Card {
   targetKey: string
   epoch?: string
   terms: Terms
+  /** Open with more than one size or leverage: the lens asks which before Review (terms hold the first of each until then) */
+  picks?: { sizes: number[]; leverages: number[] }
   /** The proposal this one replaced: a tap aimed at the old one does nothing */
   supersedes?: string
   /** A test from the editor: confirming it never reaches the exchange */

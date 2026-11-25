@@ -6,7 +6,7 @@ import { tokenProblem } from '../src/config.ts'
 import { createStore } from '../src/store.ts'
 import { createSession } from '../src/session.ts'
 import { FakeExchange } from '../src/fake-exchange.ts'
-import { TEMPLATES } from '../src/registry.ts'
+import { template as draft } from './removed-templates.ts'
 import type { Position } from '../src/types.ts'
 
 const btc: Position = {
@@ -32,7 +32,6 @@ async function serve(o: { transcribe?: Transcribe; source?: string } = {}) {
 }
 
 const auth = { Authorization: 'Bearer secret' }
-const draft = (n: number) => structuredClone(TEMPLATES.find(t => t.id === `tpl_${n}`)!.draft)
 
 test('every route needs the token, and OPTIONS answers CORS', async () => {
   const { call, base } = await serve()
@@ -66,9 +65,10 @@ test('shortcuts: create, list as tiles, edit with the version, pause, enable, de
   const made = await call('POST', '/shortcuts', { ...draft(6), enabled: true })
   assert.equal(made.status, 201)
   assert.equal(made.body.title, 'Close position')
-  assert.equal(made.body.summary, 'Liq. < 3%')
+  assert.deepEqual([made.body.summary, made.body.doSummary], ['Liq ≤ 3%', 'Close 50%'])
   const tiles = (await call('GET', '/shortcuts')).body
-  assert.deepEqual(tiles.map((t: { summary: string }) => t.summary), ['Say "protect all"', 'Say "lock profits"', 'Liq. < 3%'])
+  assert.deepEqual(tiles.map((t: { summary: string; doSummary: string }) => [t.summary, t.doSummary]),
+    [['“protect all”', 'SL at −2%'], ['“lock profits”', 'SL to entry'], ['Liq ≤ 3%', 'Close 50%']])
 
   const id = made.body.id
   const edit = { ...draft(6), name: 'Half off near liq', version: 1 }
@@ -237,9 +237,33 @@ test('body over 64 KB is 413', async () => {
 test('catalog and templates are served', async () => {
   const { call } = await serve()
   const c = (await call('GET', '/catalog')).body
-  assert.equal(c.conditions.length, 14)
-  assert.equal(c.conditionAction.LOSS.INCREASE_POSITION, 'N')
+  assert.equal(c.conditions.length, 13)
+  assert.equal(c.conditionAction.LOSS.INCREASE_POSITION, 'G')
+  assert.equal(c.conditionAction.VOLUME_SPIKE.OPEN_LONG, 'N')
   const t = (await call('GET', '/templates')).body
-  assert.equal(t.length, 25)
-  assert.equal(t[0].title, 'Move stop loss')
+  assert.equal(t.length, 12)
+  assert.deepEqual([t[0].category, t[0].title], ['Protect', 'Close position'])
+  assert.deepEqual(t.map((x: { summary: string; doSummary: string }) => `${x.summary} → ${x.doSummary}`), [
+    'Liq ≤ 3% → Close 50%',
+    'Liq ≤ 5% → Add 25% margin',
+    'SL ≤ 1% → Notify me',
+    'Closed by stop loss → Notify me',
+    'ROI ≥ 20% → SL to entry',
+    'ROI ≥ 50% → Close 50%',
+    'Price crosses above … → Notify me',
+    'Price ±15% → Notify me',
+    'Price −2% → Notify me',
+    'Funding ≥ 0.05% in 30\u00a0min → Notify me',
+    'Order filled → TP at +3%',
+    'Order open ≥ 1\u00a0h → Cancel order',
+  ])
+})
+
+test('symbols lists what the exchange can trade, sorted; an exchange failure is an error, not an empty list', async () => {
+  const { ex, call } = await serve()
+  ex.prices = { SOLUSDT: 145, ETHUSDT: 3000 }
+  assert.deepEqual(await call('GET', '/symbols'), { status: 200, body: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'] }) // BTC by its position's mark
+  assert.equal((await call('GET', '/symbols', undefined, {})).status, 401)
+  ex.failReads = 'down'
+  assert.equal((await call('GET', '/symbols')).status, 502)
 })

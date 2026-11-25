@@ -1,0 +1,102 @@
+<!doctype html>
+<!-- Temporary test bench: Detail as the lens draws it, for many chart situations. Not shipped (only index.html and phone.html are built). -->
+<meta charset="utf-8">
+<style>
+  body { background: #111; color: #ccc; font: 13px system-ui; margin: 16px; }
+  .case { display: inline-block; margin: 0 16px 20px 0; vertical-align: top; }
+  .case p { margin: 4px 0; max-width: 576px; }
+  canvas { background: #000; display: block; }
+</style>
+<div id="root"></div>
+<script type="module">
+import { screen } from './src/view.ts'
+import { chartPng, titlePng } from './src/icons.ts'
+
+// ── Scenarios: edit or add here. Prices are made from `shape` around `last`; levels are % from the last price. ──
+// shape: wave | up | down | flat | spike | crash | noise ; minutes: how many 1-min candles (60 = full hour)
+const SCENARIOS = [
+  { name: 'BTC long, stop 1% below, entry inside the hour', coin: 'BTC', side: 'Buy', last: 61960, shape: 'wave', amp: 0.004, entry: 0.2, stop: -1.0, liq: -8 },
+  { name: 'BTC long, no stop', coin: 'BTC', side: 'Buy', last: 61960, shape: 'wave', amp: 0.004, entry: 0.1, stop: null, liq: -3.3 },
+  { name: 'SOL long, flat hour, far stop (pinned)', coin: 'SOL', side: 'Buy', last: 145, shape: 'flat', amp: 0, entry: -3.4, stop: -6.9, liq: -22 },
+  { name: 'ETH short, stop above, trending up into it', coin: 'ETH', side: 'Sell', last: 3087, shape: 'up', amp: 0.006, entry: -1.5, stop: 0.8, liq: 0.9 },
+  { name: 'PEPE long, tiny price', coin: '1000PEPE', side: 'Buy', last: 0.01234, shape: 'noise', amp: 0.01, entry: -2, stop: -4, liq: -30 },
+  { name: 'New listing: 7 minutes of data', coin: 'XYZ', side: 'Buy', last: 1.2345, shape: 'up', amp: 0.02, minutes: 7, entry: -1, stop: -5, liq: -20 },
+  { name: 'S1 short, stop above, price falling away (up-trend reversed)', coin: 'ETH', side: 'Sell', last: 3000, shape: 'down', amp: 0.01, entry: 0.5, stop: 2.5, liq: 9 },
+  { name: 'S2 short, price rising toward stop 0.3% away, liq 0.9% above', coin: 'SOL', side: 'Sell', last: 145, shape: 'up', amp: 0.01, entry: -0.8, stop: 0.3, liq: 0.9 },
+  { name: 'S3 stop exactly at last', coin: 'SOL', side: 'Buy', last: 145, shape: 'wave', amp: 0.004, entry: -0.5, stop: 0, stopAt: true, liq: -9 },
+  { name: 'S4 long, price already below stop (not triggered)', coin: 'SOL', side: 'Buy', last: 145, shape: 'down', amp: 0.01, entry: 1, stop: 0.4, liq: -9 },
+  { name: 'S5 breakeven stop = entry (long, +0.8%)', coin: 'LINK', side: 'Buy', last: 18.5, shape: 'up', amp: 0.01, entry: -0.8, stopEqEntry: true, liq: -9 },
+  { name: 'S6 entry = last, stop 0.5% below', coin: 'LINK', side: 'Buy', last: 18.5, shape: 'wave', amp: 0.003, entry: 0, stop: -0.5, liq: -9 },
+  { name: 'S7 spike candle dominates, entry/stop 0.3% around', coin: 'SOL', side: 'Buy', last: 145, shape: 'spike', amp: 0.05, entry: -0.3, stop: -0.6, liq: -9 },
+  { name: 'S8 crash at end, stop 4% below', coin: 'SOL', side: 'Buy', last: 145, shape: 'crash', amp: 0.08, entry: 5, stop: -4, liq: -9 },
+  { name: 'S9 2 candles', coin: 'XYZ', side: 'Buy', last: 1.5, shape: 'up', amp: 0.01, minutes: 2, entry: -1, stop: -3, liq: -20 },
+  { name: 'S10 1 candle (expect blank)', coin: 'XYZ', side: 'Buy', last: 1.5, closes: [1.5], entry: -1, stop: -3, liq: -20 },
+  { name: 'S11 BTC 123,456', coin: 'BTC', side: 'Buy', last: 123456, shape: 'wave', amp: 0.003, entry: -0.4, stop: -0.8, liq: -0.9 },
+  { name: 'S12 price 999.9, stop 1000.1-ish above (short)', coin: 'AAA', side: 'Sell', last: 999.9, shape: 'wave', amp: 0.0005, entryAbs: 999.95, stopAbs: 1000.1, liqAbs: 1005 },
+  { name: 'S13 0.9999 coin, stop 0.99995 / entry 1.0001', coin: 'DDD', side: 'Buy', last: 0.9999, shape: 'wave', amp: 0.0003, entryAbs: 1.0001, stopAbs: 0.99995, liq: -9 },
+  { name: 'S14 1000000MOG', coin: '1000000MOG', side: 'Buy', last: 0.0012345, shape: 'wave', amp: 0.01, entry: -0.5, stop: -1.5, liq: -0.9 },
+  { name: 'S15 liq inside 1%, stop further than liq (long, stop -5%)', coin: 'ETH', side: 'Buy', last: 3000, shape: 'wave', amp: 0.004, entry: 1, stop: -5, liq: -0.8 },
+  { name: 'S16 entry + stop both pinned below', coin: 'SOL', side: 'Buy', last: 145, shape: 'flat', amp: 0, entry: -5, stop: -8, liq: -30 },
+  { name: 'S17 entry pinned above, stop pinned below', coin: 'SOL', side: 'Buy', last: 145, shape: 'wave', amp: 0.002, entry: 9, stop: -9, liq: -30 },
+  { name: 'S18 crowded: entry, stop, liq, last within 0.05%', coin: 'ETH', side: 'Buy', last: 3000, shape: 'wave', amp: 0.01, entry: 0.02, stop: -0.03, liq: -0.05 },
+  { name: 'S19 noisy hour, stop 1.2% below', coin: 'DOGE', side: 'Buy', last: 0.1234, shape: 'noise', amp: 0.04, entry: 0.5, stop: -1.2, liq: -8 },
+  { name: 'S20 flat hour, stop 0.1% below, entry 0.1% above', coin: 'ETH', side: 'Buy', last: 3000, shape: 'flat', amp: 0, entry: 0.1, stop: -0.1, liq: -8 },
+]
+
+const W = 576, H = 288
+const BOXES = { lev: [16, 56], table: [320, 56], hint: [16, 248] } // main.ts LAYOUTS.detail
+const TONE = { lev: 3, table: 3, hint: 2 }
+
+function candles(sc) {
+  if (sc.closes) return sc.closes.map((close, i) => ({ start: Date.UTC(2026, 10, 25, 13, 0) - (sc.closes.length - i) * 60_000, close }))
+  const n = sc.minutes ?? 60, now = Date.UTC(2026, 10, 25, 13, 0)
+  const f = i => {
+    const t = i / (n - 1)
+    switch (sc.shape) {
+      case 'flat': return 0
+      case 'up': return sc.amp * (t - 1)
+      case 'down': return sc.amp * (1 - t)
+      case 'spike': return i === Math.floor(n * 0.6) ? sc.amp * 3 : sc.amp * Math.sin(i / 3) * 0.2
+      case 'crash': return t < 0.8 ? sc.amp : sc.amp * (1 - (t - 0.8) * 5)
+      case 'noise': return sc.amp * (Math.sin(i * 12.9898) * 43758.5453 % 1) * 0.5
+      default: return sc.amp * Math.sin(i / 4)
+    }
+  }
+  const base = f(n - 1)
+  return Array.from({ length: n }, (_, i) => ({ start: now - (n - i) * 60_000, close: sc.last * (1 + f(i) - base) }))
+}
+
+async function lens(sc) {
+  const lv0 = k => (sc[k + 'Abs'] != null ? sc[k + 'Abs'] : sc[k] == null ? 0 : sc.last * (1 + sc[k] / 100))
+  const lv = k => (k === 'stop' && sc.stopEqEntry ? lv0('entry') : lv0(k))
+  const pos = {
+    symbol: `${sc.coin}USDT`, side: sc.side, size: 1, entryPrice: lv('entry'), markPrice: sc.last, liqPrice: lv('liq'),
+    unrealisedPnl: (sc.side === 'Buy' ? 1 : -1) * (sc.last - lv('entry')) * (1000 / sc.last), stopLoss: lv('stop'), takeProfit: 0,
+    positionIM: 100, leverage: 10, isolated: true, positionIdx: 0, openedAt: 0,
+  }
+  const s = screen({ positions: [pos], balance: null, card: null, pending: 0, toast: null, error: null, updatedAt: 1, source: 'Demo data' }, { detail: true, now: Date.now() })
+  const c = document.createElement('canvas'); c.width = W; c.height = H
+  const g = c.getContext('2d')
+  const put = async (bytes, x, y) => { const img = await createImageBitmap(new Blob([bytes], { type: 'image/png' })); g.drawImage(img, x, y) }
+  await put(await titlePng(s.title, 288, 44), 16, 12)
+  await put(await titlePng(s.pnl, 240, 44), 320, 12)
+  const cs = candles(sc)
+  for (const dx of [0, 272]) await put(await chartPng(cs, s.chart, 544, 144, dx, 272), 16 + dx, 96)
+  g.textBaseline = 'top'; g.font = '20px system-ui'
+  for (const [k, [x, y]] of Object.entries(BOXES)) { g.fillStyle = `rgba(255,255,255,${TONE[k] / 4})`; g.fillText(s.text[k] ?? '', x + 2, y + 6) }
+  // Lens look: grey → green, the way the glasses show it.
+  const d = g.getImageData(0, 0, W, H)
+  for (let i = 0; i < d.data.length; i += 4) { const l = d.data[i]; d.data[i] = 0; d.data[i + 1] = Math.max(l, d.data[i + 1]) ; d.data[i + 2] = 0 }
+  g.putImageData(d, 0, 0)
+  return c
+}
+
+const root = document.getElementById('root')
+for (const sc of SCENARIOS) {
+  const div = document.createElement('div'); div.className = 'case'
+  div.innerHTML = `<p>${sc.name}</p>`
+  div.append(await lens(sc))
+  root.append(div)
+}
+document.title = 'ready'
+</script>

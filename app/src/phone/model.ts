@@ -2,7 +2,7 @@
  * The editor's pure half: choice filtering with the catalog's matrices (spec §7.3, arch §7), atomic edits (§7.2),
  * the numeric fields and the save-or-discard decision (§7.1). No DOM, no I/O.
  */
-import { isEvent, type Action, type ActionType, type Condition, type ConditionType, type Scope, type TriggerMode } from '../../../server/src/registry.ts'
+import { isEvent, LIMITS, type Action, type ActionType, type Condition, type ConditionType, type Scope, type TriggerMode } from '../../../server/src/registry.ts'
 import type { EditableShortcut } from '../../../server/src/validate.ts'
 import type { Catalog } from '../api.ts'
 import { metricWord } from './sentence.ts'
@@ -32,7 +32,6 @@ const CONDITION_CHOICES: ConditionChoice[] = [
   { group: 'Liquidation', label: 'Liquidation distance', type: 'NEAR_LIQUIDATION' },
   { group: 'Stop and target', label: 'Stop loss distance', type: 'NEAR_SL' },
   { group: 'Stop and target', label: 'Take profit distance', type: 'NEAR_TP' },
-  { group: 'Stop and target', label: 'Stop loss is missing', type: 'SL_MISSING' },
   { group: 'Stop and target', label: 'Position closed', type: 'POSITION_CLOSED' },
   { group: 'Orders', label: 'Order filled', type: 'ORDER_FILLED' },
   { group: 'Orders', label: 'Order partly filled', type: 'ORDER_PARTIAL' },
@@ -44,31 +43,27 @@ const scopeRules = (cat: Catalog, t: Scope['type']) => cat.scopes.find(s => s.ty
 /** Condition types that fit the scope, the action and every other condition; only static impossibilities are hidden. */
 export function conditionChoices(cat: Catalog, d: Draft, replacing?: string): ConditionChoice[] {
   const others = d.conditions.items.filter(c => c.id !== replacing)
+  // A price level needs one coin
+  const manyCoins = d.scope.type === 'COIN_POSITIONS' && d.scope.symbols.length > 1
   const fits = (t: ConditionType) => scopeRules(cat, d.scope.type).conditions.includes(t)
+    && !(t === 'PRICE' && manyCoins)
     && (!d.action || cat.conditionAction[t][d.action.type] !== 'N')
     && others.every(c => cat.stacking[t][c.type] !== '-')
   // ROI is PROFIT or LOSS by the comparison, so it is offered when either fits
   return CONDITION_CHOICES.filter(c => (c.unit === 'ROI_PERCENT' ? fits('PROFIT') || fits('LOSS') : fits(c.type)))
 }
 
-/** Actions the scope allows; those the current conditions rule out go to "Needs changes" with the reason. */
-export function actionChoices(cat: Catalog, d: Draft) {
-  const ok: { type: ActionType; title: string }[] = []
-  const needs: { type: ActionType; title: string; reason: string }[] = []
-  for (const a of cat.actions) {
-    if (!scopeRules(cat, d.scope.type).actions.includes(a.type)) continue
-    const bad = d.conditions.items.find(c => cat.conditionAction[c.type][a.type] === 'N')
-    if (bad) needs.push({ type: a.type, title: a.title, reason: `Not with ${metricWord(bad)}` })
-    else ok.push({ type: a.type, title: a.title })
-  }
-  return { ok, needs }
-}
+/** Actions that fit the scope and every condition; the rest are not shown. */
+export const actionChoices = (cat: Catalog, d: Draft) =>
+  cat.actions.filter(a => scopeRules(cat, d.scope.type).actions.includes(a.type)
+    && d.conditions.items.every(c => cat.conditionAction[c.type][a.type] !== 'N')).map(a => ({ type: a.type, title: a.title }))
 
-/** Apply to options that can hold the current action (Open needs One symbol, Cancel One order). */
-export const scopeChoices = (cat: Catalog, d: Draft) => cat.scopes.filter(s => !d.action || s.actions.includes(d.action.type))
+/** Apply to options that can hold the current action and every condition (Open needs One symbol, Cancel One order). */
+export const scopeChoices = (cat: Catalog, d: Draft) => cat.scopes.filter(s => (!d.action || s.actions.includes(d.action.type))
+  && d.conditions.items.every(c => s.conditions.includes(c.type)))
 
 const MODES: TriggerMode[] = ['ON_ENTRY', 'ON_EVENT', 'ONCE', 'REPEAT']
-const onceOnly = (a?: Action) => a?.type === 'OPEN_POSITION' || a?.type === 'INCREASE_POSITION'
+const onceOnly = (a?: Action) => a?.type === 'OPEN_LONG' || a?.type === 'OPEN_SHORT' || a?.type === 'INCREASE_POSITION'
 
 /** When it fires: each mode, with the one-line reason when it cannot be picked (spec §5.7). */
 export function triggerChoices(d: Draft): { mode: TriggerMode; why?: string }[] {
@@ -76,7 +71,7 @@ export function triggerChoices(d: Draft): { mode: TriggerMode; why?: string }[] 
   const states = d.conditions.items.length > 0 && !ev
   return MODES.map(mode => ({
     mode,
-    why: onceOnly(d.action) && mode !== 'ONCE' ? `${d.action!.type === 'OPEN_POSITION' ? 'Open position' : 'Increase position'} fires Once`
+    why: onceOnly(d.action) && mode !== 'ONCE' ? `${d.action!.type === 'INCREASE_POSITION' ? 'Increase position' : d.action!.type === 'OPEN_LONG' ? 'Open long' : 'Open short'} fires Once`
       : ev && (mode === 'ON_ENTRY' || mode === 'REPEAT') ? 'Not for crossings, fills and closes'
         : states && mode === 'ON_EVENT' ? 'Needs a price crossing, a fill or a close' : undefined,
   }))
@@ -98,7 +93,7 @@ export const nextId = (items: Condition[]) => `c${Math.max(0, ...items.map(c => 
 export function newCondition(id: string, type: ConditionType, unit: 'ROI_PERCENT' | 'USDT' = 'ROI_PERCENT'): Condition {
   switch (type) {
     case 'PRICE': return { id, type, source: 'LAST', operator: 'GTE', threshold: '' }
-    case 'PRICE_CHANGE': return { id, type, source: 'LAST', direction: 'UP', percent: '', windowSec: 300 }
+    case 'PRICE_CHANGE': return { id, type, source: 'LAST', direction: 'UP', percent: '' }
     case 'PROFIT': case 'LOSS': return { id, type, unit, threshold: '' }
     case 'NEAR_LIQUIDATION': case 'NEAR_SL': case 'NEAR_TP': return { id, type, distancePct: '' }
     case 'VOLUME_SPIKE': return { id, type, multiplier: '', windowSec: 300 }
@@ -143,8 +138,8 @@ export function newAction(type: ActionType): Action {
     case 'MOVE_SL': return { type, target: { kind: 'ENTRY_OFFSET', percent: '0' } }
     case 'SET_SL': return { type, target: { kind: 'ENTRY_OFFSET', percent: '-2' } }
     case 'SET_TP': return { type, target: { kind: 'ENTRY_OFFSET', percent: '5' } }
-    case 'ADD_MARGIN': return { type, usdt: '' }
-    case 'OPEN_POSITION': return { type, side: 'LONG', notionalUsdt: '', leverage: '' }
+    case 'ADD_MARGIN': return { type, amount: '', unit: 'MARGIN_PERCENT' }
+    case 'OPEN_LONG': case 'OPEN_SHORT': return { type, sizes: [], leverages: [...LIMITS.leverages] }
     case 'INCREASE_POSITION': return { type, notionalUsdt: '' }
     default: return { type } as Action
   }
@@ -178,7 +173,6 @@ export function numField(cat: Catalog, d: Draft, key: string, conditionId?: stri
       return { title: 'Price', word, unit: 'USDT', value: c.threshold, range: { gt: 0, lt: BIG } }
     }
     if (c.type === 'PRICE_CHANGE' && key === 'percent') return { title: 'Price change', word: 'By', unit: '%', value: c.percent, range: { gt: L.pricePct.min, le: L.pricePct.max } }
-    if (c.type === 'PRICE_CHANGE' && key === 'window') return { title: 'Time window', word: 'Within', unit: 'min', value: String(c.windowSec / 60), range: { ge: L.windowSec.min / 60, le: L.windowSec.max / 60 }, integer: true }
     if ((c.type === 'PROFIT' || c.type === 'LOSS') && key === 'threshold') {
       const roi = c.unit === 'ROI_PERCENT'
       return { title: roi ? 'ROI' : c.type === 'PROFIT' ? 'Profit' : 'Loss', word: c.type === 'LOSS' && roi ? 'Below' : 'Above', sign: c.type === 'LOSS' && roi ? '−' : undefined, unit: roi ? '%' : 'USDT', value: c.threshold, range: { gt: 0, lt: BIG } }
@@ -195,9 +189,13 @@ export function numField(cat: Catalog, d: Draft, key: string, conditionId?: stri
     return null
   }
   if (a?.type === 'CLOSE_POSITION' && key === 'close') return { title: 'Close amount', word: 'Close', unit: '%', value: a.percent, range: { gt: L.closePct.min, le: L.closePct.max } }
-  if (a?.type === 'ADD_MARGIN' && key === 'usdt') return { title: 'Margin', word: 'Add', unit: 'USDT', value: a.usdt, range: { gt: 0, lt: BIG } }
-  if ((a?.type === 'OPEN_POSITION' || a?.type === 'INCREASE_POSITION') && key === 'notional') return { title: a.type === 'OPEN_POSITION' ? 'Size' : 'Increase by', word: 'Size', unit: 'USDT', value: a.notionalUsdt, range: { gt: 0, lt: BIG } }
-  if (a?.type === 'OPEN_POSITION' && key === 'leverage') return { title: 'Leverage', word: 'Leverage', unit: '×', value: a.leverage, range: { ge: L.leverage.min, le: L.leverage.max } }
+  if (a?.type === 'ADD_MARGIN' && key === 'amount') return a.unit === 'USDT'
+    ? { title: 'Margin', word: 'Add', unit: 'USDT', value: a.amount, range: { gt: 0, lt: BIG } }
+    : { title: 'Margin', word: 'Add', unit: '%', value: a.amount, range: { gt: L.marginPct.min, le: L.marginPct.max } }
+  if (a?.type === 'INCREASE_POSITION' && key === 'notional') return { title: 'Increase by', word: 'Size', unit: 'USDT', value: a.notionalUsdt, range: { gt: 0, lt: BIG } }
+  // Open's lists: `value` is empty, the list sheet adds one value at a time
+  if ((a?.type === 'OPEN_LONG' || a?.type === 'OPEN_SHORT') && key === 'sizes') return { title: 'Sizes', word: 'Size', unit: 'USDT', value: '', range: { gt: 0, lt: BIG } }
+  if ((a?.type === 'OPEN_LONG' || a?.type === 'OPEN_SHORT') && key === 'leverages') return { title: 'Leverage', word: 'Leverage', unit: '×', value: '', range: { ge: L.leverage.min, le: L.leverage.max } }
   return null
 }
 
@@ -206,7 +204,7 @@ export function setNumber(d: Draft, key: string, value: string, conditionId?: st
   const i = d.conditions.items.findIndex(x => x.id === conditionId)
   if (i >= 0) {
     const c = d.conditions.items[i]
-    if (key === 'window' && (c.type === 'PRICE_CHANGE' || c.type === 'VOLUME_SPIKE')) d.conditions.items[i] = { ...c, windowSec: Number(value) * 60 }
+    if (key === 'window' && c.type === 'VOLUME_SPIKE') d.conditions.items[i] = { ...c, windowSec: Number(value) * 60 }
     else if (key === 'multiplier' && c.type === 'VOLUME_SPIKE') d.conditions.items[i] = { ...c, multiplier: value }
     else if (key === 'rate' && c.type === 'FUNDING') d.conditions.items[i] = { ...c, ratePct: value }
     else if (key === 'minutes' && c.type === 'FUNDING') d.conditions.items[i] = { ...c, minutesBefore: Number(value) }
@@ -218,7 +216,6 @@ export function setNumber(d: Draft, key: string, value: string, conditionId?: st
   }
   const a = d.action
   if (a?.type === 'CLOSE_POSITION') a.percent = value
-  else if (a?.type === 'ADD_MARGIN') a.usdt = value
+  else if (a?.type === 'ADD_MARGIN') a.amount = value
   else if (a?.type === 'INCREASE_POSITION') a.notionalUsdt = value
-  else if (a?.type === 'OPEN_POSITION') { if (key === 'leverage') a.leverage = value; else a.notionalUsdt = value }
 }

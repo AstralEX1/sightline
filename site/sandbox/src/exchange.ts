@@ -1,14 +1,23 @@
-/** The exchange panel: price, a chart you drag to move the price, an order ticket, positions and orders. */
-import { liqOf, SYMBOL, type Market } from './market.ts'
-import type { Position } from '../../../server/src/types.ts'
+/**
+ * The exchange panel, laid out like a futures exchange's phone app: Charts (drag the chart to move the price, the
+ * position, Buy and Sell) and Trade (order form, positions, orders). Renders into a 300 × 672 phone screen.
+ */
+import './exchange.css'
+import { SYMBOL, type Market } from './market.ts'
+import type { Order, Position, Side } from '../../../server/src/types.ts'
 
-const UP = '#20b26c'
-const DOWN = '#ef454a'
-const AXIS_W = 66
-const BAR_W = 7
+const UP = '#55af72'
+const DOWN = '#dc5250'
+const FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, "Helvetica Neue", Arial, sans-serif' // as in exchange.css
+const AXIS_W = 56
+const TIME_H = 16
+const BAR_W = 6
+const BALANCE = 10_000 // the demo account, USDT
+const FLASH_MS = 4000 // how long a change stays lit; bx-lit in exchange.css runs as long
 
 const fmt = (n: number, d = 1) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
 const signed = (n: number, d = 2) => (n >= 0 ? '+' : '−') + fmt(Math.abs(n), d)
+const num = (i: HTMLInputElement) => Number(i.value.replace(/,/g, '')) || 0
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, ...kids: (Node | string)[]) {
   const e = document.createElement(tag)
@@ -16,27 +25,278 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string,
   e.append(...kids)
   return e
 }
+const input = (name: string, value = '') => el('input', { name, inputmode: 'decimal', autocomplete: 'off', value, placeholder: ' ' })
+/** A filled field with its caption floating above the value, and a unit on the right. */
+const box = (caption: string, i: HTMLInputElement, unit = '') => el('label', { class: 'ex-box' }, i, el('span', {}, caption), ...(unit ? [el('i', {}, unit)] : []))
+const cell = (k: string, v: string, cls = '') => el('div', { class: 'ex-cell' }, el('span', {}, k), el('b', { class: cls }, v))
+
+/** Replaces the children only when what they show changed: a click survives the twice-a-second refresh. */
+function swap(host: HTMLElement, kids: Node[]) {
+  const next = el('div', {}, ...kids)
+  if (next.innerHTML !== host.innerHTML) host.replaceChildren(...next.childNodes)
+}
 
 export function mountExchange(root: HTMLElement, m: Market) {
-  const startPrice = m.price
-  const price = el('strong', { class: 'ex-price' })
-  const change = el('span', { class: 'ex-change' })
+  root.classList.add('bx')
+
+  // ── Charts | Trade ──
+  const viewTabs = (['Charts', 'Trade'] as const).map(v => {
+    const b = el('button', { type: 'button', role: 'tab' }, v)
+    b.onclick = () => show(v)
+    return b
+  })
+  const badge = el('span', { class: 'ex-badge' })
+  const lastSmall = el('b', { class: 'ex-pair-last' })
+  const pair = el('div', { class: 'ex-pair' }, el('b', {}, SYMBOL), el('span', { class: 'ex-tag' }, 'Perp'), badge, lastSmall)
+
+  // ── Charts ──
+  const last = el('strong', { class: 'ex-last' })
   const canvas = el('canvas', { class: 'ex-canvas', tabindex: '0', 'aria-label': 'BTC chart. Drag up or down, or use the arrow keys, to move the price.' })
-  const hint = el('div', { class: 'ex-hint' }, '⇕ Drag to move the price')
-  const ticket = el('form', { class: 'ex-ticket', novalidate: '' })
-  const tabs = el('div', { class: 'ex-tabs', role: 'tablist' })
+  const hint = el('div', { class: 'ex-drag' }, '⇕ Drag the price')
+  const slot = el('div', { class: 'ex-slot' })
+  const ctas = (['Buy', 'Sell'] as const).map(s => {
+    const b = el('button', { type: 'button', class: `ex-btn ex-btn-${s.toLowerCase()}` }, s)
+    b.onclick = () => { setSide(s); show('Trade') }
+    return b
+  })
+  const charts = el('div', { class: 'ex-view ex-charts' },
+    last,
+    el('div', { class: 'ex-tf' }, el('b', {}, '1m')),
+    el('div', { class: 'ex-plot' }, canvas, hint),
+    slot,
+    el('div', { class: 'ex-cta' }, ...ctas))
+
+  // ── Trade: the order form ──
+  let side: Side = 'Buy'
+  let leverage = 10
+  let pending = leverage
+  const levPill = el('button', { type: 'button', class: 'ex-pill', 'aria-expanded': 'false', 'aria-label': 'Leverage' })
+  const levOut = el('output', {})
+  const levRange = el('input', { type: 'range', min: '1', max: '100', 'aria-label': 'Leverage' })
+  const levMinus = el('button', { type: 'button', 'aria-label': 'Lower leverage' }, '−')
+  const levPlus = el('button', { type: 'button', 'aria-label': 'Raise leverage' }, '+')
+  const levOk = el('button', { type: 'button', class: 'ex-confirm' }, 'Confirm')
+  const levBox = el('div', { class: 'ex-levbox', hidden: '' },
+    el('div', { class: 'ex-levrow' }, levMinus, levOut, levPlus),
+    levRange,
+    el('div', { class: 'ex-ticks' }, ...[1, 25, 50, 75, 100].map(n => el('span', {}, `${n}x`))),
+    levOk)
+  const setPending = (n: number) => { pending = Math.min(100, Math.max(1, Math.round(n))); levRange.value = String(pending); levOut.value = `${pending.toFixed(2)}x` }
+  const levOpen = (open: boolean) => { levBox.hidden = !open; levPill.setAttribute('aria-expanded', String(open)); setPending(leverage) }
+  levPill.onclick = () => levOpen(levPill.getAttribute('aria-expanded') !== 'true')
+  levRange.oninput = () => setPending(Number(levRange.value))
+  levMinus.onclick = () => setPending(pending - 1)
+  levPlus.onclick = () => setPending(pending + 1)
+  levOk.onclick = () => { leverage = pending; levOpen(false); info() }
+
+  const sideBtns = (['Buy', 'Sell'] as const).map(s => {
+    const b = el('button', { type: 'button', class: `ex-side-${s.toLowerCase()}` }, s)
+    b.onclick = () => setSide(s)
+    return b
+  })
+  const typeSel = el('select', { 'aria-label': 'Order type' }, el('option', { value: 'Market' }, 'Market'), el('option', { value: 'Limit' }, 'Limit'))
+  const priceIn = input('price', fmt(m.price).replace(/,/g, ''))
+  const qtyIn = input('qty', '0.05')
+  const tpIn = input('tp')
+  const slIn = input('sl')
+  const priceBox = box('Price', priceIn, 'USDT')
+  priceBox.hidden = true
+  typeSel.onchange = () => { priceBox.hidden = typeSel.value !== 'Limit'; info() }
+  const fill = el('i', {})
+  const dots = [0, 25, 50, 75, 100].map(pct => {
+    const b = el('button', { type: 'button', style: `left:${pct}%`, 'aria-label': `${pct}% of the most you can open` })
+    b.onclick = () => { qtyIn.value = pct ? (Math.floor(maxQty() * pct * 10) / 1000).toFixed(3) : ''; error.textContent = ''; info() }
+    return b
+  })
+  const avail = el('b', {})
+  const value = el('b', {})
+  const margin = el('b', {})
+  const tpslOn = el('input', { type: 'checkbox' })
+  const tpsl = el('div', { class: 'ex-two', hidden: '' }, box('Take Profit', tpIn), box('Stop Loss', slIn))
+  tpslOn.onchange = () => { tpsl.hidden = !tpslOn.checked }
+  const error = el('p', { class: 'ex-err', role: 'alert' })
+  const submit = el('button', { type: 'submit', class: 'ex-btn' })
+  const form = el('form', { class: 'ex-form', novalidate: '' },
+    el('div', { class: 'ex-pills' }, el('span', { class: 'ex-pill' }, 'Isolated'), levPill),
+    levBox,
+    el('div', { class: 'ex-side' }, ...sideBtns),
+    el('div', { class: 'ex-line' }, el('span', {}, 'Available'), avail),
+    el('label', { class: 'ex-select' }, typeSel),
+    priceBox,
+    box('Quantity', qtyIn, 'BTC'),
+    el('div', { class: 'ex-slider' }, fill, ...dots),
+    el('div', { class: 'ex-line' }, el('span', {}, 'Order Value'), value),
+    el('div', { class: 'ex-line' }, el('span', {}, 'Margin'), margin),
+    el('label', { class: 'ex-check' }, tpslOn, 'TP/SL'),
+    tpsl,
+    error,
+    submit)
+
+  function setSide(s: Side) {
+    side = s
+    sideBtns.forEach((b, i) => b.setAttribute('aria-pressed', String((i === 0) === (s === 'Buy'))))
+    submit.textContent = s === 'Buy' ? 'Buy / Long' : 'Sell / Short'
+    submit.className = `ex-btn ex-btn-${s.toLowerCase()}`
+    info()
+  }
+  const at = () => (typeSel.value === 'Limit' ? num(priceIn) : m.price)
+  const used = () => m.positions.reduce((s, p) => s + p.positionIM, 0) + m.orders.reduce((s, o) => s + (o.leavesQty * o.price) / (m.ex.leverage[SYMBOL] ?? 10), 0)
+  const available = () => Math.max(0, BALANCE - used())
+  const maxQty = () => (at() > 0 ? (available() * leverage) / at() : 0)
+  function info() {
+    const qty = num(qtyIn)
+    levPill.textContent = `${leverage.toFixed(2)}x`
+    avail.textContent = `${fmt(available(), 2)} USDT`
+    value.textContent = `${fmt(qty * at(), 2)} USDT`
+    margin.textContent = `${fmt((qty * at()) / leverage, 2)} USDT`
+    const pct = Math.min(100, (qty / maxQty()) * 100 || 0)
+    fill.style.width = `${pct}%`
+    dots.forEach((d, i) => d.classList.toggle('on', i * 25 <= pct + 0.5))
+  }
+  form.addEventListener('input', () => { error.textContent = ''; info() })
+  form.addEventListener('submit', async e => {
+    e.preventDefault()
+    const type = typeSel.value
+    const qty = num(qtyIn)
+    const price = at()
+    const tp = tpslOn.checked ? num(tpIn) : 0
+    const sl = tpslOn.checked ? num(slIn) : 0
+    const long = side === 'Buy'
+    if (!(qty > 0)) return void (error.textContent = 'Enter a quantity.')
+    if (!(price > 0)) return void (error.textContent = 'Enter a price.')
+    if (tp && (long ? tp <= price : tp >= price)) return void (error.textContent = `Take profit must be ${long ? 'above' : 'below'} the price.`)
+    if (sl && (long ? sl >= price : sl <= price)) return void (error.textContent = `Stop loss must be ${long ? 'below' : 'above'} the price.`)
+    try {
+      if (type === 'Limit') {
+        if (!m.positions.length) m.ex.leverage[SYMBOL] = leverage // the leverage the order fills at
+        m.limit(side, qty, price)
+      } else {
+        const opposite = m.positions.find(p => p.side !== side)
+        // one-way mode: an opposite order reduces first, the rest opens the other side
+        if (opposite && qty >= opposite.size) await m.close(opposite)
+        else if (opposite) await m.ex.placeOrder({ symbol: SYMBOL, side, qty: String(qty), orderLinkId: crypto.randomUUID(), positionIdx: 0, reduceOnly: true })
+        const rest = opposite ? Math.round((qty - opposite.size) * 1e6) / 1e6 : qty
+        if (rest > 0) await m.open(side, rest, leverage, tp, sl)
+      }
+      tab = type === 'Limit' ? 'orders' : 'positions'
+      m.refresh()
+    } catch (err) {
+      error.textContent = (err as Error).message
+    }
+  })
+
+  // ── Trade: positions and orders ──
+  let tab: 'positions' | 'orders' = 'positions'
+  let editing: Position | null = null
+  const listTabs = (['positions', 'orders'] as const).map(t => {
+    const b = el('button', { type: 'button', role: 'tab' })
+    b.onclick = () => { tab = t; renderLists() }
+    return b
+  })
   const list = el('div', { class: 'ex-list' })
-  root.append(
-    el('header', { class: 'ex-head' }, el('b', {}, SYMBOL), el('span', { class: 'ex-muted' }, 'Perpetual'), price, change),
-    el('div', { class: 'ex-chart' }, canvas, hint),
-    ticket, tabs, list,
-  )
+  const trade = el('div', { class: 'ex-view ex-trade' }, form, el('div', { class: 'ex-tabs', role: 'tablist' }, ...listTabs), list)
+
+  root.append(el('div', { class: 'ex-views', role: 'tablist' }, ...viewTabs), pair, charts, trade)
+
+  // ── what just changed: an answer on the glasses, a fill or a stop lights its numbers here for a moment ──
+  const changedAt = new Map<string, number>()
+  let seen: Map<string, string> | null = null
+  const ageOf = (...keys: string[]) => Date.now() - Math.max(...keys.map(k => changedAt.get(k) ?? -Infinity))
+  function track() {
+    const now = new Map<string, string>()
+    const p = m.positions[0]
+    now.set('pos', p ? p.side : '')
+    if (p) for (const [k, v] of Object.entries({ size: p.size, entry: p.entryPrice, liq: p.liqPrice, tp: p.takeProfit, sl: p.stopLoss })) now.set(k, String(v))
+    for (const o of m.orders) now.set(`o:${o.orderId}`, String(o.leavesQty))
+    if (seen) for (const [k, v] of now) if (seen.get(k) !== v) changedAt.set(k, Date.now())
+    seen = now
+  }
+  /** Lit while one of its keys changed in the last FLASH_MS; the negative delay carries the fade across re-renders. */
+  function lit<T extends HTMLElement>(e: T, ...keys: string[]) {
+    const age = ageOf(...keys)
+    if (age < FLASH_MS) { e.classList.add('ex-lit'); e.style.animationDelay = `-${age}ms` }
+    return e
+  }
+
+  const empty = (text: string) => el('p', { class: 'ex-empty' }, text)
+  const noPositions = () => lit(empty('No open positions'), 'pos') // a full close lights the empty slot
+  function posCard(p: Position, i: number) {
+    const long = p.side === 'Buy'
+    const pnl = p.unrealisedPnl
+    const roi = p.positionIM ? (pnl / p.positionIM) * 100 : 0
+    const tone = pnl >= 0 ? 'ex-up' : 'ex-down'
+    const card = lit(el('div', { class: 'ex-card' },
+      el('div', { class: 'ex-card-head' }, el('b', {}, SYMBOL), el('span', { class: 'ex-tag' }, 'Perp'),
+        el('span', { class: `ex-tag ex-tag-${long ? 'up' : 'down'}` }, `${long ? 'Long' : 'Short'} ${p.leverage.toFixed(2)}x`)),
+      el('div', { class: 'ex-pnl' },
+        cell('Unrealized P&L (USDT)', signed(pnl), tone),
+        cell('ROI', `${signed(roi)}%`, tone)),
+      el('div', { class: 'ex-grid' },
+        lit(cell('Size (BTC)', fmt(p.size, 3)), 'size'), lit(cell('Entry Price', fmt(p.entryPrice)), 'entry'), cell('Mark Price', fmt(p.markPrice)),
+        lit(cell('Liq. Price', p.liqPrice ? fmt(p.liqPrice) : '--', 'ex-warn'), 'liq'),
+        lit(cell('TP/SL', `${p.takeProfit ? fmt(p.takeProfit) : '--'} / ${p.stopLoss ? fmt(p.stopLoss) : '--'}`), 'tp', 'sl'))), 'pos')
+    if (editing === p) card.append(editor(p))
+    else card.append(el('div', { class: 'ex-card-btns' },
+      el('button', { type: 'button', 'data-act': 'tpsl', 'data-i': String(i) }, 'TP/SL'),
+      el('button', { type: 'button', 'data-act': 'close', 'data-i': String(i) }, 'Close')))
+    return card
+  }
+  function editor(p: Position) {
+    const tp = input('tp', p.takeProfit ? String(p.takeProfit) : '')
+    const sl = input('sl', p.stopLoss ? String(p.stopLoss) : '')
+    const f = el('form', { class: 'ex-edit', novalidate: '' },
+      el('div', { class: 'ex-two' }, box('Take Profit', tp), box('Stop Loss', sl)),
+      el('div', { class: 'ex-card-btns' }, el('button', { type: 'button', 'data-act': 'stop-edit' }, 'Cancel'), el('button', { type: 'submit', class: 'ex-primary' }, 'Confirm')))
+    f.onsubmit = e => { e.preventDefault(); m.setStops(p, num(tp), num(sl)); editing = null; renderLists() }
+    return f
+  }
+  function orderCard(o: Order, i: number) {
+    const buy = o.side === 'Buy'
+    return lit(el('div', { class: 'ex-card' },
+      el('div', { class: 'ex-card-head' }, el('b', {}, SYMBOL), el('span', { class: 'ex-tag' }, 'Perp'),
+        el('span', { class: `ex-tag ex-tag-${buy ? 'up' : 'down'}` }, `Limit / ${buy ? 'Buy' : 'Sell'}`),
+        el('button', { type: 'button', class: 'ex-cancel', 'data-act': 'cancel', 'data-i': String(i) }, 'Cancel')),
+      el('div', { class: 'ex-grid' },
+        cell('Filled / Total (BTC)', `${fmt(o.qty - o.leavesQty, 3)} / ${fmt(o.qty, 3)}`),
+        cell('Order Price', fmt(o.price)),
+        cell('Margin (USDT)', fmt((o.leavesQty * o.price) / (m.ex.leverage[SYMBOL] ?? 10), 2)))), `o:${o.orderId}`)
+  }
+  function renderLists() {
+    if (editing && !m.positions.includes(editing)) editing = null
+    listTabs[0].textContent = `Positions(${m.positions.length})`
+    listTabs[1].textContent = `Orders(${m.orders.length})`
+    listTabs.forEach((b, i) => b.setAttribute('aria-selected', String((i === 0) === (tab === 'positions'))))
+    swap(slot, m.positions.length ? [posCard(m.positions[0], 0)] : [noPositions()])
+    swap(list, tab === 'orders'
+      ? m.orders.length ? m.orders.map(orderCard) : [empty('No open orders')]
+      : m.positions.length ? m.positions.map(posCard) : [noPositions()])
+  }
+  // card buttons resolve their position or order on click, so a refresh in between cannot point them at a stale one
+  root.addEventListener('click', e => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')
+    if (!b) return
+    const i = Number(b.dataset.i)
+    const act = b.dataset.act
+    if (act === 'tpsl' && m.positions[i]) editing = m.positions[i]
+    if (act === 'stop-edit') editing = null
+    if (act === 'close' && m.positions[i]) void m.close(m.positions[i]).then(() => m.refresh())
+    if (act === 'cancel' && m.orders[i]) m.cancel(m.orders[i])
+    renderLists()
+  })
+
+  function show(v: 'Charts' | 'Trade') {
+    charts.hidden = v !== 'Charts'
+    trade.hidden = v !== 'Trade'
+    root.dataset.view = v
+    viewTabs.forEach(b => b.setAttribute('aria-selected', String(b.textContent === v)))
+  }
 
   // ── chart ──
   const g = canvas.getContext('2d')!
   let size = { w: 0, h: 0 }
   let frozen: { lo: number; hi: number } | null = null
   let drag: { y: number; price: number; perPx: number } | null = null
+  let dragged = false
 
   new ResizeObserver(() => {
     const r = canvas.getBoundingClientRect()
@@ -49,16 +309,17 @@ export function mountExchange(root: HTMLElement, m: Market) {
   }).observe(canvas)
 
   const levels = () => {
-    const out: { price: number; label: string; color: string }[] = []
+    const out: { price: number; label: string; color: string; key: string }[] = []
     for (const p of m.positions) {
-      out.push({ price: p.entryPrice, label: 'Entry', color: '#8a919c' })
-      if (p.takeProfit) out.push({ price: p.takeProfit, label: 'TP', color: UP })
-      if (p.stopLoss) out.push({ price: p.stopLoss, label: 'SL', color: DOWN })
-      if (p.liqPrice) out.push({ price: p.liqPrice, label: 'Liq.', color: '#ffb11a' })
+      out.push({ price: p.entryPrice, label: 'Entry', color: '#a1a4a5', key: 'entry' })
+      if (p.takeProfit) out.push({ price: p.takeProfit, label: 'TP', color: UP, key: 'tp' })
+      if (p.stopLoss) out.push({ price: p.stopLoss, label: 'SL', color: DOWN, key: 'sl' })
+      if (p.liqPrice) out.push({ price: p.liqPrice, label: 'Liq.', color: '#eeae3f', key: 'liq' })
     }
-    for (const o of m.orders) out.push({ price: o.price, label: o.side === 'Buy' ? 'Buy limit' : 'Sell limit', color: '#5b8def' })
+    for (const o of m.orders) out.push({ price: o.price, label: o.side === 'Buy' ? 'Buy limit' : 'Sell limit', color: '#5b8def', key: `o:${o.orderId}` })
     return out
   }
+  const visible = () => m.bars.slice(-Math.floor((size.w - AXIS_W) / BAR_W))
 
   function range(bars: typeof m.bars) {
     if (frozen) return frozen
@@ -75,42 +336,62 @@ export function mountExchange(root: HTMLElement, m: Market) {
     const { w, h } = size
     if (!w) return
     const plotW = w - AXIS_W
-    const bars = m.bars.slice(-Math.floor(plotW / BAR_W))
+    const plotH = h - TIME_H
+    const bars = visible()
     const { lo, hi } = range(bars)
-    const y = (p: number) => h - ((p - lo) / (hi - lo)) * h
+    const y = (p: number) => plotH - ((p - lo) / (hi - lo)) * plotH
+    const xOf = (i: number) => plotW - (bars.length - i) * BAR_W
     g.clearRect(0, 0, w, h)
-    g.font = '11px Manrope, system-ui, sans-serif'
+    g.font = `10px ${FONT}`
     g.textBaseline = 'middle'
-    // grid and axis
+    // grid, price axis, time axis
     const step = niceStep((hi - lo) / 5)
     for (let p = Math.ceil(lo / step) * step; p < hi; p += step) {
-      g.fillStyle = '#232830'
+      g.fillStyle = '#1b1b21'
       g.fillRect(0, Math.round(y(p)), plotW, 1)
-      g.fillStyle = '#5c636e'
-      g.fillText(fmt(p, 0), plotW + 8, y(p))
+      g.fillStyle = '#77787a'
+      g.fillText(fmt(p, 0), plotW + 6, y(p))
     }
+    g.textAlign = 'center'
+    bars.forEach((b, i) => {
+      const d = new Date(b.t)
+      if (d.getMinutes() % 10 || i < 2) return
+      g.fillStyle = '#77787a'
+      g.fillText(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`, xOf(i) + BAR_W / 2, plotH + TIME_H / 2)
+    })
+    g.textAlign = 'left'
     // candles
     bars.forEach((b, i) => {
-      const x = plotW - (bars.length - i) * BAR_W
+      const x = xOf(i)
       g.fillStyle = b.c >= b.o ? UP : DOWN
-      g.fillRect(x + 3, y(b.h), 1, Math.max(1, y(b.l) - y(b.h)))
+      g.fillRect(x + BAR_W / 2 - 0.5, y(b.h), 1, Math.max(1, y(b.l) - y(b.h)))
       g.fillRect(x + 1, Math.min(y(b.o), y(b.c)), BAR_W - 2, Math.max(1, Math.abs(y(b.o) - y(b.c))))
     })
+    // the visible high and low, pointed at from the side with room
+    if (bars.length) {
+      const hiI = bars.reduce((k, b, i) => (b.h > bars[k].h ? i : k), 0)
+      const loI = bars.reduce((k, b, i) => (b.l < bars[k].l ? i : k), 0)
+      marker(fmt(bars[hiI].h), xOf(hiI) + BAR_W / 2, y(bars[hiI].h), plotW)
+      marker(fmt(bars[loI].l), xOf(loI) + BAR_W / 2, y(bars[loI].l), plotW)
+    }
     // position and order levels; their tags step apart when two prices sit close
     const shown = levels().filter(l => l.price >= lo && l.price <= hi).sort((a, b) => b.price - a.price)
     let below = -Infinity
     for (const l of shown) {
+      const hot = ageOf(l.key) < FLASH_MS // a level that just moved draws solid and bold
       g.strokeStyle = l.color
-      g.setLineDash([4, 4])
+      g.lineWidth = hot ? 2 : 1
+      g.setLineDash(hot ? [] : [4, 4])
       g.beginPath()
       g.moveTo(0, y(l.price))
       g.lineTo(plotW, y(l.price))
       g.stroke()
       g.setLineDash([])
-      below = Math.max(y(l.price), below + 19)
-      tag(`${l.label} ${fmt(l.price, 0)}`, plotW - 4, below, l.color, 'right')
+      g.lineWidth = 1
+      below = Math.max(y(l.price), below + 18)
+      tag(`${l.label} ${fmt(l.price, 0)}`, plotW - 4, below, l.color, '#100f13', 'right')
     }
-    // last price
+    // last price, and the seconds until the candle closes
     const last = bars[bars.length - 1]
     const color = last && last.c >= last.o ? UP : DOWN
     g.strokeStyle = color
@@ -120,29 +401,64 @@ export function mountExchange(root: HTMLElement, m: Market) {
     g.lineTo(plotW, y(m.price))
     g.stroke()
     g.setLineDash([])
-    tag(fmt(m.price), plotW + 2, y(m.price), color, 'left')
+    const at = Math.min(Math.max(y(m.price), 9), plotH - 26)
+    handle(plotW - 104, y(m.price), color)
+    tag(fmt(m.price), plotW + 1, at, color, '#ffffff', 'left', AXIS_W - 2)
+    tag(`00:${String(60 - (Math.floor(Date.now() / 1000) % 60)).padStart(2, '0')}`, plotW + 1, at + 17, '#26272a', '#a1a4a5', 'left', AXIS_W - 2)
   }
 
-  function tag(text: string, x: number, at: number, bg: string, align: 'left' | 'right') {
-    const tw = g.measureText(text).width + 10
+  /** A grip on the price line: the price is what you grab. It breathes until the first drag. */
+  function handle(x: number, at: number, color: string) {
+    if (!dragged && Math.floor(Date.now() / 1000) % 2) {
+      g.fillStyle = color + '40'
+      g.beginPath()
+      g.arc(x, at, 16, 0, Math.PI * 2)
+      g.fill()
+    }
+    g.fillStyle = color
+    g.beginPath()
+    g.arc(x, at, 11, 0, Math.PI * 2)
+    g.fill()
+    g.fillStyle = '#ffffff'
+    for (const d of [-1, 1]) { // ▲ above, ▼ below
+      g.beginPath()
+      g.moveTo(x - 4, at + d * 2)
+      g.lineTo(x + 4, at + d * 2)
+      g.lineTo(x, at + d * 6)
+      g.fill()
+    }
+  }
+
+  function marker(text: string, x: number, at: number, plotW: number) {
+    const right = x < plotW / 2
+    const tw = g.measureText(text).width
+    g.fillStyle = '#a1a4a5'
+    g.fillRect(right ? x + 2 : x - 16, Math.round(at), 14, 1)
+    g.fillText(text, right ? x + 19 : x - 19 - tw, Math.max(6, Math.min(at, size.h - TIME_H - 6)))
+  }
+
+  function tag(text: string, x: number, at: number, bg: string, ink: string, align: 'left' | 'right', width = 0) {
+    const tw = width || g.measureText(text).width + 8
     const left = align === 'left' ? x : x - tw
     g.fillStyle = bg
     g.beginPath()
-    g.roundRect(left, at - 9, tw, 18, 3)
+    g.roundRect(left, at - 8, tw, 16, 2)
     g.fill()
-    g.fillStyle = '#0b0e11'
-    g.fillText(text, left + 5, at + 0.5)
+    g.fillStyle = ink
+    g.fillText(text, left + 4, at + 0.5)
   }
 
   canvas.addEventListener('pointerdown', e => {
-    const { lo, hi } = range(m.bars.slice(-Math.floor((size.w - AXIS_W) / BAR_W)))
+    const { lo, hi } = range(visible())
     frozen = { lo, hi } // the scale holds still under the hand
-    drag = { y: e.clientY, price: m.price, perPx: (hi - lo) / size.h }
+    drag = { y: e.clientY, price: m.price, perPx: (hi - lo) / (size.h - TIME_H) }
     canvas.setPointerCapture(e.pointerId)
+    canvas.classList.add('is-grabbing')
     hint.hidden = true
+    dragged = true
   })
   canvas.addEventListener('pointermove', e => { if (drag) m.setPrice(drag.price + (drag.y - e.clientY) * drag.perPx) })
-  const release = () => { drag = null; frozen = null; paint() }
+  const release = () => { drag = null; frozen = null; canvas.classList.remove('is-grabbing'); paint() }
   canvas.addEventListener('pointerup', release)
   canvas.addEventListener('pointercancel', release)
   canvas.addEventListener('keydown', e => {
@@ -151,143 +467,38 @@ export function mountExchange(root: HTMLElement, m: Market) {
     hint.hidden = true
     m.setPrice(m.price * (e.key === 'ArrowUp' ? 1.002 : 0.998))
   })
+  setInterval(paint, 1000) // the candle countdown
 
-  // ── ticket ──
-  let type: 'Market' | 'Limit' = 'Market'
-  const seg = el('div', { class: 'ex-seg' }, ...(['Market', 'Limit'] as const).map(t => {
-    const b = el('button', { type: 'button', 'aria-pressed': String(t === type) }, t)
-    b.onclick = () => { type = t; for (const x of seg.children) x.setAttribute('aria-pressed', String(x === b)); limitRow.hidden = t !== 'Limit'; info() }
-    return b
-  }))
-  const input = (name: string, value = '', placeholder = '') => el('input', { name, inputmode: 'decimal', autocomplete: 'off', value, placeholder })
-  const priceIn = input('price', fmt(m.price, 1).replace(/,/g, ''))
-  const qtyIn = input('qty', '0.05')
-  const tpIn = input('tp', '', 'Optional')
-  const slIn = input('sl', '', 'Optional')
-  const lev = el('input', { type: 'range', min: '1', max: '100', value: '10', 'aria-label': 'Leverage' })
-  const levOut = el('output', {}, '10×')
-  const limitRow = el('label', { class: 'ex-field' }, el('span', {}, 'Price'), priceIn, el('i', {}, 'USDT'))
-  limitRow.hidden = true
-  const cost = el('p', { class: 'ex-cost' })
-  const error = el('p', { class: 'ex-error', role: 'alert' })
-  const buy = el('button', { type: 'submit', class: 'ex-buy', value: 'Buy' }, 'Buy / Long')
-  const sell = el('button', { type: 'submit', class: 'ex-sell', value: 'Sell' }, 'Sell / Short')
-  ticket.append(
-    seg,
-    el('label', { class: 'ex-lev' }, el('span', {}, 'Leverage'), lev, levOut),
-    limitRow,
-    el('label', { class: 'ex-field' }, el('span', {}, 'Qty'), qtyIn, el('i', {}, 'BTC')),
-    el('div', { class: 'ex-tpsl' },
-      el('label', { class: 'ex-field' }, el('span', {}, 'TP'), tpIn),
-      el('label', { class: 'ex-field' }, el('span', {}, 'SL'), slIn)),
-    cost, error,
-    el('div', { class: 'ex-sides' }, buy, sell),
-  )
-  const num = (i: HTMLInputElement) => Number(i.value.replace(/,/g, '')) || 0
-  function info() {
-    const at = type === 'Limit' ? num(priceIn) : m.price
-    const leverage = Number(lev.value)
-    levOut.value = `${leverage}×`
-    cost.textContent = `Margin ${fmt((num(qtyIn) * at) / leverage, 2)} USDT · Long liq. ${fmt(liqOf('Buy', at, leverage), 0)}`
-  }
-  ticket.addEventListener('input', () => { error.textContent = ''; info() })
-  ticket.addEventListener('submit', async e => {
-    e.preventDefault()
-    const side = ((e as SubmitEvent).submitter as HTMLButtonElement).value as 'Buy' | 'Sell'
-    const qty = num(qtyIn)
-    const at = type === 'Limit' ? num(priceIn) : m.price
-    const tp = num(tpIn)
-    const sl = num(slIn)
-    const long = side === 'Buy'
-    if (!(qty > 0)) return void (error.textContent = 'Enter a quantity.')
-    if (!(at > 0)) return void (error.textContent = 'Enter a price.')
-    if (tp && (long ? tp <= at : tp >= at)) return void (error.textContent = `Take profit must be ${long ? 'above' : 'below'} the price.`)
-    if (sl && (long ? sl >= at : sl <= at)) return void (error.textContent = `Stop loss must be ${long ? 'below' : 'above'} the price.`)
-    try {
-      if (type === 'Limit') m.limit(side, qty, at)
-      else {
-        const opposite = m.positions.find(p => p.side !== side)
-        // one-way mode: an opposite order reduces first, the rest opens the other side
-        if (opposite && qty >= opposite.size) await m.close(opposite)
-        else if (opposite) await m.ex.placeOrder({ symbol: SYMBOL, side, qty: String(qty), orderLinkId: crypto.randomUUID(), positionIdx: 0, reduceOnly: true })
-        const rest = opposite ? Math.round((qty - opposite.size) * 1e6) / 1e6 : qty
-        if (rest > 0) await m.open(side, rest, Number(lev.value), tp, sl)
-      }
-      m.refresh()
-    } catch (err) {
-      error.textContent = (err as Error).message
-    }
-  })
-
-  // ── positions and orders ──
-  let tab: 'positions' | 'orders' = 'positions'
-  let editing: Position | null = null
-  function renderList() {
-    tabs.replaceChildren(...(['positions', 'orders'] as const).map(t => {
-      const b = el('button', { type: 'button', role: 'tab', 'aria-selected': String(t === tab) }, `${t === 'positions' ? 'Positions' : 'Orders'} (${t === 'positions' ? m.positions.length : m.orders.length})`)
-      b.onclick = () => { tab = t; renderList() }
-      return b
-    }))
-    if (tab === 'orders') {
-      list.replaceChildren(...(m.orders.length ? m.orders.map(o => {
-        const cancel = el('button', { type: 'button', class: 'ex-link' }, 'Cancel')
-        cancel.onclick = () => m.cancel(o)
-        return el('div', { class: 'ex-row' },
-          el('div', { class: 'ex-row-head' }, el('b', { class: o.side === 'Buy' ? 'up' : 'down' }, `${o.side === 'Buy' ? 'Buy' : 'Sell'} limit`), el('span', {}, `${o.leavesQty} / ${o.qty} BTC @ ${fmt(o.price)}`), cancel))
-      }) : [el('p', { class: 'ex-empty' }, 'No open orders')]))
-      return
-    }
-    if (!m.positions.length) return void list.replaceChildren(el('p', { class: 'ex-empty' }, 'No open positions'))
-    list.replaceChildren(...m.positions.map(p => {
-      const long = p.side === 'Buy'
-      const pnl = p.unrealisedPnl
-      const roi = p.positionIM ? (pnl / p.positionIM) * 100 : 0
-      const close = el('button', { type: 'button', class: 'ex-link' }, 'Close')
-      close.onclick = () => void m.close(p)
-      const edit = el('button', { type: 'button', class: 'ex-link' }, 'TP/SL')
-      edit.onclick = () => { editing = editing === p ? null : p; renderList() }
-      const row = el('div', { class: 'ex-row' },
-        el('div', { class: 'ex-row-head' }, el('b', { class: long ? 'up' : 'down' }, `${long ? 'Long' : 'Short'} ${p.leverage}×`), el('span', {}, `${p.size} BTC`), edit, close),
-        el('dl', {},
-          el('dt', {}, 'Entry'), el('dd', {}, fmt(p.entryPrice)),
-          el('dt', {}, 'Mark'), el('dd', {}, fmt(p.markPrice)),
-          el('dt', {}, 'Liq.'), el('dd', { class: 'warn' }, p.liqPrice ? fmt(p.liqPrice) : '—'),
-          el('dt', {}, 'PnL'), el('dd', { class: pnl >= 0 ? 'up' : 'down' }, signed(pnl)),
-          el('dt', {}, 'ROI'), el('dd', { class: pnl >= 0 ? 'up' : 'down' }, `${signed(roi)}%`),
-          el('dt', {}, 'TP / SL'), el('dd', {}, `${p.takeProfit ? fmt(p.takeProfit, 0) : '—'} / ${p.stopLoss ? fmt(p.stopLoss, 0) : '—'}`)))
-      if (editing === p) {
-        const tp = input('tp', p.takeProfit ? String(p.takeProfit) : '', 'TP')
-        const sl = input('sl', p.stopLoss ? String(p.stopLoss) : '', 'SL')
-        const save = el('button', { type: 'submit', class: 'ex-link' }, 'Save')
-        const f = el('form', { class: 'ex-edit' }, tp, sl, save)
-        f.onsubmit = e => { e.preventDefault(); m.setStops(p, num(tp), num(sl)); editing = null; renderList() }
-        row.append(f)
-      }
-      return row
-    }))
-  }
-
+  // ── everything that follows the market ──
   let queued = false
   const render = () => {
     if (queued) return
     queued = true
     requestAnimationFrame(() => {
       queued = false
-      const last = m.bars[m.bars.length - 1]
-      price.textContent = fmt(m.price)
-      price.className = `ex-price ${last && last.c >= last.o ? 'up' : 'down'}`
-      const pct = (m.price / startPrice - 1) * 100
-      change.textContent = `${signed(pct)}%`
-      change.className = `ex-change ${pct >= 0 ? 'up' : 'down'}`
+      track()
+      const bar = m.bars[m.bars.length - 1]
+      const up = bar && bar.c >= bar.o ? 'ex-up' : 'ex-down'
+      last.textContent = lastSmall.textContent = fmt(m.price)
+      last.className = `ex-last ${up}`
+      lastSmall.className = `ex-pair-last ${up}`
+      const pct = (m.price / m.bars[0].o - 1) * 100 // change over the history on the chart
+      badge.textContent = `${signed(pct)}%`
+      badge.className = `ex-badge ${pct >= 0 ? 'ex-badge-up' : 'ex-badge-down'}`
       paint()
-      if (editing && !m.positions.includes(editing)) editing = null
-      if (!editing) renderList() // an open TP/SL form keeps its typing
-      if (type === 'Market' && document.activeElement !== priceIn) priceIn.value = m.price.toFixed(1)
+      if (!editing || !m.positions.includes(editing)) renderLists() // an open TP/SL form keeps its typing
+      if (typeSel.value === 'Market' && document.activeElement !== priceIn) priceIn.value = m.price.toFixed(1)
       info()
     })
   }
+  setSide('Buy')
+  show('Charts')
   m.onChange(render)
   render()
+  return {
+    /** A tab's fresh start: the chart, and what the tab's setup changed is not lit as news. */
+    start() { show('Charts'); seen = null; changedAt.clear() },
+  }
 }
 
 function niceStep(raw: number) {

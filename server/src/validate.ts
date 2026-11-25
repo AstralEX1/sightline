@@ -62,6 +62,17 @@ export function validateShortcut(input: unknown, ctx: { phrasesInUse?: string[] 
     return null
   }
   if (s?.type === 'ALL_POSITIONS') scope = { type: 'ALL_POSITIONS' }
+  else if (s?.type === 'COIN_POSITIONS') {
+    const list = Array.isArray(s.symbols) ? s.symbols : null
+    if (!list?.length) add('missing_value', 'Choose at least one coin', { field: 'scope.symbols' })
+    else if (list.length > LIMITS.maxCoins) add('bad_value', `Up to ${LIMITS.maxCoins} coins`, { field: 'scope.symbols' })
+    const syms = list?.length && list.length <= LIMITS.maxCoins ? list.map(v => symbol(v, 'scope.symbols')) : null
+    if (!oneOf(s.side, ['ANY', 'LONG', 'SHORT'] as const)) add('bad_value', 'Choose long, short or both', { field: 'scope.side' })
+    else if (syms && syms.every(x => x !== null)) {
+      if (new Set(syms).size < syms.length) add('bad_value', 'Each coin once', { field: 'scope.symbols' })
+      else scope = { type: 'COIN_POSITIONS', symbols: syms as string[], side: s.side }
+    }
+  }
   else if (s?.type === 'ALL_ORDERS') scope = { type: 'ALL_ORDERS' }
   else if (s?.type === 'SYMBOL') {
     const sym = symbol(s.symbol, 'scope.symbol')
@@ -129,10 +140,7 @@ export function validateShortcut(input: unknown, ctx: { phrasesInUse?: string[] 
       case 'PRICE_CHANGE': {
         if (!oneOf(x.source, SOURCES) || !oneOf(x.direction, ['UP', 'DOWN'] as const)) { add('bad_value', 'Choose rises or falls', at('direction')); break }
         const percent = dec(x.percent, 'a percent', { gt: LIMITS.pricePct.min, le: LIMITS.pricePct.max }, at('percent'))
-        const w = LIMITS.windowSec
-        const okWindow = Number.isInteger(x.windowSec) && (x.windowSec as number) >= w.min && (x.windowSec as number) <= w.max && (x.windowSec as number) % w.step === 0
-        if (!okWindow) add('bad_value', `Time window must be whole minutes from ${w.min / 60} to ${w.max / 60}`, at('windowSec'))
-        if (percent && okWindow) out = { id, type: 'PRICE_CHANGE', source: x.source, direction: x.direction, percent, windowSec: x.windowSec as number }
+        if (percent) out = { id, type: 'PRICE_CHANGE', source: x.source, direction: x.direction, percent }
         break
       }
       case 'PROFIT':
@@ -149,7 +157,6 @@ export function validateShortcut(input: unknown, ctx: { phrasesInUse?: string[] 
         if (distancePct) out = { id, type: x.type, distancePct }
         break
       }
-      case 'SL_MISSING':
       case 'ORDER_FILLED':
       case 'ORDER_PARTIAL':
         out = { id, type: x.type }
@@ -199,7 +206,11 @@ export function validateShortcut(input: unknown, ctx: { phrasesInUse?: string[] 
 
   // Do
   let action: Action | null = null
-  const a = obj(r.action)
+  const a0 = obj(r.action)
+  // Open position (before 2026-11-25) is Open long or Open short with one size and one leverage.
+  const a = a0?.type === 'OPEN_POSITION'
+    ? { ...a0, type: a0.side === 'SHORT' ? 'OPEN_SHORT' : 'OPEN_LONG', sizes: [a0.notionalUsdt], leverages: [a0.leverage] }
+    : a0
   const af = (f: string) => ({ field: `action.${f}` })
   const money = (v: unknown, what: string, f: string) => dec(v, what, { gt: 0, lt: BIG }, af(f))
   const stopRange = { gt: LIMITS.stopPct.min, lt: LIMITS.stopPct.max }
@@ -218,20 +229,32 @@ export function validateShortcut(input: unknown, ctx: { phrasesInUse?: string[] 
       break
     }
     case 'ADD_MARGIN': {
-      const usdt = money(a.usdt, 'an amount in USDT', 'usdt')
-      if (usdt) action = { type: 'ADD_MARGIN', usdt }
+      // A shortcut saved before 2026-11-25 has `usdt`
+      const unit = a.usdt !== undefined && a.unit === undefined ? 'USDT' : a.unit
+      const raw = a.usdt !== undefined && a.amount === undefined ? a.usdt : a.amount
+      if (!oneOf(unit, ['USDT', 'MARGIN_PERCENT'] as const)) { add('bad_value', 'Choose USDT or a percent of the margin', af('unit')); break }
+      const amount = unit === 'USDT' ? money(raw, 'an amount in USDT', 'amount')
+        : dec(raw, 'a percent of the margin', { gt: LIMITS.marginPct.min, le: LIMITS.marginPct.max }, af('amount'))
+      if (amount) action = { type: 'ADD_MARGIN', amount, unit }
       break
     }
-    case 'OPEN_POSITION': {
-      if (a.side !== 'LONG' && a.side !== 'SHORT') add('missing_value', 'Choose long or short', af('side'))
-      const notionalUsdt = money(a.notionalUsdt, 'a size in USDT', 'notionalUsdt')
-      const leverage = dec(a.leverage, 'leverage', { ge: LIMITS.leverage.min, le: LIMITS.leverage.max }, af('leverage'))
+    case 'OPEN_LONG':
+    case 'OPEN_SHORT': {
+      /** 1 to maxPicks distinct values, each one checked; null with an issue. */
+      const list = (v: unknown, what: string, r: Range, f: string): string[] | null => {
+        if (!Array.isArray(v) || !v.length) return add('missing_value', `Enter at least one ${what}`, af(f)), null
+        if (v.length > LIMITS.maxPicks) return add('bad_value', `Up to ${LIMITS.maxPicks} choices of ${what}`, af(f)), null
+        const out = v.map(x => dec(x, what, r, af(f)))
+        if (out.some(x => x === null)) return null
+        if (new Set(out.map(Number)).size < out.length) return add('bad_value', `Each ${what} once`, af(f)), null
+        return out as string[]
+      }
+      const sizes = list(a.sizes, 'size in USDT', { gt: 0, lt: BIG }, 'sizes')
+      const leverages = list(a.leverages, 'leverage', { ge: LIMITS.leverage.min, le: LIMITS.leverage.max }, 'leverages')
       // A stop on a new position sits on the losing side of entry, a take profit on the winning side.
       const sl = a.sl === undefined ? undefined : target(a.sl, 'action.sl', { gt: LIMITS.stopPct.min, lt: 0 })
       const tp = a.tp === undefined ? undefined : target(a.tp, 'action.tp', tpRange)
-      if ((a.side === 'LONG' || a.side === 'SHORT') && notionalUsdt && leverage && sl !== null && tp !== null) {
-        action = { type: 'OPEN_POSITION', side: a.side, notionalUsdt, leverage, ...(sl && { sl }), ...(tp && { tp }) }
-      }
+      if (sizes && leverages && sl !== null && tp !== null) action = { type: a.type === 'OPEN_SHORT' ? 'OPEN_SHORT' : 'OPEN_LONG', sizes, leverages, ...(sl && { sl }), ...(tp && { tp }) }
       break
     }
     case 'INCREASE_POSITION': {
@@ -274,13 +297,16 @@ export function validateShortcut(input: unknown, ctx: { phrasesInUse?: string[] 
     }
     const onPosition = action.type !== 'CANCEL_ORDER' && action.type !== 'NOTIFY'
     const incompatible = issues.some(i => i.code === 'incompatible_action') // one problem at a time
-    if (scope.type === 'ORDER' && onPosition && !incompatible && !items.some(x => x.type === 'ORDER_FILLED' || x.type === 'ORDER_PARTIAL')) {
-      add('needs_fill', `${title} on one order needs Order filled or Order partly filled`, { field: 'action' })
+    if ((scope.type === 'ORDER' || scope.type === 'ALL_ORDERS') && onPosition && !incompatible && !items.some(x => x.type === 'ORDER_FILLED' || x.type === 'ORDER_PARTIAL')) {
+      add('needs_fill', `${title} on ${where.toLowerCase()} needs Order filled or Order partly filled`, { field: 'action' })
     }
-    const priceTargets = [action.type === 'OPEN_POSITION' ? [action.sl, action.tp] : [], 'target' in action ? [action.target] : []].flat()
-    if (scope.type === 'ALL_POSITIONS' && priceTargets.some(tg => tg?.kind === 'PRICE')) {
-      add('price_needs_one_symbol', 'A price works for one symbol, not All positions: use a percent from entry', { field: 'action.target' })
+    const priceTargets = [action.type === 'OPEN_LONG' || action.type === 'OPEN_SHORT' ? [action.sl, action.tp] : [], 'target' in action ? [action.target] : []].flat()
+    const manyCoins = scope.type === 'ALL_POSITIONS' || scope.type === 'ALL_ORDERS' || (scope.type === 'COIN_POSITIONS' && scope.symbols.length > 1)
+    if (manyCoins && priceTargets.some(tg => tg?.kind === 'PRICE')) {
+      add('price_needs_one_symbol', `A price works for one symbol, not ${where}: use a percent from entry`, { field: 'action.target' })
     }
+    const level = items.find(x => x.type === 'PRICE')
+    if (manyCoins && level && rules.conditions.includes('PRICE')) add('price_needs_one_symbol', 'A price level works for one coin: choose one, or use Price change', { conditionId: level.id })
   }
 
   for (let i = 0; i < items.length; i++) {
@@ -312,9 +338,12 @@ export function validateShortcut(input: unknown, ctx: { phrasesInUse?: string[] 
     const hasEvent = items.some(isEvent)
     if (hasEvent && trigger.mode !== 'ON_EVENT' && trigger.mode !== 'ONCE') add('needs_on_event', 'A crossing, a fill or a close fires On event or Once', { field: 'trigger.mode' })
     if (!hasEvent && trigger.mode === 'ON_EVENT') add('needs_event', 'On event needs a price crossing, a fill or a close', { field: 'trigger.mode' })
-    if ((action.type === 'OPEN_POSITION' || action.type === 'INCREASE_POSITION') && trigger.mode !== 'ONCE') {
+    if ((action.type === 'OPEN_LONG' || action.type === 'OPEN_SHORT' || action.type === 'INCREASE_POSITION') && trigger.mode !== 'ONCE') {
       add('needs_once', `${ACTION_TITLE[action.type]} fires Once`, { field: 'trigger.mode' })
     }
+  }
+  if (action?.type === 'NOTIFY' && delivery && !delivery.glasses && !delivery.phone) {
+    add('no_delivery', 'Notify goes nowhere: turn on Glasses or Phone', { field: 'delivery' })
   }
   if (action && delivery && isTrade(action.type) && !delivery.glasses) {
     add('needs_glasses', `${ACTION_TITLE[action.type]} is confirmed on Even G2: keep Glasses on`, { field: 'delivery' })
@@ -346,9 +375,8 @@ function sameMetric(x: Condition, y: Condition, logic: 'ALL' | 'ANY', add: (code
     return
   }
   if (x.type === 'PRICE_CHANGE' && y.type === 'PRICE_CHANGE') {
-    if (x.windowSec !== y.windowSec) return
     if (x.direction === y.direction) add('redundant', `Two ${label.toLowerCase()} limits in the same direction: keep one`, at)
-    else if (logic === 'ALL') add('never_true', `${label} cannot rise and fall in the same window`, at)
+    else if (logic === 'ALL') add('never_true', `${label} cannot rise and fall at once`, at)
     return
   }
   if ((x.type === 'PROFIT' || x.type === 'LOSS') && x.type === y.type && 'unit' in y) {

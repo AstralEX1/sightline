@@ -13,7 +13,7 @@ import {
   actionChoices, conditionChoices, emptyDraft, fitTrigger, inRange, leaveDecision, newAction, newCondition, nextId, numField,
   rangeText, scopeChoices, setCompare, setMetric, setNumber, triggerChoices, type Draft, type Range,
 } from './model.ts'
-import { actionParts, compareMenu, conditionParts, fmt, metricWord, optionsSummary, parseDec, titleOf, type Part, type Tok } from './sentence.ts'
+import { actionParts, coinsText, compareMenu, conditionParts, fmt, metricWord, optionsSummary, parseDec, titleOf, type Part, type Tok } from './sentence.ts'
 import { app, dialog, getCatalog, h, isOffline, keepFocus, menu, rowSwitch, sheet, toast } from './ui.ts'
 
 type Pos = Position & { epoch: string }
@@ -251,6 +251,7 @@ function nav() {
 function scopeValue(sc: Scope): { text: string; missing?: boolean } {
   switch (sc.type) {
     case 'ALL_POSITIONS': return { text: 'All positions' }
+    case 'COIN_POSITIONS': return sc.symbols.length ? { text: coinsText(sc) } : { text: 'Choose coins', missing: true }
     case 'ALL_ORDERS': return { text: 'All orders' }
     case 'POSITION': {
       if (!sc.symbol) return { text: 'Choose position', missing: true }
@@ -309,6 +310,10 @@ function pickScope(t: Scope['type']) {
     detail: p.positionIM ? `ROI ${p.unrealisedPnl >= 0 ? '+' : '−'}${Math.abs((100 * p.unrealisedPnl) / p.positionIM).toFixed(1)}%` : '',
     pick: () => set({ type: 'POSITION', symbol: p.symbol, positionIdx: p.positionIdx as 0 | 1 | 2, epoch: p.epoch }),
   })), 'No open positions')
+  if (t === 'COIN_POSITIONS') {
+    const cur = s.draft.scope.type === 'COIN_POSITIONS' ? s.draft.scope : { symbols: [], side: 'ANY' as const }
+    return symbolPicker(() => {}, { ...cur, done: (symbols, side) => set({ type: 'COIN_POSITIONS', symbols, side }) })
+  }
   if (t === 'ORDER') return picker('One order', s.orders.map(o => ({
     title: orderLabel(o), sub: `${o.leavesQty} left of ${o.qty}`, detail: '', pick: () => set({ type: 'ORDER', symbol: o.symbol, orderId: o.orderId }),
   })), 'No open orders')
@@ -327,23 +332,61 @@ function picker(title: string, rows: PickRow[], empty: string) {
   })
 }
 
-/** Recent symbols from positions and orders, plus whatever is typed. */
-function symbolPicker(pick: (symbol: string) => void) {
-  // shortcut: no instrument list endpoint, so the list is your positions' and orders' symbols plus the typed one; list USDT perpetuals once the server sends them
+/** Every symbol the exchange trades, from the last time the picker loaded it; null until then or while it fails. */
+let symbols: string[] | null = null
+
+type CoinSide = 'ANY' | 'LONG' | 'SHORT'
+/**
+ * Your positions' and orders' symbols first, then every symbol the exchange trades; the search filters both.
+ * `multi`: Positions by coin, several coins and a side, kept with Done.
+ */
+function symbolPicker(pick: (symbol: string) => void, multi?: { symbols: string[]; side: CoinSide; done: (symbols: string[], side: CoinSide) => void }) {
+  let chosen = [...(multi?.symbols ?? [])]
+  let side: CoinSide = multi?.side ?? 'ANY'
+  const max = cat.limits.maxCoins
   const recent = [...new Set([...s.positions.map(p => p.symbol), ...s.orders.map(o => o.symbol)])]
-  const list = h('div', { class: 'group', role: 'listbox', 'aria-label': 'Symbols' })
+  const lists = h('div')
   const input = h('input', { class: 'search', type: 'search', placeholder: 'Search symbol', 'aria-label': 'Search symbol', autocapitalize: 'characters', autocomplete: 'off' })
+  const toggle = (n: string) => {
+    chosen = chosen.includes(n) ? chosen.filter(x => x !== n) : chosen.length < max ? [...chosen, n] : chosen
+    paint()
+  }
+  const group = (label: string, names: string[]) => names.length ? [
+    ...(label ? [h('h3', { class: 'group-label' }, label)] : []),
+    h('div', { class: 'group', role: 'listbox', 'aria-label': label || 'Symbols', 'aria-multiselectable': multi ? 'true' : undefined }, ...names.map(n => h('button', {
+      class: 'pick-row pick-row--one', type: 'button', role: 'option', 'aria-selected': multi ? String(chosen.includes(n)) : undefined,
+      onclick: () => { if (multi) return toggle(n); sh?.close(); pick(n) },
+    }, h('span', { class: 'pick-row__title' }, n), multi && chosen.includes(n) ? h('span', { class: 'radio-row__check', html: icon('check', 20, 2.4) }) : null))),
+  ] : []
+  const sides = multi && h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Side' })
+  const paintSides = () => sides && keepFocus(sides, () => sides.replaceChildren(...(['ANY', 'LONG', 'SHORT'] as const).map(x => h('button', {
+    type: 'button', role: 'radio', 'aria-checked': String(side === x), onclick: () => { side = x; paintSides() },
+  }, x === 'ANY' ? 'Long and short' : x === 'LONG' ? 'Long' : 'Short'))))
   const paint = () => {
     const q = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '')
     const typed = q.length >= 2 ? (q.endsWith('USDT') ? q : `${q}USDT`) : ''
-    const names = [...new Set([...recent.filter(x => x.includes(q)), ...(typed && /^[A-Z0-9]{2,20}$/.test(typed) ? [typed] : [])])]
-    list.replaceChildren(...names.map(n => h('button', { class: 'pick-row', type: 'button', role: 'option', onclick: () => { sh.close(); pick(n) } },
-      h('span', { class: 'pick-row__title' }, n))))
-    list.hidden = !names.length
+    const rank = (n: string) => (n === typed ? 0 : n.startsWith(q) ? 1 : 2) // "ETH" puts ETHUSDT before ETHFIUSDT
+    const picked = multi ? chosen.filter(n => n.includes(q)) : []
+    const mine = recent.filter(n => n.includes(q) && !picked.includes(n))
+    // Until the list arrives (or when it fails) the typed symbol is offered as is; once it is here, only what it holds.
+    const all = symbols ? symbols.filter(n => n.includes(q)) : typed && /^[A-Z0-9]{2,20}$/.test(typed) ? [typed] : []
+    const rest = all.filter(n => !recent.includes(n) && !picked.includes(n)).sort((a, b) => rank(a) - rank(b))
+    keepFocus(lists, () => lists.replaceChildren(...group('Chosen', picked), ...group('Positions and orders', mine), ...group(symbols ? 'All symbols' : '', rest),
+      symbols && q && !picked.length && !mine.length && !rest.length ? h('p', { class: 'footnote' }, 'No results') : '',
+      multi && chosen.length >= max ? h('p', { class: 'footnote' }, `Up to ${max} coins`) : ''))
+    sh?.setDone(chosen.length > 0)
   }
   input.addEventListener('input', paint)
-  const sh = sheet({ title: 'One symbol', back: back('apply'), focus: input, body: [h('label', { class: 'search-wrap', html: icon('search', 18, 2.2) }, input), list] })
+  let sh: ReturnType<typeof sheet> | undefined
+  sh = sheet({
+    title: multi ? 'Positions by coin' : 'One symbol', back: back('apply'), focus: input,
+    body: [...(sides ? [sides, h('p', { class: 'footnote' }, 'Positions of these coins now and later, on this side')] : []),
+      h('label', { class: 'search-wrap', html: icon('search', 18, 2.2) }, input), lists],
+    ...(multi && { dirty: () => chosen.join() !== multi.symbols.join() || side !== multi.side, onDone: () => { if (!chosen.length) return false; multi.done(chosen, side) } }),
+  })
+  paintSides()
   paint()
+  void api.getSymbols().then(list => { symbols = list; if (lists.isConnected) paint() }, () => {})
 }
 
 /** Tokens and words of one line; error lines get red tokens and words, the operator token stays normal (§5.9). */
@@ -419,7 +462,9 @@ function optionsRow(issues: Issue[]) {
 
 function confirmLine() {
   const a = s.draft.action
-  return a ? h('p', { class: 'confirm-line', html: icon('glasses', 16, 2) }, a.type === 'NOTIFY' ? 'Shows on Even G2' : 'Confirm on Even G2') : null
+  if (!a) return null
+  const phoneOnly = a.type === 'NOTIFY' && !s.draft.delivery.glasses
+  return h('p', { class: 'confirm-line', html: icon(phoneOnly ? 'bell' : 'glasses', 16, 2) }, phoneOnly ? 'Sends to phone' : a.type === 'NOTIFY' ? 'Shows on Even G2' : 'Confirm on Even G2')
 }
 
 // ── Token editors ────────────────────────────────────────
@@ -440,12 +485,20 @@ function onToken(t: Tok, condId: string | undefined, anchor: HTMLElement, fk: st
         label: l === 'ANY' ? 'or' : 'and', checked: cur === l, onPick: () => commit(d => { d.conditions.logic = l }),
       })), 'Group operator', back(fk))
     }
-    case 'side': {
+    case 'sizes':
+    case 'leverages': return listSheet(t.key, fk)
+    case 'unit': {
       const a = s.draft.action
-      if (a?.type !== 'OPEN_POSITION') return
-      return menu(anchor, (['LONG', 'SHORT'] as const).map(side => ({
-        label: side === 'LONG' ? 'Long' : 'Short', checked: a.side === side, onPick: () => commit(d => { (d.action as typeof a).side = side }),
-      })), 'Side', back(fk))
+      if (a?.type !== 'ADD_MARGIN') return
+      return menu(anchor, (['MARGIN_PERCENT', 'USDT'] as const).map(unit => ({
+        label: unit === 'USDT' ? 'USDT' : '% of its margin', checked: a.unit === unit,
+        onPick: () => {
+          if (unit === a.unit) return
+          const before = s.draft
+          commit(d => { d.action = { type: 'ADD_MARGIN', amount: '', unit } }) // another unit: the old number means nothing
+          numericSheet('amount', undefined, fk, before)
+        },
+      })), 'Unit', back(fk))
     }
     case 'compare': {
       const cm = c && compareMenu(c)
@@ -490,9 +543,8 @@ function conditionSheet(replacing?: string, fk = 'add-cond') {
 }
 
 function actionSheet(fk: string) {
-  const { ok, needs } = actionChoices(cat, s.draft)
   const cur = s.draft.action?.type
-  const row = (a: { type: Action['type']; title: string; reason?: string }) => {
+  const row = (a: { type: Action['type']; title: string }) => {
     const ic = ACTION_ICON[a.type]
     return h('button', {
       class: 'choice-row', type: 'button', 'aria-current': cur === a.type ? 'true' : undefined,
@@ -502,17 +554,67 @@ function actionSheet(fk: string) {
         const next = cur === a.type ? s.draft.action! : newAction(a.type)
         commit(d => { d.action = next })
         const key = firstEmpty(actionParts(next))
-        if (key) numericSheet(key, undefined, `a:${key}`, next === before.action ? undefined : before)
+        if (key === 'sizes' || key === 'leverages') listSheet(key, `a:${key}`, next === before.action ? undefined : before)
+        else if (key) numericSheet(key, undefined, `a:${key}`, next === before.action ? undefined : before)
       },
     },
     h('span', { class: 'chip chip--row', style: `--c: ${ic.color}`, html: icon(ic.icon, 16, 2.4) }),
-    h('span', { class: 'choice-row__text' }, h('span', {}, a.title), a.reason ? h('span', { class: 'choice-row__sub' }, a.reason) : null),
+    h('span', { class: 'choice-row__text' }, h('span', {}, a.title)),
     cur === a.type ? h('span', { class: 'radio-row__check', html: icon('check', 20, 2.4) }) : null)
   }
   const sh = sheet({
     title: 'Action', back: back(fk),
-    body: [h('div', { class: 'group' }, ...ok.map(row)), needs.length ? h('h3', { class: 'group-label' }, 'Needs changes') : '', needs.length ? h('div', { class: 'group' }, ...needs.map(row)) : ''],
+    body: [h('div', { class: 'group' }, ...actionChoices(cat, s.draft).map(row))],
   })
+}
+
+/** Open's sizes or leverages: the choices the glasses offer, smallest first. Tap a row to remove it. */
+function listSheet(key: 'sizes' | 'leverages', fk: string, before?: Draft) {
+  const a = s.draft.action
+  const f = numField(cat, s.draft, key)
+  if ((a?.type !== 'OPEN_LONG' && a?.type !== 'OPEN_SHORT') || !f) return
+  let values = [...a[key]]
+  const max = cat.limits.maxPicks
+  const shown = (v: string) => `${fmt(v)}${f.unit === '×' ? '×' : ` ${f.unit}`}`
+  const input = h('input', {
+    class: 'numeric__input', type: 'text', inputmode: 'decimal', autocomplete: 'off', enterkeyhint: 'done',
+    'aria-label': `Add ${f.word.toLowerCase()}, ${f.unit === '×' ? 'times' : f.unit}`,
+  })
+  const group = h('div', { class: 'group', 'aria-label': f.title })
+  const note = h('p', { class: 'footnote', 'aria-live': 'polite' })
+  /** The typed value goes in the list; false when it cannot. */
+  const add = (): boolean => {
+    const v = checkNum(input.value, f.range)
+    if (v === null || values.length >= max) return false
+    if (!values.some(x => Number(x) === Number(v))) values = [...values, v].sort((x, y) => Number(x) - Number(y))
+    input.value = ''
+    paint()
+    return true
+  }
+  const paint = () => {
+    keepFocus(group, () => group.replaceChildren(...values.map(v => h('button', {
+      class: 'radio-row', type: 'button', 'aria-label': `Remove ${shown(v)}`, onclick: () => { values = values.filter(x => x !== v); paint() },
+    }, h('span', { class: 'radio-row__label num' }, shown(v)), h('span', { class: 'radio-row__detail', html: REMOVE })))))
+    const typed = input.value.trim() !== ''
+    const bad = typed && checkNum(input.value, f.range) === null
+    note.textContent = bad ? rangeText(f.range, f.unit) : values.length >= max ? `Up to ${max} choices` : values.length > 1 ? 'The glasses ask which one' : 'One value is used without asking'
+    note.classList.toggle('is-error', bad)
+    sh.setDone(!bad && (values.length > 0 || (typed && values.length < max)))
+  }
+  const sh = sheet({
+    title: f.title, back: back(fk), focus: input, onCancel: before && (() => restore(before)),
+    dirty: () => input.value.trim() !== '' || values.join() !== a[key].join(),
+    body: [group, h('label', { class: 'numeric' }, h('span', { class: 'numeric__word' }, 'Add'),
+      h('span', { class: 'numeric__value' }, input), h('span', { class: 'numeric__unit' }, f.unit)), note],
+    onDone: () => {
+      if (input.value.trim() && !add()) return false
+      if (!values.length) return false
+      commit(d => { (d.action as typeof a)[key] = values })
+    },
+  })
+  input.addEventListener('input', paint)
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); add() } })
+  paint()
 }
 
 /** Footnote of the numeric sheet: the value now on the closest target (§5.5). */
@@ -608,7 +710,8 @@ function targetSheet(fk: string) {
   let side: 'adverse' | 'favorable' = t.kind === 'ENTRY_OFFSET' && Number(t.percent) < 0 ? 'adverse' : 'favorable'
   const pct = h('input', { class: 'inline-input', type: 'text', inputmode: 'decimal', 'aria-label': 'Percent from entry', value: t.kind === 'ENTRY_OFFSET' && t.percent !== '0' ? t.percent.replace('-', '') : '' })
   const px = h('input', { class: 'inline-input', type: 'text', inputmode: 'decimal', 'aria-label': 'Price, USDT', value: t.kind === 'PRICE' ? t.price : '' })
-  const priceOk = s.draft.scope.type !== 'ALL_POSITIONS'
+  const sc = s.draft.scope
+  const priceOk = sc.type !== 'ALL_POSITIONS' && sc.type !== 'ALL_ORDERS' && !(sc.type === 'COIN_POSITIONS' && sc.symbols.length > 1)
   const L = cat.limits
   const priceRange = { gt: 0, lt: 1e9 }
   const percentRange = tp ? { gt: L.tpPct.min, le: L.tpPct.max } : { gt: 0, lt: L.stopPct.max }

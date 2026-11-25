@@ -5,7 +5,7 @@
  */
 import type { Lens, Page, TextBox } from './lens.ts'
 
-export type Gesture = 'up' | 'down' | 'tap' | 'double' | 'menu'
+export type Gesture = 'up' | 'down' | 'tap' | 'double' | 'long' | 'menu'
 
 type AppWindow = Window & {
   flutter_inappwebview?: { callHandler(name: string, message: string): Promise<unknown> }
@@ -13,7 +13,7 @@ type AppWindow = Window & {
 }
 
 // OsEventTypeList in the SDK
-const EVENT: Record<Exclude<Gesture, 'menu'>, number> = { tap: 0, up: 1, down: 2, double: 3 }
+const EVENT: Record<Exclude<Gesture, 'menu' | 'long'>, number> = { tap: 0, up: 1, down: 2, double: 3 }
 const STATUS = { sn: 'SANDBOX', connectType: 'connected', isWearing: true, batteryLevel: 86, isCharging: false, isInCase: false }
 
 export function createHost(lens: Lens) {
@@ -57,7 +57,7 @@ export function createHost(lens: Lens) {
         else lens.closeMenu()
         return
       }
-      if (g === 'menu') return lens.openMenu()
+      if (g === 'menu' || g === 'long') return lens.openMenu()
       const eventType = EVENT[g]
       const capture: TextBox | undefined = lens.page.textObject?.find(t => t.isEventCapture)
       send('evenHubEvent', capture

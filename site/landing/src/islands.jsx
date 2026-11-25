@@ -1,15 +1,39 @@
 // Base UI islands. Each one reads its content from the static HTML, then swaps that markup for a Base UI component.
 // Build: npm run build  ->  js/islands.js
-import { useEffect, useRef, useState } from 'react';
-import { ShortcutBuilder } from './shortcut-builder.jsx';
 import { createRoot } from 'react-dom/client';
 import { Accordion } from '@base-ui/react/accordion';
-import { Toggle } from '@base-ui/react/toggle';
-import { ToggleGroup } from '@base-ui/react/toggle-group';
+import { TEMPLATES, VOICE_SEEDS } from '../../../server/src/registry.ts';
+import { conditionSummary, actionSummary } from '../../../server/src/proposals.ts';
+import { ACTION_ICON, icon } from '../../../app/src/phone/icons.ts';
+import { targetTag } from '../../../app/src/phone/sentence.ts';
 
-const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+/* Shortcut tiles as the phone's Templates grid draws them (app/src/phone/home.ts: When over Do, + badge), worded by the
+   server's own summaries, so a rebuild follows any template change.
+   data-tpl lists template numbers or voice phrases; "all" is the marquee, doubled for its loop. */
+const half = (cls, glyph, word, value, tag) =>
+  `<span class="${cls}"><span class="tpl-label"><span class="tpl-chip">${icon(glyph)}</span>${word}${tag ? `<span class="tpl-tag">${tag}</span>` : ''}</span><span class="tpl-value">${value}</span></span>`;
+const tile = (d) => {
+  const voice = !d.conditions.items.length;
+  return `<div class="tpl" style="--c:${ACTION_ICON[d.action.type].color}"><span class="tpl-add" aria-hidden="true">${icon('plus', 12)}</span>`
+    + half('tpl-when', voice ? 'mic' : 'when', voice ? 'Say' : 'When', conditionSummary(d))
+    + half('tpl-do', 'do-empty', 'Do', actionSummary(d.action), targetTag(d.scope)) + '</div>';
+};
+const templates = TEMPLATES.map((t) => [t.id.replace('tpl_', ''), tile(t.draft)]);
+const tiles = new Map([...templates, ...VOICE_SEEDS.map((v) => [v.voicePhrase, tile(v)])]);
+for (const el of $$('[data-tpl]')) {
+  if (el.dataset.tpl === 'all') {
+    const group = templates.map(([, html]) => html).join('');
+    el.innerHTML = `<div class="mq-g">${group}</div><div class="mq-g dup" aria-hidden="true">${group}</div>`;
+  } else {
+    el.innerHTML = el.dataset.tpl.split(',').map((key) => {
+      if (!tiles.has(key)) console.error(`No shortcut template "${key}"`);
+      return tiles.get(key) ?? '';
+    }).join('');
+  }
+}
 
 // display:contents keeps the page's grid and flex layout exactly as it was around the swapped element
 function mount(el, node) {
@@ -18,63 +42,6 @@ function mount(el, node) {
   host.style.display = 'contents';
   el.replaceWith(host);
   createRoot(host).render(node);
-}
-
-/* Hero: chips pick the lens alert; the newest lens screen opens at the top of the feed. */
-function pushLens(roll, name) {
-  const o = document.createElement('div');
-  const im = new Image();
-  o.className = 'fdi';
-  o.style.height = '0';
-  o.style.opacity = '0';
-  const grow = () => requestAnimationFrame(() => { o.style.height = im.offsetHeight + 9 + 'px'; o.style.opacity = '1'; });
-  im.alt = '';
-  im.src = `img/hud/${name}.png`;
-  o.appendChild(im);
-  roll.insertBefore(o, roll.firstChild);
-  if (im.complete) grow(); else im.onload = grow;
-  setTimeout(() => { o.style.height = ''; }, 800);
-  while (roll.children.length > 5) roll.removeChild(roll.lastChild);
-}
-
-function HeroChips({ chips, island, roll }) {
-  const [cur, setCur] = useState(0);
-  const [restart, setRestart] = useState(0);
-  const group = useRef(null);
-  const first = useRef(true);
-
-  useEffect(() => {
-    if (first.current) { first.current = false; return; }
-    pushLens(roll, chips[cur].lens);
-    const g = group.current, b = g && $$('.ex', g)[cur];
-    if (b && g.scrollWidth > g.clientWidth + 2) g.scrollTo({ left: Math.max(0, b.offsetLeft - g.offsetLeft - 16), behavior: RM ? 'auto' : 'smooth' });
-  }, [cur]);
-
-  // auto-advance every 3.2 s while the hero is on screen and keyboard focus is not on the chips;
-  // a manual pick restarts the count
-  useEffect(() => {
-    if (RM) return;
-    let vis = false;
-    const io = new IntersectionObserver(([e]) => { vis = e.isIntersecting; }, { threshold: 0.25 });
-    io.observe(island);
-    const id = setInterval(() => {
-      if (vis && !document.hidden && island.offsetWidth && !group.current?.contains(document.activeElement)) setCur((c) => (c + 1) % chips.length);
-    }, 3200);
-    return () => { clearInterval(id); io.disconnect(); };
-  }, [restart]);
-
-  const pick = (i) => { if (i !== cur) { setCur(i); setRestart((n) => n + 1); } };
-
-  return (
-    <ToggleGroup ref={group} className="iex" value={[String(cur)]} onValueChange={(v) => v.length && pick(+v[0])} aria-labelledby="iexl">
-      <span className="iexl" id="iexl">Alerts for</span>
-      {chips.map((c, i) => (
-        <Toggle key={c.lens} value={String(i)} className={(s) => (s.pressed ? 'ex on' : 'ex')} onPointerEnter={(e) => e.pointerType === 'mouse' && pick(i)}>
-          {c.label}
-        </Toggle>
-      ))}
-    </ToggleGroup>
-  );
 }
 
 /* FAQ: answers stay in the DOM (hidden until found) so page search and crawlers still see them. */
@@ -96,18 +63,8 @@ function Faq({ items }) {
   );
 }
 
-const island = $('#isAssist'), roll = $('#iroll'), iex = $('.iex', island || document);
-if (island && roll && iex) {
-  const chips = $$('.ex', iex).map((e) => ({ label: e.textContent, lens: e.dataset.lens }));
-  chips.forEach((c) => { new Image().src = `img/hud/${c.lens}.png`; });
-  mount(iex, <HeroChips chips={chips} island={island} roll={roll} />);
-}
-
 const qa = $('.qa');
 if (qa) {
   const items = $$('details', qa).map((d) => ({ q: $('summary', d).textContent, a: $('p', d).innerHTML }));
   mount(qa, <Faq items={items} />);
 }
-
-const builder = $('#shortcut-builder');
-if (builder) createRoot(builder).render(<ShortcutBuilder />);

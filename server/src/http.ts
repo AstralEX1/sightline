@@ -4,9 +4,9 @@ import type { ApiKeyInfo } from './types.ts'
 import { PHRASE, type Command, type Session } from './session.ts'
 import { StoreError, validateSettings, type Store } from './store.ts'
 import type { createNotifier } from './notify.ts'
-import { ACTION_TITLE, TEMPLATES, catalog } from './registry.ts'
+import { ACTION_TITLE, TEMPLATES, catalog, type Draft } from './registry.ts'
 import { validateShortcut } from './validate.ts'
-import { conditionSummary } from './proposals.ts'
+import { actionSummary, conditionSummary } from './proposals.ts'
 import { answerOf } from './rules.ts'
 import { loud } from './stt.ts'
 
@@ -75,7 +75,9 @@ export function createServer(d: {
 }): Server {
   const { session, store } = d
   let apiKey: { at: number; value: ApiKeyInfo | null; error?: string } | null = null
-  const tile = (r: ReturnType<Store['listShortcuts']>[number]) => ({ ...r, title: r.name ?? ACTION_TITLE[r.action.type], summary: conditionSummary(r) })
+  /** A tile's two lines, When and Do: worded here once, for shortcuts and templates. */
+  const lines = (r: Draft) => ({ summary: conditionSummary(r), doSummary: actionSummary(r.action) })
+  const tile = (r: ReturnType<Store['listShortcuts']>[number]) => ({ ...r, title: r.name ?? ACTION_TITLE[r.action.type], ...lines(r) })
 
   return createHttpServer(async (req, res) => {
     // Any origin: the Even Hub WebView origin varies, and every route needs the token anyway.
@@ -98,9 +100,13 @@ export function createServer(d: {
         d.notifier?.seen('lens')
         return send(res, 200, { ...session.state(), voice: !!d.transcribe, source: d.source ?? '' })
       }
-      const proposal = path.match(/^\/api\/proposals\/([\w-]+)\/(confirm|dismiss)$/)
+      const proposal = path.match(/^\/api\/proposals\/([\w-]+)\/(confirm|dismiss|pick)$/)
       if (proposal && req.method === 'POST') {
         const b = await readJson(req)
+        if (proposal[2] === 'pick') {
+          if (typeof b.size !== 'number' || typeof b.leverage !== 'number') throw new HttpError(400, 'Expected {size, leverage}')
+          return send(res, 200, await session.pick(proposal[1], b.size, b.leverage))
+        }
         if (proposal[2] === 'dismiss') return send(res, 200, session.dismiss(proposal[1], b.by === 'app' ? 'app' : 'glasses'))
         if (typeof b.idempotencyKey !== 'string' || !b.idempotencyKey || b.idempotencyKey.length > 100) throw new HttpError(400, 'Expected {idempotencyKey}')
         const r = await session.confirm(proposal[1], b.idempotencyKey)
@@ -135,7 +141,7 @@ export function createServer(d: {
 
       // Shortcuts, editor
       if (route === 'GET /api/catalog') return send(res, 200, catalog())
-      if (route === 'GET /api/templates') return send(res, 200, TEMPLATES)
+      if (route === 'GET /api/templates') return send(res, 200, TEMPLATES.map(t => ({ ...t, ...lines(t.draft) })))
       if (route === 'GET /api/shortcuts') return send(res, 200, store.listShortcuts().map(tile))
       if (route === 'POST /api/shortcuts/validate') {
         const b = await readJson(req)
@@ -173,6 +179,10 @@ export function createServer(d: {
       if (route === 'GET /api/chart') return send(res, 200, await session.chart(url.searchParams.get('symbol') ?? ''))
       if (route === 'GET /api/positions') return send(res, 200, session.pickers().positions)
       if (route === 'GET /api/orders/open') return send(res, 200, session.pickers().orders)
+      if (route === 'GET /api/symbols') {
+        const names = await session.symbols().catch((e: Error) => { throw new HttpError(502, `Could not read the symbols: ${e.message}`) })
+        return send(res, 200, names)
+      }
 
       // History, notifications, settings
       if (route === 'GET /api/history') {

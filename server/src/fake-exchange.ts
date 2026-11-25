@@ -77,6 +77,8 @@ export class FakeExchange implements Exchange {
 
   async kline(symbol: string, _source: PriceSource, limit: number) { return this.read((this.candles[symbol] ?? []).slice(-limit)) }
   async instrument(symbol: string) { return this.read(this.instruments[symbol] ?? INSTRUMENT) }
+  /** Only what it can price (see last), so the paper demo offers its own coins. */
+  async symbols() { return this.read([...new Set([...Object.keys(this.prices), ...this.list.map(p => p.symbol)])].sort()) }
 
   async slots(symbol: string) {
     const own = this.list.filter(p => p.symbol === symbol).map(p => ({ positionIdx: p.positionIdx, leverage: p.leverage, size: p.size }))
@@ -105,6 +107,11 @@ export class FakeExchange implements Exchange {
     this.calls.push({ type: 'addMargin', symbol, positionIdx, usd })
     const p = this.find(symbol, positionIdx)
     if (p) p.liqPrice += ((p.side === 'Buy' ? -1 : 1) * usd) / p.size
+  }
+
+  async setLeverage(symbol: string, leverage: number) {
+    this.fail()
+    this.leverage[symbol] = leverage // not in `calls`: those are the authorized terms
   }
 
   async placeOrder(o: OrderRequest) {

@@ -4,12 +4,12 @@
  * Spec: docs/shortcuts-architecture.md §8, §9.
  */
 import type { AlertRecord, Balance, Candle, Channel, Exchange, Fill, Order, Position, Proposal, SessionState, Ticker } from './types.ts'
-import type { ClosedBy, Condition, ConditionType, PriceSource, ShortcutRule } from './registry.ts'
+import type { Action, ClosedBy, Condition, ConditionType, PriceSource, ShortcutRule } from './registry.ts'
 import { ACTION_TITLE, LIMITS, priority } from './registry.ts'
 import type { Store } from './store.ts'
 import type { EditableShortcut } from './validate.ts'
-import { decide, evaluateCondition, evaluateGroup, initialTriggerState, PriceWindow, VOLUME_BASE_MIN, volumeRatio, type Facts, type Protection, type Quote } from './engine.ts'
-import { executionLine, isMarket, positionLabel, queueOrder, reasonText, receiptLine, resolve, sameTerms, type Market, type Resolved, type TargetRef } from './proposals.ts'
+import { decide, evaluateCondition, evaluateGroup, initialTriggerState, VOLUME_BASE_MIN, volumeRatio, type Facts, type Protection, type Quote, type TriggerState } from './engine.ts'
+import { executionLine, isMarket, isTpsl, positionLabel, queueOrder, reasonText, receiptLine, resolve, sameTerms, type Market, type Resolved, type TargetRef } from './proposals.ts'
 import { closeProposal, createExecutor, type ConfirmResult } from './execute.ts'
 import { matchShortcut, normalizePhrase } from './rules.ts'
 import { coin, price } from './format.ts'
@@ -25,6 +25,8 @@ export type Session = {
   /** The only way to trade: `idempotencyKey` comes from the client, a resend gets the same execution back. */
   confirm(proposalId: string, idempotencyKey: string): Promise<ConfirmResult>
   dismiss(proposalId: string, by: Channel): Reply
+  /** Open on the lens: the size and leverage chosen from the card's picks. A fresh proposal with those terms replaces it. */
+  pick(proposalId: string, size: number, leverage: number): Promise<Reply & { proposalId?: string }>
   /** Raises the proposals of the shortcut whose phrase was said. Nothing runs until a tap. */
   voice(text: string): Promise<Reply>
   /** Glasses menu: the seeded "protect all", "lock profits" and "close all" shortcuts, by phrase; `at` keeps one position. */
@@ -37,6 +39,8 @@ export type Session = {
   pickers(): { positions: (Position & { epoch: string })[]; orders: Order[] }
   /** Detail's chart: the last hour of 1-minute last-price candles (start, close), oldest first; only for a symbol with an open position. */
   chart(symbol: string): Promise<Candle[]>
+  /** The symbol picker's list: every symbol the exchange trades. */
+  symbols(): Promise<string[]>
 }
 
 /** Where alerts go; without a notifier the lens is the only channel. */
@@ -51,7 +55,6 @@ const STALE_MS = 15_000
 /** Fills are read with this overlap and deduped by execId, so one at a poll boundary is never lost. */
 const FILL_OVERLAP_MS = 60_000
 const RECENT_FILLS = 500
-const SOURCES: PriceSource[] = ['LAST', 'MARK', 'INDEX']
 const TRIGGER_BY: Record<string, PriceSource> = { LastPrice: 'LAST', MarkPrice: 'MARK', IndexPrice: 'INDEX' }
 /** Volume candles are read once a minute per symbol; older than this they are UNKNOWN. */
 const VOLUME_POLL_MS = 60_000
@@ -62,6 +65,10 @@ const VOLUME_STALE_MS = 3 * VOLUME_POLL_MS
 const RECEIPT_TTL_MS = 5 * 60_000
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
+/** A position of Positions by coin: one of its coins, on its side. */
+const ofCoins = (s: Extract<ShortcutRule['scope'], { type: 'COIN_POSITIONS' }>, symbol: string, side: Position['side']) =>
+  s.symbols.includes(symbol) && (s.side === 'ANY' || s.side === (side === 'Buy' ? 'LONG' : 'SHORT'))
+const opens = (a: Action): a is Extract<Action, { type: 'OPEN_LONG' | 'OPEN_SHORT' }> => a.type === 'OPEN_LONG' || a.type === 'OPEN_SHORT'
 
 /** The exchange state one resolution reads. */
 type Ctx = { positions: Position[]; orders: Order[]; balance: Balance | null; tickers: Record<string, Ticker> }
@@ -78,8 +85,9 @@ function protection(p: Position, orders: Order[], kind: 'StopLoss' | 'TakeProfit
 }
 
 /** Crossings must still be on the triggered side and fills already happened: what a confirm checks again (§9 step 2). */
+// A price change is measured from the alert's own price once it fired, so it has nothing left to recheck.
 const asStates = (items: Condition[]): Condition[] => items.flatMap((c): Condition[] =>
-  c.type === 'ORDER_FILLED' || c.type === 'ORDER_PARTIAL' || c.type === 'POSITION_CLOSED' ? []
+  c.type === 'ORDER_FILLED' || c.type === 'ORDER_PARTIAL' || c.type === 'POSITION_CLOSED' || c.type === 'PRICE_CHANGE' ? []
     : c.type === 'PRICE' && c.operator === 'UP_CROSS' ? [{ ...c, operator: 'GTE' }]
     : c.type === 'PRICE' && c.operator === 'DOWN_CROSS' ? [{ ...c, operator: 'LTE' }]
     : [c])
@@ -101,8 +109,6 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
   let quotes: Record<string, Partial<Record<PriceSource, Quote>>> = {}
   let prevQuotes: typeof quotes = {}
   let gap = true // the first poll has no sample before it, so it cannot make a crossing
-  const windows = new Map<string, PriceWindow>()
-  const warmed = new Set<string>()
   /** This poll's newest fresh execution per orderId: the ORDER_FILLED / ORDER_PARTIAL event. */
   let events = new Map<string, Fill>()
   /** This poll's closes by stop, take profit or liquidation, keyed by the position's target key. */
@@ -147,19 +153,32 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       const epoch = epochOf(p)
       return { key: `pos:${p.symbol}:${p.positionIdx}:${epoch}`, symbol: p.symbol, label: positionLabel(p), position: p, epoch }
     }
+    const ord = (id: string, symbol: string, o: Order | undefined): TargetRef => {
+      // position actions only through an opening order, mapped to the position it opened (§7): same slot, same side
+      const p = o && !o.reduceOnly ? ps.find(p => p.symbol === o.symbol && p.positionIdx === o.positionIdx && p.side === o.side) : undefined
+      return { key: `ord:${id}`, symbol, label: `${coin(symbol)} order`, order: o, position: p, epoch: p && epochOf(p) }
+    }
     switch (s.type) {
       case 'ALL_POSITIONS': return ps.map(pos)
+      case 'COIN_POSITIONS': return ps.filter(p => ofCoins(s, p.symbol, p.side)).map(pos)
       case 'POSITION': return ps.filter(p => p.symbol === s.symbol && p.positionIdx === s.positionIdx && epochOf(p) === s.epoch).map(pos)
       case 'SYMBOL': return [{ key: `sym:${s.symbol}`, symbol: s.symbol, label: coin(s.symbol) }]
       case 'ORDER': {
         const seen = os.find(o => o.orderId === s.orderId) ?? known.get(s.orderId)
         const o = seen?.symbol === s.symbol ? seen : undefined // an order id from another symbol is not this shortcut's order
-        // position actions only through an opening order, mapped to the position it opened (§7): same slot, same side
-        const p = o && !o.reduceOnly ? ps.find(p => p.symbol === o.symbol && p.positionIdx === o.positionIdx && p.side === o.side) : undefined
-        return [{ key: `ord:${s.orderId}`, symbol: s.symbol, label: `${coin(s.symbol)} order`, order: o, position: p, epoch: p && epochOf(p) }]
+        return [ord(s.orderId, s.symbol, o)]
       }
-      case 'ALL_ORDERS': // no position: its actions are Cancel and Notify
-        return os.filter(o => !o.stopOrderType && o.leavesQty > 0).map(o => ({ key: `ord:${o.orderId}`, symbol: o.symbol, label: `${coin(o.symbol)} order`, order: o }))
+      case 'ALL_ORDERS': {
+        // Every open plain order (stops and take profits excluded), and the filled ones that left the open list, so a fill
+        // and a later tap still find their order. shortcut: only orders seen open in a poll; a market order fills before
+        // the next poll and is skipped, read the execution's closedSize if market entries should count too.
+        const open = os.filter(o => !isTpsl(o) && o.leavesQty > 0)
+        const gone = new Map(recentFills.flatMap(f => {
+          const o = known.get(f.orderId)
+          return o && !isTpsl(o) && !open.some(x => x.orderId === o.orderId) ? [[o.orderId, o] as const] : []
+        }))
+        return [...open, ...gone.values()].map(o => ord(o.orderId, o.symbol, o))
+      }
     }
   }
 
@@ -170,18 +189,21 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     return [...closes].flatMap(([key, c]) => {
       if (live.some(t => t.key === key)) return [] // a partial close: the live target carries it
       if (s.type === 'POSITION' && (s.symbol !== c.symbol || s.positionIdx !== c.idx || s.epoch !== c.epoch)) return []
-      if (s.type !== 'POSITION' && s.type !== 'ALL_POSITIONS') return []
+      if (s.type === 'COIN_POSITIONS' && !ofCoins(s, c.symbol, c.side)) return []
+      if (s.type !== 'POSITION' && s.type !== 'ALL_POSITIONS' && s.type !== 'COIN_POSITIONS') return []
       return [{ key, symbol: c.symbol, label: positionLabel(c), epoch: c.epoch }]
     })
   }
 
-  function factsOf(t: TargetRef, now: number, os: Order[]): Facts {
+  /** `fresh`: a ticker read just now, in place of the last poll's prices. */
+  function factsOf(t: TargetRef, now: number, os: Order[], base?: TriggerState['base'], fresh?: Ticker): Facts {
     const p = t.position
+    const tk = fresh ?? tickers[t.symbol]
     const f = t.key.startsWith('ord:') ? events.get(t.key.slice(4)) : undefined
     return {
-      prices: quotes[t.symbol] ?? {},
+      prices: fresh ? { LAST: { price: fresh.last, ts: now }, MARK: { price: fresh.mark, ts: now }, INDEX: { price: fresh.index, ts: now } } : quotes[t.symbol] ?? {},
       prev: prevQuotes[t.symbol] ?? {},
-      windowAgo: (source, sec) => windows.get(`${t.symbol}:${source}`)?.ago(sec, now) ?? null,
+      base,
       position: p && {
         side: p.side, size: p.size, entry: p.entryPrice, mark: p.markPrice, liqPrice: p.liqPrice > 0 ? p.liqPrice : null,
         unrealisedPnl: p.unrealisedPnl, positionIM: p.positionIM > 0 ? p.positionIM : null,
@@ -192,7 +214,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
         const v = volumes.get(t.symbol)
         return v && now - v.at <= VOLUME_STALE_MS ? volumeRatio(v.candles, sec, v.at) : null
       },
-      funding: tickers[t.symbol]?.funding && { ...tickers[t.symbol].funding!, ts: quotes[t.symbol]?.LAST?.ts ?? 0 },
+      funding: tk?.funding && { ...tk.funding, ts: fresh ? now : quotes[t.symbol]?.LAST?.ts ?? 0 },
       order: t.order && { open: os.some(o => o.orderId === t.order!.orderId), createdAt: t.order.createdAt },
       closed: closes.get(t.key),
     }
@@ -232,7 +254,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     if (a.type !== 'NOTIFY') {
       let r: Resolved
       try {
-        r = resolve(a, t, await market(t.symbol, a.type === 'OPEN_POSITION', c))
+        r = resolve(a, t, await market(t.symbol, opens(a), c))
       } catch (e) {
         error = `${coin(t.symbol)}: ${errorText(e)}`
         return { alert, proposal, error: 'Could not read Bybit, try again' } // nothing saved: the next tick tries again
@@ -250,6 +272,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
           detail: detailOf(rule, r.note), question: r.question, createdAt: now, expiresAt: now + lifetimeMs(rule),
           alertId: alert.id, shortcutId: rule.id, version: rule.version, targetKey: t.key, epoch: t.epoch, terms: r.terms,
           simulated: !!why.simulated, voice: why.voice, priority: alert.priority, status: 'PENDING',
+          ...(opens(a) && (a.sizes.length > 1 || a.leverages.length > 1) && { picks: { sizes: a.sizes.map(Number), leverages: a.leverages.map(Number) } }),
         }
       }
     }
@@ -280,47 +303,46 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     const rule = store.getShortcut(p.shortcutId)
     if (!rule || rule.version !== p.version || !rule.enabled) return { ok: false, reason: 'shortcut changed' }
     const t = targetsOf(rule, c.positions, c.orders).find(t => t.key === p.targetKey)
-    if (!t) return { ok: false, reason: 'position is closed' }
-    const r = resolve(rule.action, t, await market(t.symbol, rule.action.type === 'OPEN_POSITION', c), p.terms)
+    if (!t) return { ok: false, reason: p.terms.type === 'cancel' ? 'order is no longer open' : 'position is closed' }
+    const r = resolve(rule.action, t, await market(t.symbol, opens(rule.action), c), p.terms)
     if (!r.ok) return { ok: false, reason: r.reason }
     if (sameTerms(r.terms, p.terms)) return { ok: true, rule, t }
     if (store.proposal(p.id)?.status !== p.status) return { ok: false, reason: 'it changed meanwhile', replaced: true } // a tap or another check got there first
+    replace(p, rule, r, 'Refreshed · the terms changed')
+    return { ok: false, reason: 'the terms changed: a new proposal is waiting', replaced: true }
+  }
+
+  /** A fresh proposal with new terms in place of `p`, which stops counting. Never adjusts terms in place. */
+  function replace(p: Proposal, rule: ShortcutRule, r: Extract<Resolved, { ok: true }>, status: string, extra: Partial<Proposal> = {}): Proposal {
     const now = clock()
-    const fresh: Proposal = { ...p, id: crypto.randomUUID(), terms: r.terms, question: r.question, detail: detailOf(rule, r.note), createdAt: now, expiresAt: now + lifetimeMs(rule), supersedes: p.id, status: 'PENDING' }
+    const fresh: Proposal = { ...p, id: crypto.randomUUID(), terms: r.terms, question: r.question, detail: detailOf(rule, r.note), createdAt: now, expiresAt: now + lifetimeMs(rule), supersedes: p.id, status: 'PENDING', ...extra }
     store.transaction(() => {
       if (store.proposal(p.id)?.status === 'PENDING') store.saveProposal({ ...p, status: 'SUPERSEDED' })
       store.saveProposal(fresh)
       const a = store.alert(p.alertId)
-      if (a) store.saveAlert({ ...a, status: 'Refreshed · the terms changed' })
+      if (a) store.saveAlert({ ...a, status })
     })
-    return { ok: false, reason: 'the terms changed: a new proposal is waiting', replaced: true }
+    return fresh
   }
 
   const executor = createExecutor({
     ex, store, clock,
     async revalidate(p) {
-      // fresh reads, not the last poll (§9 step 2)
-      const [ps, os, bal] = await Promise.all([ex.positions(), ex.openOrders(), ex.balance()])
-      const c = await check(p, { positions: ps, orders: os, balance: bal, tickers: {} })
+      // fresh reads, not the last poll (§9 step 2): the price too, so a level or a distance is checked as it is at the tap
+      const [ps, os, bal, tk] = await Promise.all([ex.positions(), ex.openOrders(), ex.balance(), ex.ticker(p.terms.symbol)])
+      const c = await check(p, { positions: ps, orders: os, balance: bal, tickers: { [p.terms.symbol]: tk } })
       if (!c.ok) return { ok: false, message: c.reason }
       if (p.voice) return { ok: true } // the phrase was the trigger, its conditions were never checked
       const items = asStates(c.rule.conditions.items)
       if (!items.length) return { ok: true }
       const now = clock()
       // Strict, not the hysteresis band: a crossing must still be on its side, a loss still a loss (§9 step 2).
-      const g = evaluateGroup({ logic: c.rule.conditions.logic, items }, factsOf(c.t, now, os), { now, staleMs: STALE_MS })
+      const g = evaluateGroup({ logic: c.rule.conditions.logic, items }, factsOf(c.t, now, os, undefined, tk), { now, staleMs: STALE_MS })
       return g.verdict === 'TRUE' ? { ok: true } : { ok: false, message: g.verdict === 'FALSE' ? 'the condition no longer holds' : 'could not check the condition' }
     },
   })
 
   // ── the poll ────────────────────────────────────────────
-
-  const windowOf = (symbol: string, source: PriceSource) => {
-    const key = `${symbol}:${source}`
-    let w = windows.get(key)
-    if (!w) windows.set(key, (w = new PriceWindow()))
-    return w
-  }
 
   async function tick() {
     const now = clock()
@@ -359,24 +381,8 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       if (r.status === 'rejected') { error = `${coin(s)}: ${errorText(r.reason)}`; return }
       tickers[s] = r.value
       quotes[s] = { LAST: { price: r.value.last, ts: now }, MARK: { price: r.value.mark, ts: now }, INDEX: { price: r.value.index, ts: now } }
-      for (const src of SOURCES) windowOf(s, src).push(now, r.value[src === 'LAST' ? 'last' : src === 'MARK' ? 'mark' : 'index'])
     })
     gap = false
-
-    // After a restart the price-change windows start from 1-minute candles (§5), once per symbol and source.
-    for (const rule of rules) {
-      for (const c of rule.conditions.items) {
-        if (c.type !== 'PRICE_CHANGE') continue
-        for (const s of 'symbol' in rule.scope ? [rule.scope.symbol] : positions.map(p => p.symbol)) {
-          const key = `${s}:${c.source}`
-          if (warmed.has(key)) continue
-          try {
-            windowOf(s, c.source).warm(await ex.kline(s, c.source, LIMITS.windowSec.max / 60 + 2), now)
-            warmed.add(key)
-          } catch { /* UNKNOWN until a later tick warms it */ }
-        }
-      }
-    }
 
     // Volume candles for VOLUME_SPIKE, once a minute per symbol.
     const volumeSymbols = new Set(rules.filter(r => r.conditions.items.some(c => c.type === 'VOLUME_SPIKE'))
@@ -470,14 +476,21 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       for (const t of [...live, ...closedTargets(rule, live)]) {
         const key = `${rule.id}:${t.key}`
         const saved = store.trigger(key)
-        const s = saved?.version === rule.version ? saved : initialTriggerState(rule.version)
-        const g = evaluateGroup(rule.conditions, factsOf(t, now, orders), { now, staleMs: STALE_MS, relaxed: s.phase === 'fired' })
+        let s = saved?.version === rule.version ? saved : initialTriggerState(rule.version)
+        const q = quotes[t.symbol]
+        const pricesNow = q && Object.fromEntries(Object.entries(q).map(([src, x]) => [src, x.price]))
+        // Price change counts from the first price this version sees for the target: the switch-on, an edit, a new position.
+        const priced = rule.conditions.items.some(c => c.type === 'PRICE_CHANGE')
+        if (priced && pricesNow) s = { ...s, base: { ...pricesNow, ...s.base } }
+        const g = evaluateGroup(rule.conditions, factsOf(t, now, orders, s.base), { now, staleMs: STALE_MS, relaxed: s.phase === 'fired' })
         const d = decide(rule, g, s, now, { cooldownSec: settings.cooldownSec, pending: waiting.has(key) })
         if (d.fire) {
           const cond = rule.conditions.items.find(c => c.id === g.reason?.id)
           const r = await raise(rule, t, { reason: cond ? reasonText(cond, g.reason?.value) : 'matched', type: cond?.type, matched: g.matched }, c)
           if (r.error) continue // a read error must not use up a Once shortcut or start its cooldown
           if (r.proposal) waiting.add(key)
+          else if (r.alert.skip) d.next.latched = s.latched // nothing was sent: a skip does not use up a Once shortcut, it waits for a new entry
+          if (priced && pricesNow) d.next.base = pricesNow // the next alert needs a new move from here
         }
         if (!saved || JSON.stringify(d.next) !== JSON.stringify(saved)) store.saveTrigger(key, d.next)
       }
@@ -531,6 +544,8 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
 
     async confirm(proposalId, idempotencyKey) {
       const p = store.proposal(proposalId)
+      // Its terms hold placeholder choices: only the proposal a pick made can be confirmed
+      if (p?.picks && p.status === 'PENDING') return { ok: false, message: 'Pick the size and leverage on Even G2 first' }
       const t = p?.terms
       // Only a first tap: a resend gets the old execution back, and the last poll would already be its after side.
       const first = !store.executionByKey(idempotencyKey) && !store.executionByProposal(proposalId)
@@ -542,7 +557,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       if (p && r.execution?.status === 'REJECTED' && r.execution.message.startsWith('could not check the position')) {
         const key = `${p.shortcutId}:${p.targetKey}`
         const s = store.trigger(key)
-        if (s) store.saveTrigger(key, { ...s, phase: 'armed', lastAlertAt: null })
+        if (s) store.saveTrigger(key, { ...s, phase: 'armed', lastAlertAt: null, latched: false })
       }
       say(r.message, true)
       return r
@@ -553,6 +568,27 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       if (!p || p.status !== 'PENDING') return { ok: false, message: 'Proposal is gone' }
       closeProposal(store, p, 'DISMISSED', `Dismissed on ${by === 'glasses' ? 'Even G2' : 'the phone'}`, { dismissedBy: by })
       return { ok: true, message: 'Dismissed, nothing sent' }
+    },
+
+    async pick(proposalId, size, leverage) {
+      const p = store.proposal(proposalId)
+      if (!p || p.status !== 'PENDING' || p.expiresAt <= clock()) return { ok: false, message: 'Proposal is gone' }
+      // Only what the card offered: the client names a choice, the server builds the terms.
+      if (!p.picks?.sizes.includes(size) || !p.picks.leverages.includes(leverage)) return { ok: false, message: 'Not one of the choices' }
+      const rule = store.getShortcut(p.shortcutId)
+      if (!rule || rule.version !== p.version || (!p.simulated && !rule.enabled) || !opens(rule.action)) return { ok: false, message: 'Shortcut changed' }
+      const t = targetsOf(rule, positions, orders).find(t => t.key === p.targetKey)
+      if (!t) return { ok: false, message: 'Nothing to open on' }
+      let r: Resolved
+      try {
+        r = resolve(rule.action, t, await market(t.symbol, true, ctxNow()), undefined, undefined, { size, leverage })
+      } catch (e) {
+        return { ok: false, message: `Could not read Bybit: ${errorText(e)}` }
+      }
+      if (!r.ok) return { ok: false, message: r.reason.charAt(0).toUpperCase() + r.reason.slice(1) }
+      // No picks left: the next page is Review. A test stays a test.
+      const fresh = replace(p, rule, r, `Chose ${size} USDT · ${leverage}x`, { picks: undefined })
+      return { ok: true, message: fresh.question, proposalId: fresh.id }
     },
 
     voice: text => voice(text),
@@ -579,7 +615,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
 
     pickers: () => ({
       positions: positions.map(p => ({ ...p, epoch: epochOf(p) })),
-      orders: orders.filter(o => !o.stopOrderType && o.leavesQty > 0),
+      orders: orders.filter(o => !isTpsl(o) && o.leavesQty > 0),
     }),
 
     async chart(symbol) {
@@ -591,5 +627,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       charts.set(symbol, { at: now, candles })
       return candles
     },
+
+    symbols: () => ex.symbols(),
   }
 }

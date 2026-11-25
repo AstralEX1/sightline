@@ -1,12 +1,11 @@
 /** Shortcuts, the home screen (spec §5.1): your shortcuts and the templates as 2-column tiles, status line, History and +. */
 import * as api from '../api.ts'
-import type { ApiError, Tile } from '../api.ts'
-import type { Template } from '../../../server/src/registry.ts'
-import { ACTION_ICON, WARN, icon } from './icons.ts'
-import { tileSub } from './sentence.ts'
+import type { ApiError, TemplateTile, Tile } from '../api.ts'
+import { ACTION_ICON, WARN, icon, type Icon } from './icons.ts'
+import { targetTag } from './sentence.ts'
 import { app, h, isOffline, toast } from './ui.ts'
 
-let templates: Template[] | null = null
+let templates: TemplateTile[] | null = null
 let offline = false
 let lastKey = ''
 /** shortcut: the server does not report whether the lens is open, so G2 follows main.ts's #glasses text; read lens-seen from /settings once it is sent */
@@ -38,18 +37,32 @@ function unreachable(err: unknown, retry: () => void) {
       unauthorized ? null : h('button', { class: 'pill-btn', type: 'button', onclick: retry }, 'Try again')))
 }
 
+/**
+ * Half a tile: the label (icon, word, the one target's tag) over its value. When and Do are the tile's two grid rows.
+ * The tag rides on Do: beside When and the switch it does not fit a 375 px phone.
+ */
+const half = (name: 'tile__when' | 'tile__do', glyph: Icon, word: string, value: string, tag?: string | null) =>
+  h('span', { class: name },
+    h('span', { class: 'tile__label' }, h('span', { class: 'tile__chip', html: icon(glyph) }), h('span', { class: 'tile__word' }, word),
+      tag ? h('span', { class: 'tile__tag' }, tag) : null),
+    h('span', { class: 'tile__value' }, value))
+
 function tile(t: Tile) {
-  const { icon: name, color } = ACTION_ICON[t.action.type]
-  const sub = tileSub(t)
+  const voice = !t.conditions.items.length
+  const tag = targetTag(t.scope)
   const sw = h('button', {
     class: 'tile__switch', type: 'button', role: 'switch', 'aria-checked': String(t.enabled), 'aria-label': `${t.title}, ${t.summary}`, // two tiles can share a title: the rule tells them apart
     'aria-disabled': offline || t.draft ? 'true' : undefined,
   }, h('span', { class: 'tile__track' }, h('span', { class: 'tile__knob' })))
   sw.addEventListener('click', () => void toggle(t, sw))
-  return h('div', { class: 'tile', 'data-state': t.draft ? 'draft' : t.enabled ? 'on' : 'off', style: `--c: ${color}` },
-    h('a', { class: 'tile__body', href: `#/shortcut/${encodeURIComponent(t.id)}`, 'aria-label': `${t.title}, ${sub}. Edit` },
-      h('span', { class: 'tile__glyph', html: icon(name, 24, 2.6) }),
-      h('span', { class: 'tile__text' }, h('span', { class: 'tile__title' }, t.title), h('span', { class: 'tile__sub' }, sub))),
+  return h('div', { class: 'tile', 'data-state': t.draft ? 'draft' : t.enabled ? 'on' : 'off', style: `--c: ${ACTION_ICON[t.action.type].color}` },
+    h('a', {
+      class: 'tile__body', href: `#/shortcut/${encodeURIComponent(t.id)}`,
+      'aria-label': `${t.title}${t.draft ? ', draft' : ''}: ${voice ? 'say' : 'when'} ${t.summary}, do ${t.doSummary}${tag ? `, on ${tag}` : ''}. Edit`,
+    },
+    // a draft comes straight from a template, so it has no name; "When · Draft" would not fit beside the switch at 375 px
+    half('tile__when', voice ? 'mic' : 'when', t.draft ? 'Draft' : t.name ?? (voice ? 'Say' : 'When'), t.summary),
+    half('tile__do', 'do-empty', 'Do', t.doSummary, tag)),
     sw)
 }
 
@@ -62,12 +75,8 @@ async function toggle(t: Tile, sw: HTMLButtonElement) {
   sw.setAttribute('aria-checked', String(on))
   try {
     Object.assign(t, await api.setEnabled(t.id, on, t.version))
-    // update in place: a new tile would cut the knob's slide
-    const el = sw.closest<HTMLElement>('.tile')!, sub = tileSub(t)
-    el.dataset.state = t.draft ? 'draft' : t.enabled ? 'on' : 'off'
-    el.querySelector('.tile__sub')!.textContent = sub
-    el.querySelector('.tile__body')!.setAttribute('aria-label', `${t.title}, ${sub}. Edit`)
-    sw.setAttribute('aria-label', `${t.title}, ${t.summary}`)
+    // update in place: a new tile would cut the knob's slide; on or off changes no words
+    sw.closest<HTMLElement>('.tile')!.dataset.state = t.draft ? 'draft' : t.enabled ? 'on' : 'off'
     sw.setAttribute('aria-checked', String(t.enabled))
     delete sw.dataset.busy
   } catch (e) {
@@ -80,20 +89,45 @@ async function toggle(t: Tile, sw: HTMLButtonElement) {
   }
 }
 
-function templateTile(t: Template) {
-  const { icon: name, color } = ACTION_ICON[t.draft.action.type]
+function templateTile(t: TemplateTile) {
+  const tag = targetTag(t.draft.scope)
   return h('button', {
-    class: 'tile tile--template', type: 'button', style: `--c: ${color}`, 'aria-label': `Template: ${t.title}, ${t.sub}. Add`,
+    class: 'tile tile--template', type: 'button', style: `--c: ${ACTION_ICON[t.draft.action.type].color}`,
+    'aria-label': `Template: when ${t.summary}, do ${t.doSummary}${tag ? `, on ${tag.toLowerCase()}` : ''}. Add`,
     'aria-disabled': offline ? 'true' : undefined, onclick: () => useTemplate(t),
   },
-  h('span', { class: 'tile__top' },
-    h('span', { class: 'tile__glyph', html: icon(name, 24, 2.6) }),
-    h('span', { class: 'tile__badge', 'aria-hidden': 'true', html: icon('plus', 12, 3.4) })),
-  h('span', { class: 'tile__text' }, h('span', { class: 'tile__title' }, t.title), h('span', { class: 'tile__sub' }, t.sub)))
+  h('span', { class: 'tile__badge', 'aria-hidden': 'true', html: icon('plus', 12, 3.4) }),
+  half('tile__when', 'when', 'When', t.summary),
+  half('tile__do', 'do-empty', 'Do', t.doSummary, tag))
+}
+
+/**
+ * One block per category: a heading that folds its grid away like a Notion toggle (kept on this phone, so it works offline too), the grid.
+ * Templates from a server that sends no category stay one plain grid.
+ */
+function templateGroups(list: TemplateTile[]) {
+  const collapsed = api.collapsedCategories()
+  const cats = [...new Set(list.map(t => t.category))]
+  return cats.map((c, i) => {
+    const id = `tpl-cat-${i}`
+    const grid = h('div', { class: 'grid', id, hidden: !!c && collapsed.has(c) }, ...list.filter(t => t.category === c).map(templateTile))
+    return h('div', { class: 'tpl-group' },
+      c ? h('h3', { class: 'tpl-group__title' }, h('button', {
+        class: 'tpl-group__toggle', type: 'button', 'aria-expanded': String(!grid.hidden), 'aria-controls': id,
+        onclick: (e: Event) => {
+          const open = !!grid.hidden
+          grid.hidden = !open
+          ;(e.currentTarget as HTMLElement).setAttribute('aria-expanded', String(open))
+          if (open && !matchMedia('(prefers-reduced-motion: reduce)').matches) grid.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' })
+          api.setCategoryOpen(c, open)
+        },
+      }, h('span', { class: 'tpl-group__chev', 'aria-hidden': 'true', html: icon('right', 14, 2.6) }), c)) : null,
+      grid)
+  })
 }
 
 /** Opens the template as a new, unsaved shortcut: nothing is created until Add (or an edit) in the editor. */
-function useTemplate(t: Template) {
+function useTemplate(t: TemplateTile) {
   if (offline) return
   location.hash = `#/shortcut/new?tpl=${encodeURIComponent(t.id)}`
 }
@@ -123,7 +157,9 @@ export async function renderHome(el: HTMLElement, first: boolean) {
   const key = JSON.stringify([mine, templates?.length, st?.bybit, err && String(err), app.unseen, g2()])
   if (!first && key === lastKey) return offline
   lastKey = key
-  const f = el.contains(document.activeElement) && document.activeElement!.getAttribute('aria-label') // a toggle leaves lastKey stale, so the next refresh rebuilds: keep focus on the same control
+  // a toggle leaves lastKey stale, so the next refresh rebuilds: keep focus on the same control (a category heading by the grid it controls)
+  const a = el.contains(document.activeElement) ? document.activeElement! : null
+  const f = a && ['aria-label', 'aria-labelledby', 'aria-controls'].map(k => a.getAttribute(k) && `[${k}="${CSS.escape(a.getAttribute(k)!)}"]`).find(Boolean)
   el.replaceChildren(
     nav(),
     h('h1', { class: 'title-large' }, 'Shortcuts'),
@@ -131,7 +167,7 @@ export async function renderHome(el: HTMLElement, first: boolean) {
     mine?.length ? h('div', { class: 'grid' }, ...mine.map(tile))
       : mine ? h('p', { class: 'empty empty--hero' }, 'No shortcuts yet. Start from a template below, or tap +.')
       : unreachable(err, () => void renderHome(el, true)),
-    ...(templates?.length ? [h('h2', { class: 'title-section' }, 'Templates'), h('div', { class: 'grid' }, ...templates.map(templateTile))] : []))
-  if (f) el.querySelector<HTMLElement>(`[aria-label="${CSS.escape(f)}"]`)?.focus({ preventScroll: true })
+    ...(templates?.length ? [h('h2', { class: 'title-section' }, 'Templates'), ...templateGroups(templates)] : []))
+  if (f) el.querySelector<HTMLElement>(f)?.focus({ preventScroll: true })
   return offline
 }

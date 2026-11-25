@@ -26,6 +26,9 @@ export class Market {
   /** Orders that fill half when the price reaches them, and keep the rest open (ORDER_PARTIAL). */
   partial = new Set<string>()
   #listeners = new Set<() => void>()
+  /** Where the hand or a scenario last put the price: time passing wanders around it, never away. */
+  #anchor = 0
+  #movedAt = 0
 
   constructor() { this.reset() }
 
@@ -49,13 +52,26 @@ export class Market {
       return { t: now - (HISTORY_MIN - 1 - i) * MINUTE, o, h: Math.max(o, c) + wick, l: Math.min(o, c) - wick, c, v: BASE_VOLUME * (0.8 + 0.4 * Math.abs(Math.sin(i))) }
     })
     this.ex.prices[SYMBOL] = price
+    this.#anchor = price
     this.#sync()
     this.#emit()
   }
 
+  /**
+   * Time passing, once a second: the live candle keeps forming and a new one opens every minute. The price wanders
+   * ~0.02% around where it was put, well inside every scenario's margin, and holds still for a second after a drag
+   * or Play moved it.
+   */
+  drift() {
+    if (Date.now() - this.#movedAt < 1000) return
+    const noise = (Math.random() + Math.random() + Math.random() - 1.5) * 2 // about one standard deviation
+    this.setPrice(this.price + (this.#anchor - this.price) * 0.1 + this.price * 0.00025 * noise, true)
+  }
+
   /** The price moves: the live candle, then whatever the exchange would execute at it. */
-  setPrice(price: number) {
+  setPrice(price: number, drifting = false) {
     price = Math.max(1, Math.round(price * 10) / 10)
+    if (!drifting) { this.#anchor = price; this.#movedAt = Date.now() }
     const now = Date.now()
     let bar = this.bars[this.bars.length - 1]
     if (now - bar.t >= MINUTE) {
@@ -111,7 +127,7 @@ export class Market {
     this.#sync()
   }
 
-  /** Positions opened by a shortcut (OPEN_POSITION) come without a liquidation price; a real exchange always has one. */
+  /** Positions opened by a shortcut (Open long or short) come without a liquidation price; a real exchange always has one. */
   refresh() {
     for (const p of this.positions) if (!p.liqPrice) { p.isolated = true; p.liqPrice = liqOf(p.side, p.entryPrice, p.leverage) }
     this.#emit()

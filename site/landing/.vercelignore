@@ -1,6 +1,6 @@
 # Static site: upload only the files the page serves. js/islands.js is prebuilt (`npm run build`) because its
 # source imports ../../../server and ../../../app, which are outside this folder.
-*
+/*
 !index.html
 !css
 !css/**
@@ -10,3 +10,4 @@
 !js/**
 !sandbox
 !sandbox/**
+!vercel.json

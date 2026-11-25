@@ -24,7 +24,7 @@ test('ROI above ↔ below drops the old value (P08, arch §4)', () => {
 })
 
 test('a new metric or unit clears the number, the same one keeps it (P08)', () => {
-  assert.deepEqual(setMetric(roi30, 'PRICE_CHANGE'), { id: 'c1', type: 'PRICE_CHANGE', source: 'LAST', direction: 'UP', percent: '', windowSec: 300 })
+  assert.deepEqual(setMetric(roi30, 'PRICE_CHANGE'), { id: 'c1', type: 'PRICE_CHANGE', source: 'LAST', direction: 'UP', percent: '' })
   assert.deepEqual(setMetric(roi30, 'PROFIT', 'USDT'), { id: 'c1', type: 'PROFIT', unit: 'USDT', threshold: '' })
   assert.equal(setMetric(roi30, 'PROFIT', 'ROI_PERCENT'), roi30)
   const price: Condition = { id: 'c3', type: 'PRICE', source: 'LAST', operator: 'GTE', threshold: '90000' }
@@ -47,20 +47,21 @@ test('condition sheet offers only what fits the scope, the action and the other 
   assert.ok(types(order, 'c1').includes('Order partly filled'))
 })
 
-test('action sheet: forbidden by scope hidden, ruled out by a condition under Needs changes (P13, P15)', () => {
-  const { ok, needs } = actionChoices(cat, draft({ conditions: { logic: 'ANY', items: [roi30, liq5] } }))
-  assert.ok(!ok.some(a => a.type === 'OPEN_POSITION') && !needs.some(a => a.type === 'OPEN_POSITION'))
-  assert.deepEqual(needs.find(a => a.type === 'INCREASE_POSITION'), { type: 'INCREASE_POSITION', title: 'Increase position', reason: 'Not with liquidation distance' })
-  assert.ok(ok.some(a => a.type === 'CLOSE_POSITION'))
+test('action sheet: actions the scope or a condition rules out are not shown (P13, P15)', () => {
+  const ok = actionChoices(cat, draft({ conditions: { logic: 'ANY', items: [roi30, liq5] } })).map(a => a.type)
+  assert.ok(!ok.includes('OPEN_LONG') && !ok.includes('INCREASE_POSITION')) // Open: scope; Increase: not with liquidation distance
+  assert.ok(ok.includes('CLOSE_POSITION'))
   const symbol = actionChoices(cat, draft({ scope: { type: 'SYMBOL', symbol: 'BTCUSDT' } }))
-  assert.deepEqual(symbol.ok.map(a => a.type), ['OPEN_POSITION', 'NOTIFY'])
+  assert.deepEqual(symbol.map(a => a.type), ['OPEN_LONG', 'OPEN_SHORT', 'NOTIFY'])
 })
 
-test('Apply to hides scopes that cannot hold the action (P15)', () => {
-  const open = draft({ action: { type: 'OPEN_POSITION', side: 'LONG', notionalUsdt: '100', leverage: '10' } })
+test('Apply to hides scopes that cannot hold the action or a condition (P15)', () => {
+  const open = draft({ action: { type: 'OPEN_LONG', sizes: ['100'], leverages: ['10'] } })
   assert.deepEqual(scopeChoices(cat, open).map(s => s.type), ['SYMBOL'])
+  assert.deepEqual(scopeChoices(cat, draft({ conditions: { logic: 'ALL', items: [roi30] } })).map(s => s.type), ['ALL_POSITIONS', 'COIN_POSITIONS', 'POSITION'])
+  assert.deepEqual(scopeChoices(cat, draft({ conditions: { logic: 'ALL', items: [{ id: 'c1', type: 'ORDER_STALE', minutes: 60 }] } })).map(s => s.type), ['ORDER', 'ALL_ORDERS'])
   assert.deepEqual(scopeChoices(cat, draft({ action: { type: 'CANCEL_ORDER' } })).map(s => s.type), ['ORDER', 'ALL_ORDERS'])
-  assert.equal(scopeChoices(cat, draft({})).length, 5)
+  assert.equal(scopeChoices(cat, draft({})).length, 6)
 })
 
 test('Options: Increase position fires Once only; crossings fire on event (P16)', () => {
