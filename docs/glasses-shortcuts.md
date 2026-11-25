@@ -11,7 +11,7 @@ Status: built in `app/src/view.ts` + `app/src/main.ts` (Main with `▶`, Detail 
 | Screen | The one question | Answer on the lens | Next |
 |---|---|---|---|
 | Main | How are my positions? | header-less table: position, price, ROI, a flag only when in trouble | swipe, tap |
-| Detail | How is this position doing? | coin and side big, leverage under; PnL; stop and liquidation distance; the last hour with entry and stop named on it | swipe, double tap |
+| Detail | How is this position doing? | coin and side big, leverage under; PnL as big; stop and liquidation distance; the last hour with entry and stop named on it | swipe, double tap |
 | Alert | What fired, and what will a tap do? | framed notification with an icon, choices below the frame | swipe, tap |
 | Review | What exactly am I opening? | qty, notional, leverage, margin, stop | swipe, tap |
 | Result | Did it happen? | the exchange's real status | nothing, or OK |
@@ -61,10 +61,10 @@ main:            # text 8, image 0; no frames
   - {name: gain,   type: text, x: 288, y: 56,  w: 104, h: 144, brightness: 2}                 # ▲ 24.0%
   - {name: flag,   type: text, x: 392, y: 56,  w: 168, h: 144, brightness: 4}                 # only trouble: "liq 5.9%" under 10%, "no stop"
   - {name: hint,   type: text, x: 16,  y: 248, w: 544, h: 32,  brightness: 2}
-detail:          # text 4, image 3; after the ticker apps: one big line, plain numbers, a plain chart
+detail:          # text 3, image 4 (the limit); after the ticker apps: one big line, plain numbers, a plain chart
   - {name: title,  type: image, x: 16,  y: 12,  w: 288, h: 44}                                 # "BTC long", bold, as big as fits (titlePng)
   - {name: lev,    type: text, x: 16,  y: 56,  w: 272, h: 32,  brightness: 3}                 # 10×; takes the input
-  - {name: pnl,    type: text, x: 320, y: 18,  w: 240, h: 32,  brightness: 4}                 # ▼26
+  - {name: pnl,    type: image, x: 320, y: 12,  w: 240, h: 44}                                 # "PNL: −$26", same bold as the title
   - {name: table,  type: text, x: 320, y: 56,  w: 240, h: 32,  brightness: 3}                 # stop −1.9% · liq −4.0% (distance from the mark); nothing for a missing stop
   - {name: chart0, type: image, x: 16,  y: 96,  w: 272, h: 144}                                # the hour; entry dotted, stop dashed, each named with its price at the right by the last price; −1h and now (chartPng)
   - {name: chart1, type: image, x: 288, y: 96,  w: 272, h: 144}
@@ -91,8 +91,8 @@ review:          # text 5, image 1
 - The only frame is the notification. Selection is `>` plus brightness 4; the other choice is one level dimmer (3). A swipe moves `>` with two text updates (content and `textColor`), no page rebuild.
 - Screens with one choice (Notify, Expired, results) keep it in `opt1`; Sent has none.
 - The icon is a 48 × 48 PNG (2 px stroke on the 24 grid, scaled ×2). It arrives after the text; a failed transfer leaves a complete alert.
-- Detail, after even-g2-crypto-ticker and g2-kit's Kpi: coin and side big top left, leverage under it; PnL as plain text top right (▲ / ▼ and the number), the stop and liquidation distances from the mark under it. A missing stop says nothing. Under them the last hour as a plain line. Entry (dim, dotted) and stop (dashed) are named with their prices at the right, next to the bright last price; liquidation joins only within 1% of the last price. A level stretches the scale by up to 1.5 hour-ranges (or 1% of the price, if wider); past that it is pinned: its label with ↑ or ↓ at the edge and no line, so a far stop never flattens the hour. All chart labels share one precision taken from the scale; crowded labels stay centred on their lines. Distances in the text line keep two decimals under 1%. `−1h` / `now` below. No grid, no price axis, no time ticks. Take profit, size, ROI, the shortcuts count and the balance stay on the phone. The chart is read at most once a minute and sent last; if it fails, PnL and the distances are still in text. The title is a picture: if it fails the lens shows leverage without the coin until the next draw.
-- Detail's PnL uses ▲ for zero or gains and ▼ for losses. Absolute values below 10 show tenths, values from 10 show whole units, and values from 10,000 use thousands (one decimal below 100k, whole thousands thereafter).
+- Detail, after even-g2-crypto-ticker and g2-kit's Kpi: coin and side big top left, leverage under it; PnL as big top right (`PNL: +$50`), the stop and liquidation distances from the mark under it. A missing stop says nothing. Under them the last hour as a plain line. Entry (dim, dotted) and stop (dashed) are named with their prices at the right, next to the bright last price; liquidation joins only within 1% of the last price. A level stretches the scale by up to 1.5 hour-ranges (or 1% of the price, if wider); past that it is pinned: its label with ↑ or ↓ at the edge and no line, so a far stop never flattens the hour. All chart labels share one precision taken from the scale; crowded labels stay centred on their lines. Distances in the text line keep two decimals under 1%. `−1h` / `now` below. No grid, no price axis, no time ticks. Take profit, size, ROI, the shortcuts count and the balance stay on the phone. The chart is read at most once a minute and sent last; if it fails, PnL and the distances are still in text. The title and PnL are pictures: if one fails the lens shows leverage without the coin, or no PnL, until the next draw. PnL is resent whenever its rounded text changes.
+- Detail's PnL reads `PNL: +$…` for zero or gains and `PNL: −$…` for losses. Absolute values below 10 show tenths, values from 10 show whole units, and values from 10,000 use thousands (one decimal below 100k, whole thousands thereafter).
 - Main sorts rows by liquidation distance, closest first. The selection (`▶`, brightness 4) moves with two text updates (cur and name), no rebuild, and follows the position, not the row number, when the order changes. More than 5 positions: pages of 4 plus a `▼ 1–4 of 7` row, swiped. A swipe on Detail changes the position by text updates too. Cells cut with `…` (`1000PEPE sh…`).
 
 ## 5. Every alert

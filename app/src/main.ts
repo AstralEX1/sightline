@@ -139,10 +139,9 @@ const LAYOUTS: Record<Layout, Box[]> = {
     { name: 'flag', x: 392, y: 56, w: 168, h: 144 },
     HINT,
   ],
-  // Big coin and side left (TITLE_AT), PnL and the stop and liq distances right, the hour under them (CHART_AT): glasses-shortcuts §4.
+  // Big coin and side left (TITLE_AT), PnL as big right (PNL_AT) with the stop and liq distances under it, the hour under them (CHART_AT): glasses-shortcuts §4.
   detail: [
     { name: 'lev', x: 16, y: 56, w: 272, h: 32, capture: true },
-    { name: 'pnl', x: 320, y: 18, w: 240, h: 32 },
     { name: 'table', x: 320, y: 56, w: 240, h: 32 },
     HINT,
   ],
@@ -167,6 +166,7 @@ const LAYOUTS: Record<Layout, Box[]> = {
 }
 const ICON_AT: Partial<Record<Layout, { x: number; y: number }>> = { alert: { x: 32, y: 40 }, review: { x: 32, y: 48 } }
 const TITLE_AT = { x: 16, y: 12, w: 288, h: 44 }
+const PNL_AT = { x: 320, y: 12, w: 240, h: 44 } // its left edge lines up with the distances under it
 /** Detail's last hour across the lens; two slices, since one image is at most 288 × 144. */
 const CHART_AT = { x: 16, y: 96, w: 544, h: 144 }
 const CHART_SLICE = 272
@@ -185,6 +185,7 @@ const idOf = (name: string) => 1 + NAMES.indexOf(name)
 const ICON = { id: NAMES.length + 1, name: 'icon', px: 48 } // after the text ids, so a new box can never take an image's id
 const CHART = [0, 1].map(i => ({ id: NAMES.length + 2 + i, name: `chart${i}`, dx: i * CHART_SLICE }))
 const TITLE = { id: NAMES.length + 4, name: 'title' }
+const PNL = { id: NAMES.length + 5, name: 'pnl' }
 
 /** Ten cells, full at the start, empty when the time is up. */
 const bar = (leftMs: number, totalMs: number) => {
@@ -255,7 +256,7 @@ function layout(sc: Screen, text: Record<string, string>) {
   const at = ICON_AT[sc.layout]
   const big = sc.layout === 'detail' // the title and the chart
   return {
-    containerTotalNum: boxes.length + (at ? 1 : 0) + (big ? 1 + CHART.length : 0),
+    containerTotalNum: boxes.length + (at ? 1 : 0) + (big ? 2 + CHART.length : 0),
     textObject: boxes.map(b => new TextContainerProperty({
       xPosition: b.x, yPosition: b.y, width: b.w, height: b.h, paddingLength: PAD,
       ...(b.name === 'frame' ? { borderWidth: 2, borderColor: FRAME_COLOR, borderRadius: 4 } : { borderWidth: 0 }),
@@ -264,6 +265,7 @@ function layout(sc: Screen, text: Record<string, string>) {
     ...(at && { imageObject: [new ImageContainerProperty({ xPosition: at.x, yPosition: at.y, width: ICON.px, height: ICON.px, containerID: ICON.id, containerName: ICON.name })] }),
     ...(big && { imageObject: [
       new ImageContainerProperty({ xPosition: TITLE_AT.x, yPosition: TITLE_AT.y, width: TITLE_AT.w, height: TITLE_AT.h, containerID: TITLE.id, containerName: TITLE.name }),
+      new ImageContainerProperty({ xPosition: PNL_AT.x, yPosition: PNL_AT.y, width: PNL_AT.w, height: PNL_AT.h, containerID: PNL.id, containerName: PNL.name }),
       ...CHART.map(c => new ImageContainerProperty({ xPosition: CHART_AT.x + c.dx, yPosition: CHART_AT.y, width: CHART_SLICE, height: CHART_AT.h, containerID: c.id, containerName: c.name })),
     ] }),
     menuObject: menu(sc.layout),
@@ -288,6 +290,17 @@ async function sendTitle(text: string) {
     const result = await call(() => bridge!.updateImageRawData(new ImageRawDataUpdate({ containerID: TITLE.id, containerName: TITLE.name, imageData })))
     if (result === ImageRawDataUpdateResult.success) shownTitle = text
   } catch { /* the leverage and the phone still say which position */ }
+}
+
+/** Detail's PnL, as big as the title; resent only when its coarse text changes. */
+let shownPnl = ''
+async function sendPnl(text: string) {
+  shownPnl = ''
+  try {
+    const imageData = await titlePng(text, PNL_AT.w, PNL_AT.h)
+    const result = await call(() => bridge!.updateImageRawData(new ImageRawDataUpdate({ containerID: PNL.id, containerName: PNL.name, imageData })))
+    if (result === ImageRawDataUpdateResult.success) shownPnl = text
+  } catch { /* retried on the next draw */ }
 }
 
 /** Detail's chart: the server's candles and when they were asked for; the picture on the lens, as what it was drawn from. */
@@ -336,11 +349,13 @@ async function draw() {
         shownTone = { ...sc.tone }
         shownIcon = '' // a rebuild empties image containers
         shownTitle = ''
+        shownPnl = ''
         shownChart = ''
         pageSince = Date.now() // the page just reached the lens, with `>` on Dismiss
         shownChoices = sc.choices.join()
         if (sc.icon) await sendIcon(sc.icon)
         if (sc.title) await sendTitle(sc.title)
+        if (sc.pnl) await sendPnl(sc.pnl)
         if (sc.chart) await sendChart(sc.chart)
         if (sc.layout === 'alert' && sc.card && sc.card.id !== blinked) {
           blinked = sc.card.id // once per alert
@@ -364,6 +379,7 @@ async function draw() {
       if (sc.choices.join() !== shownChoices && shown.opt1 === want.opt1) { shownChoices = sc.choices.join(); pageSince = Date.now() }
       if (sc.icon && sc.icon !== shownIcon) await sendIcon(sc.icon) // the picture last, so text never waits on it
       if (sc.title && sc.title !== shownTitle) await sendTitle(sc.title)
+      if (sc.pnl && sc.pnl !== shownPnl) await sendPnl(sc.pnl)
       if (sc.chart) await sendChart(sc.chart)
     } while (redraw)
   } catch {

@@ -19,7 +19,9 @@ const store = createStorage(['gt.server', 'gt.token', 'gt.hints', 'gt.launches',
 export const loadSettings = store.load
 
 export function getSettings() {
-  return { server: store.get('gt.server') || DEFAULT_SERVER, token: store.get('gt.token') || devToken }
+  if (import.meta.env.MODE === 'paper') return { server: '', token: '' } // the local proxy connects to the isolated paper account
+  // The dev token wins: a token saved by an earlier run outlives a new APP_TOKEN in .env and would get 401.
+  return { server: store.get('gt.server') || DEFAULT_SERVER, token: devToken || store.get('gt.token') }
 }
 
 export function saveSettings(server: string, token: string) {

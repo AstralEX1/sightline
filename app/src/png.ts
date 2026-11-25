@@ -1,6 +1,6 @@
 /**
  * 4-bit greyscale PNGs for image containers: the lens shows 16 greys, so an 8-bit canvas PNG only sends bytes it drops.
- * Adapted from market-glimpse's src/png.ts (github.com/adamtorgerson/market-glimpse, 0BSD); deflate is the
+ * Adapted from market-glimpse's src/png.ts (github.com/adamtorgerson/market-glimpse); deflate is the
  * platform's CompressionStream here instead of pako.
  */
 

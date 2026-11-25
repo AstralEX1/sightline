@@ -1,6 +1,6 @@
 // Lens screenshots from the Even Hub simulator on demo data: `npm run screens`, optionally naming the shots.
 // Writes the simulator's own PNGs (green, brightness in alpha, transparent background) to screens/.
-// Idea and simulator steps from market-glimpse's scripts/screenshots.mjs (github.com/adamtorgerson/market-glimpse, 0BSD).
+// Idea and simulator steps from market-glimpse's scripts/screenshots.mjs (github.com/adamtorgerson/market-glimpse).
 //
 // Everything runs on its own ports: the demo server never touches a running one or the Telegram bot, and the simulator
 // keeps settings per origin, so a server address saved for the dev server on :5173 does not apply here.

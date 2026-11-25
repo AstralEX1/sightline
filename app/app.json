@@ -7,7 +7,7 @@
   "min_sdk_version": "0.0.16",
   "tagline": "Set the rule. Tap the trade.",
   "entrypoint": "index.html",
-  "description": "Trade Shortcuts on your G2: rules you build on the phone (one scope, conditions joined by and/or, one action) watch your positions and raise exact proposals on the lens. Every trade needs your tap on the glasses. Bybit demo/testnet only.",
+  "description": "Build rules on your phone and review exact alerts and trade proposals on your G2. Confirm by touch, or use a spoken answer when voice is enabled. Supports simulated positions and Bybit Demo Trading or Testnet.",
   "permissions": [
     {
       "name": "network",
@@ -16,7 +16,7 @@
     },
     {
       "name": "g2-microphone",
-      "desc": "Voice shortcuts. Listens only after you tap, for up to 5 seconds. The audio goes to your Trade Shortcuts server, which sends it to OpenAI for transcription."
+      "desc": "With voice answers enabled, the G2 microphone listens briefly after an actionable alert and again during the cancellation countdown after a spoken yes. Audio goes through the configured Trade Shortcuts server to OpenAI for transcription."
     }
   ],
   "supported_languages": ["en"]

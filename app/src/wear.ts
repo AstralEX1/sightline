@@ -1,7 +1,7 @@
 /**
  * Whether the glasses are in use, from the Even app's device status: while they are off or in the case the lens
  * stops polling the server (which keeps watching and still sends Telegram alerts).
- * Adapted from market-glimpse's src/wear.ts (github.com/adamtorgerson/market-glimpse, 0BSD).
+ * Adapted from market-glimpse's src/wear.ts (github.com/adamtorgerson/market-glimpse).
  *
  * The SDK fills in what a status lacks: `isWearing` and `isInCase` become false and `connectType` "none". So a false
  * `isWearing` only counts once the glasses have reported true, and a status without a connection says nothing.

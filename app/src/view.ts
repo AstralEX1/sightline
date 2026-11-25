@@ -32,6 +32,8 @@ export interface Screen {
   card: Proposal | null
   /** Detail's coin and side, drawn big ("BTC long") */
   title?: string
+  /** Detail's PnL, drawn as big as the title ("PNL: +$50") */
+  pnl?: string
   /** Detail's price chart: whose closes to fetch and the position's levels drawn across them (0 = none) */
   chart?: { symbol: string; entry: number; stop: number; tp: number; liq: number }
 }
@@ -87,13 +89,13 @@ const LIQ_FLAG_PCT = 10
 export const INNER_PX: Record<string, number> = {
   top: 540, name: 140, cur: 140, price: 124, loss: 100, gain: 100, flag: 164, hint: 540,
   who: 380, why: 380, queue: 68, ask: 452, terms: 452, opt1: 540, opt2: 540,
-  table: 236, lev: 268, pnl: 236,
+  table: 236, lev: 268,
 }
 /** Brightness of each box unless a state says otherwise (§4). */
 const TONE: Record<string, number> = {
   top: 3, name: 3, cur: 4, price: 3, loss: 4, gain: 2, flag: 4, hint: 2,
   frame: 3, who: 4, why: 3, queue: 2, ask: 4, terms: 3, opt1: 3, opt2: 3,
-  table: 3, lev: 3, pnl: 4,
+  table: 3, lev: 3,
 }
 const SPACE_PX = getTextWidth(' ')
 /** As wide as '> ' (15 px), so an unselected choice lines up with the selected one. */
@@ -134,17 +136,13 @@ export function clampFocus(focus: number | undefined, n: number): number {
   return ((focus ?? 0) % n + n) % n
 }
 
-/** PnL for Detail with ▲ / ▼: tenths under 10, whole numbers from 10, `k` from 10,000 (glasses-shortcuts §4).
- * Coarse on purpose: cents would change it on nearly every price tick. */
-export function pnlNumeral(n: number): string {
-  const sign = n < 0 ? '▼' : '▲'
-  const a = Math.abs(n)
-  if (a >= 10_000) {
-    const k = a / 1000
-    return `${sign}${k >= 100 ? Math.round(k).toLocaleString('en-US') : k.toFixed(1)}k`
-  }
-  if (a >= 10) return `${sign}${Math.round(a).toLocaleString('en-US')}`
-  return `${sign}${a.toFixed(1)}`
+/** PnL for Detail, "PNL: +$50": tenths under 10, whole dollars from 10, `k` from 10,000 (glasses-shortcuts §4).
+ * Coarse on purpose: it is a picture, and cents would resend it on nearly every price tick. */
+export function pnlText(n: number): string {
+  const a = Math.abs(n), k = a / 1000
+  const num = a >= 10_000 ? `${k >= 100 ? Math.round(k).toLocaleString('en-US') : k.toFixed(1)}k`
+    : a >= 10 ? Math.round(a).toLocaleString('en-US') : a.toFixed(1)
+  return `PNL: ${n < 0 ? '−' : '+'}$${num}`
 }
 
 /** The condition behind the alert names its icon; the text says it too. */
@@ -242,8 +240,8 @@ function away(level: number, mark: number, dp: number): string {
 }
 
 /**
- * Coin and side big top left (a picture: the font has one size), leverage under it; the dotted PnL top right with the
- * stop and liquidation distances under it; the last hour across the bottom (glasses-shortcuts §4).
+ * Coin and side big top left and PnL as big top right (pictures: the font has one size), leverage under the coin, the
+ * stop and liquidation distances under PnL; the last hour across the bottom (glasses-shortcuts §4).
  */
 function detail(p: Position, at: number, total: number, v: View): Screen {
   // Under 1% a tenth hides what matters; both distances then take two decimals, so the line reads evenly.
@@ -255,10 +253,11 @@ function detail(p: Position, at: number, total: number, v: View): Screen {
   const place = total > 1 ? `${at + 1}/${total}` : ''
   return {
     layout: 'detail', key: 'detail', text: {
-      lev: fit(`${p.leverage}×`, INNER_PX.lev), pnl: fit(pnlNumeral(p.unrealisedPnl), INNER_PX.pnl), table: fit(table, INNER_PX.table),
+      lev: fit(`${p.leverage}×`, INNER_PX.lev), table: fit(table, INNER_PX.table),
       hint: place ? hint + ' '.repeat(Math.floor((INNER_PX.hint - getTextWidth(hint) - getTextWidth(place)) / SPACE_PX)) + place : hint,
     }, tone: { ...TONE }, icon: '', choices: [], at: 0, card: null,
     title: `${coin(p.symbol)} ${sideWord(p.side)}`,
+    pnl: pnlText(p.unrealisedPnl),
     chart: { symbol: p.symbol, entry: p.entryPrice, stop: p.stopLoss, tp: p.takeProfit, liq: p.liqPrice },
   }
 }
@@ -373,7 +372,7 @@ export function screen(s: ServerState | null, v: View = {}): Screen {
 export function previewText(sc: Screen): string {
   const t = sc.text
   if (sc.layout === 'detail') {
-    return [[sc.title, t.pnl].filter(Boolean).join('   '), [t.lev, t.table].filter(Boolean).join('   '), '', t.hint].filter((l, i, a) => l || a[i - 1]).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+    return [[sc.title, sc.pnl].filter(Boolean).join('   '), [t.lev, t.table].filter(Boolean).join('   '), '', t.hint].filter((l, i, a) => l || a[i - 1]).join('\n').replace(/\n{3,}/g, '\n\n').trim()
   }
   if (sc.layout !== 'main') {
     const head = sc.layout === 'review' ? [t.ask, ...t.terms.split('\n')] : [[t.who, t.queue.trim()].filter(Boolean).join('   '), t.why]

@@ -4,15 +4,18 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { serverAddress } from './src/server-address.ts'
 
-const [address = '', output = 'trade-shortcuts.ehpk'] = process.argv.slice(2)
-let origin: string
+// The first origin is the default backend; every origin is allowlisted, so Settings › Connection can switch between them.
+const args = process.argv.slice(2)
+const output = args.find(a => a.endsWith('.ehpk')) ?? 'trade-shortcuts.ehpk'
+let origins: string[]
 try {
-  origin = serverAddress(address)
-  if (!origin.startsWith('https://') || new URL(origin).origin !== origin) throw new Error()
+  origins = args.filter(a => !a.endsWith('.ehpk')).map(serverAddress)
+  if (!origins.length || origins.some(o => !o.startsWith('https://') || new URL(o).origin !== o)) throw new Error()
 } catch {
-  console.error('Usage: npm run pack -- https://your-backend.example [output.ehpk]')
+  console.error('Usage: npm run pack -- https://your-backend.example [https://another-backend.example …] [output.ehpk]')
   process.exit(1)
 }
+const origin = origins[0]
 
 const work = mkdtempSync(join(tmpdir(), 'trade-shortcuts-pack-'))
 try {
@@ -20,7 +23,7 @@ try {
   const manifestPath = join(work, 'app.json')
   const manifest = JSON.parse(readFileSync('app/app.json', 'utf8'))
   const network = manifest.permissions.find((permission: { name: string }) => permission.name === 'network')
-  network.whitelist = [origin]
+  network.whitelist = origins
   writeFileSync(manifestPath, JSON.stringify(manifest))
   execFileSync('npm', ['run', 'build', '--', '--outDir', dist], {
     stdio: 'inherit',

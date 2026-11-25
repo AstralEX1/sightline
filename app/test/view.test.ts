@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { screen, tipsShown, lensWhy, previewText, alignRight, fit, iconOf, pnlNumeral, INNER_PX, type Outcome, type Screen, type View } from '../src/view.ts'
+import { screen, tipsShown, lensWhy, previewText, alignRight, fit, iconOf, pnlText, INNER_PX, type Outcome, type Screen, type View } from '../src/view.ts'
 import { getTextWidth } from '@evenrealities/pretext'
 import type { Execution, ExecutionStatus, Position, Proposal, ServerState, Terms } from '../../server/src/types.ts'
 import type { ConditionType } from '../../server/src/registry.ts'
@@ -204,7 +204,7 @@ test('detail: big coin and side, leverage under it, PnL with stop and liq distan
   assert.equal(sc.key, 'detail') // one key for every position: a swipe updates the text, never rebuilds
   assert.equal(sc.title, 'BTC long')
   assert.equal(sc.text.lev, '10×')
-  assert.equal(sc.text.pnl, '▼13')
+  assert.equal(sc.pnl, 'PNL: −$13')
   assert.equal(sc.text.table, 'stop −2.7% · liq −5.9%')
   assert.deepEqual(sc.chart, { symbol: 'BTCUSDT', entry: 62000, stop: 59600, tp: 0, liq: 57623 })
   assert.equal(sc.text.hint, 'double tap: back')
@@ -221,18 +221,18 @@ test('detail: no stop says nothing; place in the queue; swipe hint with several'
   assert.equal(sc.title, 'ETH short')
   assert.equal(sc.text.table, 'liq +25.1%')
   assert.match(sc.text.hint, /^swipe: next position · double tap: back +2\/2$/)
-  assert.equal(sc.text.pnl, '▲89')
+  assert.equal(sc.pnl, 'PNL: +$89')
 })
 
 test('detail: an alert still wins over an open Detail', () => {
   assert.equal(screen(st({ card: card(), pending: 1 }), { detail: true }).layout, 'alert')
 })
 
-test('pnlNumeral: tenths, whole numbers, thousands', () => {
-  assert.equal(pnlNumeral(-8.6), '▼8.6')
-  assert.equal(pnlNumeral(12.49), '▲12')
-  assert.equal(pnlNumeral(1234.5), '▲1,235')
-  assert.equal(pnlNumeral(-12_300), '▼12.3k')
+test('pnlText: tenths, whole dollars, thousands', () => {
+  assert.equal(pnlText(-8.6), 'PNL: −$8.6')
+  assert.equal(pnlText(12.49), 'PNL: +$12')
+  assert.equal(pnlText(1234.5), 'PNL: +$1,235')
+  assert.equal(pnlText(-12_300), 'PNL: −$12.3k')
 })
 
 // ── Alert ──────────────────────────────────────────────────

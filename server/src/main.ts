@@ -42,7 +42,7 @@ if (mode === 'bybit') {
 }
 
 // One file per exchange mode, so demo shortcuts and alerts never mix with a real account's.
-const store = createStore(fileURLToPath(new URL(`../data/${mode}.db`, import.meta.url)))
+const store = createStore(mode === 'fake' && env.PAPER_DEMO === '1' ? ':memory:' : fileURLToPath(new URL(`../data/${mode}.db`, import.meta.url)))
 store.seed([...STARTER_RULES, ...VOICE_SEEDS])
 store.seed([CLOSE_SEED], 'seeded:close')
 const notifier = createNotifier({ store, token: env.TELEGRAM_BOT_TOKEN || undefined })

@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { ACTION_TITLE, DEFAULT_DELIVERY, isEvent, LIMITS, TEMPLATES } from '../../server/src/registry.ts';
-import { allowed, validateShortcut } from '../../server/src/validate.ts';
-import { actionParts, conditionParts } from '../../app/src/phone/sentence.ts';
+import { ACTION_TITLE, DEFAULT_DELIVERY, isEvent, LIMITS, TEMPLATES } from '../../../server/src/registry.ts';
+import { allowed, validateShortcut } from '../../../server/src/validate.ts';
+import { actionParts, conditionParts } from '../../../app/src/phone/sentence.ts';
 
 const storageKey = 'trade-shortcuts.landing.builder.v1';
 const markets = ['BTC', 'ETH', 'SOL'];
