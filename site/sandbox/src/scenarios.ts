@@ -44,6 +44,6 @@ export const TABS: Tab[] = [
   {
     id: 'build', title: 'Build your own', sub: 'Start from a template, change anything', template: template('tpl_2'), on: false,
     before: m => m.open('Buy', QTY, LEV, 0, P * 0.98), to: P * 1.055, // ROI above 50% at 10×: +5%
-    steps: ['Tap Add, then switch it on', 'Drag the chart up', 'Answer on the glasses'],
+    steps: ['Tap Add, then switch it on', 'Drag the chart until it fires', 'Answer on the glasses'],
   },
 ]

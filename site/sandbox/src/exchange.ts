@@ -12,7 +12,7 @@ const FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, "Helveti
 const AXIS_W = 56
 const TIME_H = 16
 const BAR_W = 6
-const BALANCE = 10_000 // the demo account, USDT
+const MIN_QTY = 0.001 // BTCUSDT's quantity step and minimum
 const FLASH_MS = 4000 // how long a change stays lit; bx-lit in exchange.css runs as long
 
 const fmt = (n: number, d = 1) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
@@ -83,7 +83,10 @@ export function mountExchange(root: HTMLElement, m: Market) {
     levOk)
   const setPending = (n: number) => { pending = Math.min(100, Math.max(1, Math.round(n))); levRange.value = String(pending); levOut.value = `${pending.toFixed(2)}x` }
   const levOpen = (open: boolean) => { levBox.hidden = !open; levPill.setAttribute('aria-expanded', String(open)); setPending(leverage) }
-  levPill.onclick = () => levOpen(levPill.getAttribute('aria-expanded') !== 'true')
+  levPill.onclick = () => {
+    if (m.positions.length) return void (error.textContent = 'Close the position to change its leverage.')
+    levOpen(levPill.getAttribute('aria-expanded') !== 'true')
+  }
   levRange.oninput = () => setPending(Number(levRange.value))
   levMinus.onclick = () => setPending(pending - 1)
   levPlus.onclick = () => setPending(pending + 1)
@@ -140,11 +143,11 @@ export function mountExchange(root: HTMLElement, m: Market) {
     info()
   }
   const at = () => (typeSel.value === 'Limit' ? num(priceIn) : m.price)
-  const used = () => m.positions.reduce((s, p) => s + p.positionIM, 0) + m.orders.reduce((s, o) => s + (o.leavesQty * o.price) / (m.ex.leverage[SYMBOL] ?? 10), 0)
-  const available = () => Math.max(0, BALANCE - used())
+  const available = () => m.ex.available // the wallet the server reads too
   const maxQty = () => (at() > 0 ? (available() * leverage) / at() : 0)
   function info() {
     const qty = num(qtyIn)
+    if (m.positions.length) leverage = m.positions[0].leverage // an open position fixes the leverage
     levPill.textContent = `${leverage.toFixed(2)}x`
     avail.textContent = `${fmt(available(), 2)} USDT`
     value.textContent = `${fmt(qty * at(), 2)} USDT`
@@ -156,26 +159,29 @@ export function mountExchange(root: HTMLElement, m: Market) {
   form.addEventListener('input', () => { error.textContent = ''; info() })
   form.addEventListener('submit', async e => {
     e.preventDefault()
-    const type = typeSel.value
-    const qty = num(qtyIn)
+    const qty = Math.floor(num(qtyIn) / MIN_QTY + 1e-9) * MIN_QTY
     const price = at()
+    // a limit the market already reaches fills at once, at the market: an exchange does not wait for it
+    const type = typeSel.value === 'Limit' && !(side === 'Buy' ? price >= m.price : price <= m.price) ? 'Limit' : 'Market'
     const tp = tpslOn.checked ? num(tpIn) : 0
     const sl = tpslOn.checked ? num(slIn) : 0
     const long = side === 'Buy'
-    if (!(qty > 0)) return void (error.textContent = 'Enter a quantity.')
+    if (!(qty >= MIN_QTY)) return void (error.textContent = `The least you can order is ${MIN_QTY} BTC.`)
     if (!(price > 0)) return void (error.textContent = 'Enter a price.')
+    const opposite = m.positions.find(p => p.side !== side)
+    const held = opposite?.size ?? 0 // read before the reduce changes it
+    const opening = Math.max(0, qty - held)
+    if ((opening * (type === 'Limit' ? price : m.price)) / leverage > available() + 1e-9) return void (error.textContent = 'Not enough available balance.')
     if (tp && (long ? tp <= price : tp >= price)) return void (error.textContent = `Take profit must be ${long ? 'above' : 'below'} the price.`)
     if (sl && (long ? sl >= price : sl <= price)) return void (error.textContent = `Stop loss must be ${long ? 'below' : 'above'} the price.`)
     try {
       if (type === 'Limit') {
         if (!m.positions.length) m.ex.leverage[SYMBOL] = leverage // the leverage the order fills at
-        m.limit(side, qty, price)
+        m.limit(side, qty, price, Date.now(), tp, sl)
       } else {
-        const opposite = m.positions.find(p => p.side !== side)
         // one-way mode: an opposite order reduces first, the rest opens the other side
-        if (opposite && qty >= opposite.size) await m.close(opposite)
-        else if (opposite) await m.ex.placeOrder({ symbol: SYMBOL, side, qty: String(qty), orderLinkId: crypto.randomUUID(), positionIdx: 0, reduceOnly: true })
-        const rest = opposite ? Math.round((qty - opposite.size) * 1e6) / 1e6 : qty
+        if (opposite) await m.close(opposite, Math.min(qty, held))
+        const rest = Math.round((qty - held) * 1e6) / 1e6
         if (rest > 0) await m.open(side, rest, leverage, tp, sl)
       }
       tab = type === 'Limit' ? 'orders' : 'positions'
@@ -247,7 +253,19 @@ export function mountExchange(root: HTMLElement, m: Market) {
     const f = el('form', { class: 'ex-edit', novalidate: '' },
       el('div', { class: 'ex-two' }, box('Take Profit', tp), box('Stop Loss', sl)),
       el('div', { class: 'ex-card-btns' }, el('button', { type: 'button', 'data-act': 'stop-edit' }, 'Cancel'), el('button', { type: 'submit', class: 'ex-primary' }, 'Confirm')))
-    f.onsubmit = e => { e.preventDefault(); m.setStops(p, num(tp), num(sl)); editing = null; renderLists() }
+    const bad = el('p', { class: 'ex-err', role: 'alert' })
+    f.insertBefore(bad, f.lastChild)
+    f.onsubmit = e => {
+      e.preventDefault()
+      const long = p.side === 'Buy'
+      const [t, s] = [num(tp), num(sl)]
+      if (t && (long ? t <= p.markPrice : t >= p.markPrice)) return void (bad.textContent = `Take profit must be ${long ? 'above' : 'below'} the mark price.`)
+      if (s && (long ? s >= p.markPrice : s <= p.markPrice)) return void (bad.textContent = `Stop loss must be ${long ? 'below' : 'above'} the mark price.`)
+      if (s && p.liqPrice && (long ? s <= p.liqPrice : s >= p.liqPrice)) return void (bad.textContent = 'Stop loss must come before liquidation.')
+      m.setStops(p, t, s)
+      editing = null
+      renderLists()
+    }
     return f
   }
   function orderCard(o: Order, i: number) {
@@ -448,8 +466,11 @@ export function mountExchange(root: HTMLElement, m: Market) {
     g.fillText(text, left + 4, at + 0.5)
   }
 
+  // a mouse drag must not focus the chart: the arrow keys and Enter then still reach the glasses (Tab still focuses it)
+  canvas.addEventListener('mousedown', e => e.preventDefault())
   canvas.addEventListener('pointerdown', e => {
-    const { lo, hi } = range(visible())
+    let { lo, hi } = range(visible())
+    if (hi - lo > m.price * 0.08) { lo = m.price * 0.96; hi = m.price * 1.04 } // a wide view would make the hand too fast
     frozen = { lo, hi } // the scale holds still under the hand
     drag = { y: e.clientY, price: m.price, perPx: (hi - lo) / (size.h - TIME_H) }
     canvas.setPointerCapture(e.pointerId)
@@ -497,7 +518,21 @@ export function mountExchange(root: HTMLElement, m: Market) {
   render()
   return {
     /** A tab's fresh start: the chart, and what the tab's setup changed is not lit as news. */
-    start() { show('Charts'); seen = null; changedAt.clear() },
+    start() {
+      show('Charts')
+      seen = null
+      changedAt.clear()
+      leverage = 10
+      typeSel.value = 'Market'
+      priceBox.hidden = true
+      qtyIn.value = '0.05'
+      tpIn.value = slIn.value = ''
+      tpslOn.checked = false
+      tpsl.hidden = true
+      error.textContent = ''
+      editing = null
+      setSide('Buy')
+    },
   }
 }
 

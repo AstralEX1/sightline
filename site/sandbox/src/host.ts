@@ -16,7 +16,8 @@ type AppWindow = Window & {
 const EVENT: Record<Exclude<Gesture, 'menu' | 'long'>, number> = { tap: 0, up: 1, down: 2, double: 3 }
 const STATUS = { sn: 'SANDBOX', connectType: 'connected', isWearing: true, batteryLevel: 86, isCharging: false, isInCase: false }
 
-export function createHost(lens: Lens) {
+/** `onExit`: the app asked the Even app to close it (double tap on its main screen). */
+export function createHost(lens: Lens, onExit: () => void = () => {}) {
   // Lens gesture tips on for every visitor, and no microphone: the sandbox answers by tap only.
   const storage = new Map([['gt.hints', 'on'], ['gt.voice', 'off']])
   let app: AppWindow | null = null
@@ -31,7 +32,7 @@ export function createHost(lens: Lens) {
     rebuildPageContainer: d => { lens.setPage(d as Page); return true },
     textContainerUpgrade: d => lens.setText(String(d.containerName), String(d.content ?? ''), d.textColor as number | undefined),
     updateImageRawData: async d => ((await lens.setImage(String(d.containerName), d.imageData as number[])) ? 'success' : 'imageException'),
-    shutDownPageContainer: () => true, // the exit dialogue: the sandbox keeps the app open
+    shutDownPageContainer: () => { onExit(); return true }, // the exit dialogue: the sandbox keeps the app open
     audioControl: () => false,
     imuControl: () => false,
   }
