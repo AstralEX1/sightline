@@ -1,40 +1,30 @@
-# Trade Shortcuts: handoff
+# Trade Shortcuts handoff
 
-## Purpose
-Trade Shortcuts on Even Realities G2: the user builds rules on the phone page (one scope, conditions under one `and`/`or`, exactly one action); the server polls Bybit, raises alerts and exact trade proposals; every trade needs lens authorization by touch or a spoken yes with a cancellation countdown. Bybit **demo/testnet only**; a built-in demo exchange is the default. Overview and demo steps: `README.md`.
+## Current build
 
-## Sources of truth
-- Server, rule model, API: `docs/shortcuts-architecture.md` (§15 lists the product decisions: no Funding → Trading transfer, no daily loss limit or per-action cap, strict Set SL, voice phrases on shortcuts, phone delivery = in-app + Telegram).
-- Phone page: `docs/trade-shortcuts-spec.md` v2.1 and its canvas.
-- Lens: `docs/glasses-shortcuts.md` and its canvas. `docs/design.md` for the G2 design rules.
+The phone editor, G2 client and Bybit adapter share one rule catalog. It has 13 conditions, 10 actions, six scopes and 12 templates in Protect, Take profit, Market and Orders. The two starter rules on a fresh server close half near liquidation and move a profitable position’s stop to entry. The menu also uses seeded rules for Protect all, Lock profits and Close.
 
-## Architecture
-See the table in `README.md`. In short: `registry.ts` + `validate.ts` (one catalog and validator for phone and server), `engine.ts` (pure evaluator and trigger policies), `session.ts` (poll → facts → engine → alerts/proposals, lens state), `proposals.ts` (resolve and guard terms), `execute.ts` (confirm, serialize, submit once, reconcile), `store.ts` (`node:sqlite`, `server/data/<fake|bybit>.db`, git-ignored), `notify.ts` (lens / app / Telegram), `bybit.ts` + `fake-exchange.ts`, `http.ts`. The phone page is `app/src/phone/`; the lens is `app/src/view.ts` + `app/src/main.ts`.
+The phone opens a template as an unsaved When/Do rule. Save it, then enable it on Home. On the lens, an actionable alert starts on Dismiss. For Open long or Open short with alternative sizes or leverages, the user picks the terms by hand and reviews the exact order. Other eligible cards support a spoken yes or no when transcription and voice answers are enabled. A yes starts a five-second cancellation window.
 
-## Commands
-```
-cp .env.example .env     # APP_TOKEN (16+ chars): openssl rand -hex 16
-npm install
-npm run server           # API on 127.0.0.1:8787
-npm run dev              # phone page and lens app on :5173
-npm run sim              # glasses simulator
-npm run dev -- --host    # instead of plain dev for QR preview, with VITE_APP_TOKEN empty
-npm run qr               # scan from Developer Mode, on the same Wi-Fi (macOS)
-npm run typecheck && npm test && npm run build
-```
-Needs Node >= 22.18 (runs `.ts` directly; `node:sqlite` prints an ExperimentalWarning on Node 22). CI: `.github/workflows/test.yml`.
+## Running each version
 
-## Current state
-Server: every endpoint of architecture §10, tested end to end against `FakeExchange` (duplicate and concurrent taps, ambiguous submits, supersede, expiry, simulated proposals, voice, hysteresis, crossings across a gap, kline warm-up, order fills, reconciliation). Phone page and lens built against it and checked in the browser and the Even Hub simulator. Lens Main has row `▶` + Detail (Weather layout, dotted PnL via `numeralPng`); Speak is on the menu. See the dated testnet and Telegram results below. ROI parity and physical glasses checks are pending.
+| Target | Entry point | Account and storage |
+|---|---|---|
+| Desktop Even Hub simulator | `npm run demo` | Fake exchange, in-memory database, loopback proxy. No external service needed. |
+| Persistent local server | `npm ci`, configure from `.env.example`, then `npm run server`, `npm run dev` and `npm run sim` in separate terminals | Fake by default. `EXCHANGE=bybit` selects Demo or Testnet. One account per process. SQLite file in `server/data/` per mode. |
+| Browser sandbox and landing demo | `npm run sandbox` or `npm run build:site` | Real phone/lens code, local bridge, rule engine, FakeExchange and in-memory sql.js store. Switching scenarios resets the account. |
+| Installed G2 app | `npm run pack -- https://your-backend.example` | The first HTTPS origin is the default server. Additional origins are allowlisted. Enter the access token under Settings → Connection. |
 
-## Limitations
-- Testnet/demo only by design; do not point `BYBIT_BASE` at a live host.
-- Known limits are `shortcut:` comments in the code (first page of open orders, Bybit's default stop trigger when the stop order is not listed, an unknown add margin blocking further add margin on its position until it closes (orders, stops and cancels settle from Bybit 30 s after the unknown result), history paging by millisecond, and others).
-- `VITE_APP_TOKEN` is dev only: never set it for a build you share.
-- With voice answers enabled and transcription configured, an actionable alert can open the mic automatically.
-- Package with `npm run pack -- https://your-backend.example`. The origin becomes the default backend and the manifest's network whitelist entry.
+[Setup, QR preview and packaging](setup.md) · [Server and REST API](shortcuts-architecture.md) · [Phone](trade-shortcuts-spec.md) · [Lens](glasses-shortcuts.md) · [UI test plan](ui-test-plan.md) · [Deployment](deployment.md)
 
-## Next steps
-The hackathon release includes the updated lens layout and position chart, the phone shortcut editor, and the landing page and simulator captures in `showcase/`. Release checks on 25 Nov 2026: `npm run typecheck`, `npm test` (555 passing), `npm --prefix site/landing run build`, and `npm run pack` with a test HTTPS origin. For a device build, pack again with the reachable backend origin. The physical G2/R1 checks are still pending.
+## Verification and release history
 
-Done 24 Nov 2026 on Bybit testnet (XRPUSDT): open, duplicate `orderLinkId` refused (110072), set SL/TP each keeps the other, SL past mark rejected, limit order listed and cancelled, reduce-only half and oversize close (no flip), fills deduped by `execId`, add margin on isolated (110076 on cross, as expected). A real Telegram bot linked via `/start <code>` and delivered an alert. Left: compare ROI with the Bybit app (ours is `unrealisedPnl / positionIM`; after an isolated add-margin `positionIM` grows by the added amount, so ROI halves, while entry value / leverage stays put; check which one the app shows); try real glasses (Detail numeral transfer, redraw time vs `CARD_SETTLE_MS`, R1 input); WebSocket fills when polling turns out too slow.
+- Working tree based on `f5a7e38`, including local server changes, 25 November 2026. With Node 22.23.4, typecheck and all 587 automated tests passed (zero skipped). The app, landing page, browser sandbox and a test `.ehpk` built in an isolated copy with a placeholder HTTPS origin.
+- Even Hub lists `com.tradeshortcuts.g2` version `0.1.0` as Private on the beta channel (25 November). The working manifest now declares `0.1.1`. A byte comparison matched the portal download to the local submission package. Use the portal build record and package digest to identify this beta.
+- Recorded on 24 November 2026 on Bybit testnet (XRPUSDT): open, duplicate `orderLinkId` refused (110072), set SL/TP each keeps the other, SL past mark rejected, limit order listed and cancelled, reduce-only half and oversize close (no flip), fills deduped by `execId`, add margin on isolated (110076 on cross, as expected). A real Telegram bot linked via `/start <code>` and delivered an alert.
+
+## Open checks
+
+Verify ROI against the Bybit app in the supported margin modes. The implementation uses `100 × unrealisedPnl / positionIM`. Physical G2/R1 input, chart readability and transfer time, background/resume, voice cancellation and installation against the intended server need device evidence. The earlier testnet and Telegram run covered the operations listed above.
+
+The [Even Hub privacy draft](privacy.html) includes the public support contact. Before submitting it to Even Hub, fill in the hosted backend origins and the operator's retention and deletion process.

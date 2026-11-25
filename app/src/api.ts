@@ -22,8 +22,9 @@ export const loadSettings = store.load
 
 export function getSettings() {
   if (import.meta.env.MODE === 'paper') return { server: '', token: '' } // the local proxy connects to the isolated paper account
-  // The dev token wins: a token saved by an earlier run outlives a new APP_TOKEN in .env and would get 401.
-  return { server: store.get('gt.server') || DEFAULT_SERVER, token: devToken || store.get('gt.token') || demoToken }
+  const server = store.get('gt.server') || DEFAULT_SERVER
+  const token = store.get('gt.token') || (!server ? devToken : '') || (server === DEFAULT_SERVER ? demoToken : '')
+  return { server, token }
 }
 
 export function saveSettings(server: string, token: string) {
@@ -70,7 +71,7 @@ const id = (s: string) => encodeURIComponent(s)
 type Reply = { ok: boolean; message: string }
 
 // ── lens ──────────────────────────────────────────────────
-export const getState = () => request<ServerState>('GET', '/api/state')
+export const getState = (lensOpen = false) => request<ServerState>('GET', lensOpen ? '/api/state?client=lens' : '/api/state')
 /** The only call that trades. A resend with the same key gets the same execution back, never a second order. */
 export const confirm = (proposalId: string, idempotencyKey: string) =>
   request<Reply & { executionId?: string; status?: ExecutionStatus }>('POST', `/api/proposals/${id(proposalId)}/confirm`, { idempotencyKey })

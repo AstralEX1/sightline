@@ -138,9 +138,11 @@ export async function renderSettings() {
   try {
     page = await api.getAccountSettings()
   } catch (e) {
+    page = null
+    const unauthorized = (e as api.ApiError).status === 401
     dynamic.replaceChildren(h('h2', { class: 'group-label' }, 'Bybit'),
-      h('div', { class: 'group' }, row('Status', status(false, 'Server offline')), row('Account', sourceEl), row('Glasses', glassesEl)),
-      h('p', { class: 'footnote' }, (e as Error).message))
+      h('div', { class: 'group' }, row('Status', status(false, unauthorized ? 'Check the server token' : 'Server offline')), row('Account', sourceEl), row('Glasses', glassesEl)),
+      h('p', { class: 'footnote' }, unauthorized ? 'Enter the APP_TOKEN under Connection and tap Connect.' : (e as Error).message))
     return
   }
   const b = page.bybit

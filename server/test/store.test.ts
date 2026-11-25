@@ -168,6 +168,54 @@ test('opening drops the removed SL_MISSING condition; a rule left with no condit
   again.close()
 })
 
+test('opening upgrades legacy actions once and pauses rules whose price window needs review', t => {
+  const { path, store: s, raw } = onFile(t)
+  const stop = { kind: 'ENTRY_OFFSET', percent: '-2' }
+  const open = {
+    scope: { type: 'SYMBOL', symbol: 'BTCUSDT' },
+    conditions: { logic: 'ALL', items: [{ id: 'c1', type: 'PRICE', source: 'LAST', operator: 'GTE', threshold: '60000' }] },
+    trigger: { mode: 'ONCE' },
+    enabled: true,
+  }
+  const legacy = [
+    [created(s, { ...open, action: { type: 'OPEN_LONG', sizes: ['100'], leverages: ['5'], sl: stop } }),
+      { type: 'OPEN_POSITION', side: 'LONG', notionalUsdt: '100', leverage: '5', sl: stop }],
+    [created(s, { ...open, action: { type: 'OPEN_SHORT', sizes: ['200'], leverages: ['10'] } }),
+      { type: 'OPEN_POSITION', side: 'SHORT', notionalUsdt: '200', leverage: '10' }],
+    [created(s, { enabled: true, action: { type: 'ADD_MARGIN', amount: '50', unit: 'USDT' } }),
+      { type: 'ADD_MARGIN', usdt: '50' }],
+  ] as const
+  const put = (id: string, rule: object) => raw.prepare('UPDATE shortcut_versions SET json = ? WHERE shortcut_id = ? AND version = 1').run(JSON.stringify(rule), id)
+  for (const [rule, action] of legacy) {
+    put(rule.id, { ...rule, action })
+    s.saveProposal(proposalRec(rule.id, 'a', rule.id, 'PENDING'))
+  }
+  const triggerKey = `${legacy[0][0].id}:sym:BTCUSDT`
+  const latched = { ...initialTriggerState(1), latched: true, lastAlertAt: 1000 }
+  s.saveTrigger(triggerKey, latched)
+  const change = { id: 'c1', type: 'PRICE_CHANGE', source: 'LAST', direction: 'UP', percent: '2' }
+  const window = created(s, {
+    ...open, conditions: { logic: 'ALL', items: [change] }, action: { type: 'NOTIFY' },
+  })
+  put(window.id, { ...window, conditions: { logic: 'ALL', items: [{ ...change, windowSec: 300 }] } })
+
+  const again = createStore(path)
+  for (const [rule] of legacy) {
+    assert.deepEqual(again.getShortcut(rule.id), { ...rule, version: 2 })
+    assert.equal(again.proposal(rule.id)?.status, 'SUPERSEDED')
+  }
+  assert.deepEqual(again.trigger(triggerKey), { ...latched, version: 2 })
+  assert.equal(again.getShortcut(window.id)?.enabled, false)
+  assert.throws(() => again.setEnabled(window.id, true, 2), /Edit and save/)
+  assert.ok(again.updateShortcut(window.id, again.getShortcut(window.id), 2).ok)
+  assert.equal(again.setEnabled(window.id, true, 3).enabled, true)
+  again.close()
+  const reopened = createStore(path)
+  assert.equal(reopened.getShortcut(legacy[0][0].id)?.version, 2)
+  assert.equal(reopened.getShortcut(window.id)?.version, 4)
+  reopened.close()
+})
+
 test('seed adds the voice shortcuts once, and not again after they are deleted', () => {
   const s = createStore(':memory:')
   s.seed()

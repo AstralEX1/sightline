@@ -192,7 +192,23 @@ export function createBybit(o: {
     },
 
     async fillsSince(ms): Promise<Fill[]> {
-      const rows = await list('/v5/execution/list', { startTime: ms, limit: 100 }) // the default page is 50
+      const endTime = now()
+      const startTime = Math.max(ms, endTime - 7 * 24 * 60 * 60 * 1000)
+      if (startTime > endTime) return []
+      const rows: Row[] = []
+      const cursors = new Set<string>()
+      let cursor: string | undefined
+      do {
+        const page = await call<{ list: Row[]; nextPageCursor?: string }>('GET', '/v5/execution/list', {
+          category: 'linear', startTime, endTime, limit: 100, ...(cursor && { cursor }),
+        })
+        rows.push(...page.list)
+        cursor = page.nextPageCursor
+        if (cursor) {
+          if (cursors.has(cursor)) throw new Error('Bybit returned a repeated execution cursor')
+          cursors.add(cursor)
+        }
+      } while (cursor)
       // Funding payments are listed too; liquidation (BustTrade) and ADL fills stay, the trader must see those.
       return rows.filter(r => r.execType !== 'Funding').map(r => ({
         id: String(r.execId), orderId: String(r.orderId), orderLinkId: String(r.orderLinkId ?? ''), symbol: String(r.symbol), side: r.side as Side,

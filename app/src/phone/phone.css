@@ -3,7 +3,7 @@
 @font-face { font-family: Inter; font-weight: 100 900; font-style: normal; font-display: swap; src: url('./fonts/InterVariable.woff2') format('woff2'); } /* Inter latin subset, SIL OFL; bundled, the WebView may be offline */
 :root {
   color-scheme: light dark;
-  /* brand/README.md: Paper page, White cards (iOS grouped style), Ink text, Grey second text (5.4:1 on Paper). */
+  /* Paper page, White cards (iOS grouped style), Ink text, Grey second text (5.4:1 on Paper). */
   --bg: #F4F4F4; --surface: #FFFFFF; --border: rgba(35, 35, 35, .12); --text: #232323; --text-2: #656565;
   --input-bg: rgba(35, 35, 35, .06);
   /* Bybit orange is a fill only: text on it is Ink (9:1); text that would be orange is plain text, told apart by weight or fill */

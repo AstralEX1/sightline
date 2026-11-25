@@ -1,116 +1,84 @@
-# Trade Shortcuts · Rules for Bybit on Even G2
+<div align="center">
+  <img src="site/landing/img/app-icon.svg" alt="" width="76">
+  <h1>Trade Shortcuts</h1>
+  <p><strong>Bybit position alerts and trade confirmations on Even Realities G2.</strong></p>
+  <p>Heads Up Hackathon · Exchanges &amp; Stocks</p>
+  <p>
+    <a href="https://trade-shortcuts-pi.vercel.app/sandbox/"><strong>Try the sandbox</strong></a> ·
+    <a href="assets/demo.mp4">Watch the 27-second demo</a> ·
+    <a href="#run-the-demo">Run in Even Hub Simulator</a>
+  </p>
+</div>
 
-Trading rules you build on your phone, answered on your glasses.
+A trader away from their phone can miss a Bybit position approaching liquidation. Trade Shortcuts puts the alert, the proposed order size, and the exchange result in their field of view.
 
-## Heads Up hackathon demo
+<table>
+  <tr>
+    <th>Set the rule on your phone</th>
+    <th>Review and confirm on G2</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/phone-shortcuts.png" width="226" alt="Phone shortcut tiles, including a rule to close half when liquidation distance is at most 3%"></td>
+    <td align="center">
+      <img src="assets/lens-alert.jpg" width="376" alt="G2 alert for a BTC long near liquidation, with Dismiss and Close 50% choices"><br>
+      <img src="assets/lens-fill.jpg" width="376" alt="G2 result showing 0.006 BTC closed and the position reduced from 0.013 to 0.007 BTC">
+    </td>
+  </tr>
+</table>
 
-**Track:** Exchanges & Stocks · Bybit. A Bybit derivatives trader away from the phone can miss a position approaching liquidation. Trade Shortcuts shows which position crossed the trader’s own threshold, how much a proposed action would change it, and whether the exchange filled it. [Short submission description](docs/dorahacks.md)
+Screenshots and video show the Even Hub Simulator. [Position detail](assets/lens-detail.jpg) · [Rule editor](assets/phone-editor.png) · [History](assets/phone-history.png) · [Project site](https://trade-shortcuts-pi.vercel.app/)
 
-- **Open in a browser:** [Interactive paper sandbox](https://trade-shortcuts-pi.vercel.app/sandbox/) · [Project site](https://trade-shortcuts-pi.vercel.app/).
-- **Watch:** [27-second G2 demo clip](showcase/lens-alert-tap.mp4). A Bybit Demo BTC position triggers a liquidation-distance alert. Swipe to **Close 50%**, tap, and see the fill on the lens.
-- **Try it:** [Run the demo](#run-the-demo) with the Even Hub simulator and the built-in paper exchange. You can try the phone and lens flow without G2 hardware or an exchange account.
-- **See the screens:** [Phone rule editor](showcase/09-phone-editor.png) · [Lens alert](showcase/03-lens-alert-liquidation.jpg) · [Execution result](showcase/06-lens-closed.jpg) · [Phone history](showcase/10-phone-history.png).
+## Try it in your browser
 
-## What existed before November 23
+Open the [paper sandbox](https://trade-shortcuts-pi.vercel.app/sandbox/) and choose **Liquidation alert**. Move the BTC chart down until the alert appears. On the simulated lens, select **Close 50%** and tap to confirm. The paper exchange records the fill and reduces the position.
 
-The team brought no pre-existing application code into the hackathon. The project history starts on November 24, 2026. The hackathon commits introduce the phone rule editor, rule engine, Bybit V5 adapter, deterministic paper exchange, proposal and confirmation flow, and G2 screens. The [first project commit](https://github.com/AstralEX1/trade-shortcuts/commit/5aee0bd) and subsequent commits show the build sequence.
-
-We used the existing Even Hub SDK, Pretext, simulator and CLI, Bybit V5, Node.js, SQLite, TypeScript and Vite. Optional integrations use OpenAI transcription and the Telegram Bot API. The PNG and wear-state helpers and simulator capture workflow draw on [Market Glimpse](https://github.com/adamtorgerson/market-glimpse). The upstream repository does not currently list a project license. The phone UI uses [Inter](https://rsms.me/inter/) and [Phosphor Icons](https://phosphoricons.com/). The separate browser sandbox uses sql.js and [credited stock footage](site/sandbox/public/media/CREDITS.md).
-
-## How it works
-
-A shortcut is one sentence: **apply to** one scope, **when** one or more conditions joined by one `and` / `or`, **do** exactly one action.
-"All positions · when liquidation distance is below 5% or ROI is below −20% · close 50%."
-The server watches Bybit every 2 seconds. When a shortcut fires it raises an alert and, for a trade, one exact proposal ("Close 50% · 0.025 BTC"). The proposal shows on the G2 lens with `Dismiss` first. Tap the action to confirm. With voice answers enabled and transcription configured, a spoken “yes” also authorizes the proposal after a five-second cancellation window.
-
-Bybit **demo / testnet only**: the server refuses any other host at startup. A built-in demo exchange runs without keys.
-
-## What it does
-
-- **Phone (Even Hub app page)**: your shortcuts as tiles with an on/off switch, 11 templates in four categories that fold away under their headings, an editor that only offers compatible choices and marks the row that is not, a test alert, History with every alert's last status, Settings (Bybit key rights, notifications, Telegram, cooldown and expiry).
-- **Lens**: positions with ROI and the one flag that matters (`liq 4.1%`); an alert names the position, the strongest reason and the exact command; Review before any Open or Increase; the real result from the exchange (Sent → Filled / Partly filled / Rejected / Unknown).
-- **Voice**: the G2 mic listens briefly when an actionable alert appears and voice answers are enabled. The server sends the audio to OpenAI for transcription. A “no” dismisses the alert. During the countdown after “yes”, a gesture or a spoken “no” cancels. The paper demo runs with voice off.
-- **Telegram**: when the glasses are off, alerts go to a linked chat as plain text. Telegram can never confirm a trade.
-
-13 conditions (price, price change, volume spike, funding, profit, loss, liquidation, stop and take-profit distance, closed by stop / take profit / liquidation, order filled, partly filled, order open too long) × 9 actions (close, move stop, set stop, set take profit, add margin, open, increase, cancel order, notify), checked by three compatibility tables.
-
-## Safety model
-
-- Every exchange write is a proposal the user authorizes on the lens: `confirm(proposalId, idempotencyKey)`. A second tap, a resend or two taps at once return the same execution; the proposal is consumed before the first network call.
-- Terms are resolved once (qty, stop price, margin) and never adjusted silently. A confirm rechecks fresh exchange state; if the terms changed, a new proposal replaces the old one (`NEW` on the lens) and the old tap does nothing.
-- Unknown results (timeout, 5xx, Bybit 10000/10016) are never retried blindly; the position is blocked until Bybit settles it (orders, stops and cancels are looked up 30 s later). An unknown add margin has nothing to look up: it blocks only another add margin until the position closes, a Close still goes out.
-- Stops only tighten and must sit behind the price; a close never exceeds one market order; Open needs the leverage you set; Add Margin needs isolated margin.
-- Test alerts are simulated end to end and cannot reach the exchange adapter.
-- Trade Shortcuts holds no user funds and provides no financial advice. Bybit keys, the OpenAI key and the Telegram bot token stay on the server. The phone stores its server access token in Even Hub storage, with local storage as a browser fallback. The exchange adapter supports demo/testnet trading only and exposes no transfers or withdrawals.
+Both demos use simulated positions. You only need a browser for the sandbox.
 
 ## Run the demo
 
-One command, from nothing to the simulator. Needs [Node.js 22.18+](https://nodejs.org) and git; macOS, Linux or Windows.
+Install [Node.js 22.18 or newer](https://nodejs.org/) and Git on a machine with a desktop session.
 
-```bash
-git clone https://github.com/AstralEX1/trade-shortcuts.git && cd trade-shortcuts && npm run demo
+```sh
+git clone https://github.com/AstralEX1/trade-shortcuts.git
+cd trade-shortcuts
+npm run demo
 ```
 
-`npm run demo` installs the locked dependencies and starts a fresh in-memory paper account with BTC, ETH and SOL positions. It needs a desktop session and free local ports 5173, 8788 and 9898. The phone page connects automatically through the local proxy. Bybit, voice transcription and Telegram are disabled for this run. Ctrl+C stops the demo and discards its paper history.
+The runner installs the locked dependencies and opens the phone page and the Even Hub Simulator's **Glasses Display**. It starts a fresh paper account with BTC, ETH, and SOL positions. It requires free local ports 5173, 8788, and 9898. No account, API keys, or glasses are required.
 
-Two windows open: **Browser** is the phone page, **Glasses Display** is the G2 lens (Up, Down, Click, Double Click stand in for the touchpad).
+1. If a SOL alert is already open, click **Dismiss**. The BTC **Near liquidation · half** alert appears about 30 seconds after startup.
+2. Press **Down**. When the cursor reaches **Close 50%**, press **Click** to confirm.
+3. Check the fill on the lens and open **History** on the phone page using the clock icon.
 
-1. The lens lists the demo positions.
-2. About 30 seconds after start, the **Near liquidation · half** shortcut raises a BTC alert on the lens. If another alert is showing, Click **Dismiss** first.
-3. Press **Down** to reach **Close 50%** and **Click** to confirm. The lens shows the fill.
-4. On the phone page, open **History** (clock icon) for the paper trade.
+Press Ctrl+C to stop the demo and clear its paper session. For a persistent server, optional integrations, QR preview, or an installable `.ehpk`, see the [setup guide](docs/setup.md).
 
-For a persistent account or optional integrations, run the services separately: `npm ci`, `cp .env.example .env`, set `APP_TOKEN` (16+ characters, e.g. `openssl rand -hex 16`), then `npm run server`, `npm run dev`, `npm run sim` in three terminals, in that order. Enter the token on the phone page under **Settings → Connection**, or set `VITE_APP_TOKEN` to the same value.
+## How it works
 
-`npm run screens` takes lens screenshots on demo data (Main, Detail, the next positions) into `screens/`, on its own ports and without Telegram, so a running server is not touched. It needs `VITE_APP_TOKEN` in `.env`.
+- **Phone:** choose a scope, set the **When** conditions, and pick one **Do** action. Start with one of 12 templates or write a rule from scratch.
+- **Glasses:** read open positions and ROI at a glance. An alert shows what triggered the rule and the proposed quantity or price. Swipe from **Dismiss** to the action, then tap to confirm.
+- **Backend:** a TypeScript server polls Bybit V5, evaluates rules, and records proposals and their execution in SQLite. Confirmation rechecks the terms and deduplicates repeated taps. The lens and History show the resulting status.
+- **Optional:** Telegram can deliver alerts. With voice answers enabled, a spoken “no” dismisses an alert and a spoken “yes” can confirm an eligible proposal after a five-second cancellation window.
 
-For QR preview on G2, pair the glasses and update their firmware. Sign in to Even Hub with the same account as the phone app, then restart the phone app to get Developer Mode. Keep the phone and laptop on the same Wi-Fi. Start Vite with `npm run dev -- --host`, then run `npm run qr` on macOS and scan from the Even app. Keep `VITE_APP_TOKEN` empty for LAN preview and enter the server token under Settings › Connection. [Even Hub hardware setup](https://hub.evenrealities.com/docs/get-started/quickstart/hardware)
+The Bybit adapter accepts **Demo Trading and Testnet only**. Exchange credentials stay on the server. Trade Shortcuts holds no user funds. Test alerts run entirely in simulation. Physical G2 and R1 verification is pending. [Technical architecture](docs/shortcuts-architecture.md) · [G2 design](docs/design.md) · [Test coverage and device status](docs/handoff.md)
 
-Bybit demo or testnet: set `EXCHANGE=bybit`, `BYBIT_BASE`, `BYBIT_API_KEY`, `BYBIT_API_SECRET`. Voice: `OPENAI_API_KEY`. Telegram: `TELEGRAM_BOT_TOKEN`, then Settings › Telegram › Connect.
+## What existed before November 23, 2026
 
-To build an installable package, run `npm run pack -- https://your-backend.example` with the HTTPS origin that serves your `/api`. Packaging sets the default backend and allowlists that exact origin. Pass more origins after it (for example a demo server and a Bybit testnet server) to allowlist them too; the first stays the default. After installation, enter the server token under Settings › Connection.
+No Trade Shortcuts application code existed before kickoff. The [first project commit](https://github.com/AstralEX1/trade-shortcuts/commit/5aee0bd) is dated November 24. The phone editor, rule engine, paper exchange, Bybit V5 integration, trade confirmation flow, and G2 screens were built during the hackathon.
 
-## Website and interactive sandbox
+The project uses the existing Even Hub SDK, simulator, and CLI, plus Pretext, Bybit V5, TypeScript, Vite, Node.js, SQLite, and sql.js. Optional integrations use the Telegram Bot API and OpenAI transcription. PNG and wear-state helpers and the simulator capture workflow draw on [Market Glimpse](https://github.com/adamtorgerson/market-glimpse), whose repository does not list a project license. The phone UI uses [Inter](app/public/licenses/Inter.txt) and [Phosphor Icons](app/public/licenses/Phosphor.txt).
 
-The [site directory](site/) contains the landing page and browser demo. The sandbox runs the app, rule engine and paper positions in the browser. For the official Even Hub simulator, use `npm run demo` above.
+## API feature requests
 
-From the repository root, run `npm ci` and `npm run build:site`. The static site is ready to serve from `site/landing/`, including the generated `sandbox/` route. For example, run `python3 -m http.server 8080 --bind 127.0.0.1 --directory site/landing` and open http://localhost:8080. To develop the sandbox, use `npm run sandbox`.
+- **Even Hub SDK:** report when a page or image has actually rendered on the glasses so rapid updates can be paced without fixed delays.
+- **Bybit V5:** return the same ROI value displayed in the Bybit app, including after isolated margin changes.
+- **Bybit V5:** provide a client request ID and status lookup for isolated-margin adjustments, so a timed-out write can be reconciled safely.
 
-## Architecture
+## Development checks
 
-One Node process, no framework, built-in `node:sqlite`, REST polling (`docs/shortcuts-architecture.md`).
-
-| File | Role |
-|---|---|
-| `server/src/registry.ts` | rule model, condition and action catalog, the three compatibility tables, templates, voice seeds |
-| `server/src/validate.ts` | the one validator for create, edit, enable and the editor (structured issues pointing at a row) |
-| `server/src/engine.ts` | pure four-valued evaluator (TRUE / FALSE / UNKNOWN / NOT APPLICABLE), trigger policies with hysteresis, price windows warmed from 1-minute candles |
-| `server/src/session.ts` | the 2 s poll → per-target facts, position epochs, alerts and proposals, the lens state |
-| `server/src/proposals.ts` | resolves an action to one exact command and guards it; the words the lens and History print |
-| `server/src/execute.ts` | confirm, per-position serialization, submit once, reconcile from fills and positions |
-| `server/src/store.ts` | SQLite: shortcuts with immutable versions, trigger and target state, alerts, proposals, executions, outbox, audit log |
-| `server/src/notify.ts` | delivery to lens, phone app and Telegram (`getUpdates` linking, no webhook) |
-| `server/src/bybit.ts` · `fake-exchange.ts` | signed Bybit V5 client (testnet/demo guard, rate-limit resend with the same `orderLinkId`) and its deterministic twin |
-| `server/src/http.ts` | the `/api` routes behind a bearer token |
-| `app/src/phone/` | the phone page |
-| `app/src/view.ts` · `main.ts` | the lens screens and the Even Hub SDK wiring |
-
-## Checks
-
-```bash
-npm run typecheck && npm test && npm run build
+```sh
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm run build:site
 ```
-
-Specs: `docs/shortcuts-architecture.md` (server), `docs/trade-shortcuts-spec.md` (phone), `docs/glasses-shortcuts.md` (lens), `docs/design.md`.
-
-## For agents picking this up
-
-Read [`AGENTS.md`](AGENTS.md): how to run and check the demo without a human, and the rules that hold everywhere.
-
-## Known limits
-
-- The judging flow uses paper data in the Even Hub simulator. Earlier Bybit testnet and Telegram checks are recorded in [the handoff](docs/handoff.md). Physical G2 behavior and ROI parity with the Bybit app still need verification.
-- One account per server; REST polling (WebSockets are the planned upgrade when fills arrive too late).
-- Every other known limit is a `shortcut:` comment in the code.
-
-Trade Shortcuts never gives advice. Every alert comes from a rule you wrote.

@@ -271,6 +271,23 @@ test('funding payments are not fills, a liquidation is', async () => {
   assert.deepEqual((await ex.fillsSince(1)).map(f => f.id), ['t', 'b'])
 })
 
+test('fills after eight quiet days still reach now and follow the execution cursor', async () => {
+  const day = 24 * 60 * 60 * 1000
+  const { ex, calls } = client({ '/v5/execution/list': [
+    ok({ list: [{ execId: 'new', execTime: String(TS - 1000) }], nextPageCursor: 'page+2=' }),
+    ok({ list: [{ execId: 'older', execTime: String(TS - 2000) }], nextPageCursor: '' }),
+  ] })
+  assert.deepEqual((await ex.fillsSince(TS - 8 * day)).map(f => f.id), ['new', 'older'])
+  assert.deepEqual(calls.map(({ url }) => [
+    url.searchParams.get('startTime'), url.searchParams.get('endTime'), url.searchParams.get('cursor'),
+  ]), [[String(TS - 7 * day), String(TS), null], [String(TS - 7 * day), String(TS), 'page+2=']])
+})
+
+test('Bybit already at the requested leverage is a successful no-op', async () => {
+  const { ex } = client({ '/v5/position/set-leverage': { retCode: 110043, retMsg: 'leverage not modified' } })
+  await ex.setLeverage('BTCUSDT', 10)
+})
+
 test('positions ask for the 200 maximum: the default page is 20', async () => {
   const { ex, calls } = client({ '/v5/position/list': ok({ list: [] }) })
   await ex.positions()

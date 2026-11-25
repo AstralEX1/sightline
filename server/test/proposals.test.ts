@@ -30,10 +30,10 @@ test('Open: the first size and leverage until a pick; another leverage is set be
   const a = open({ type: 'OPEN_LONG', sizes: ['100', '250'], leverages: ['5', '10'] })
   const first = resolve(a, sym, market)
   assert.ok(first.ok && first.terms.type === 'order')
-  assert.deepEqual([first.terms.side, first.terms.qty, first.terms.notionalUsdt, first.terms.leverage, first.terms.setLeverage], ['Buy', '1', 100, 5, true])
+  assert.deepEqual([first.terms.side, first.terms.qty, first.terms.notionalUsdt, first.terms.leverage], ['Buy', '1', 100, 5])
   const picked = resolve(a, sym, market, undefined, undefined, { size: 250, leverage: 10 })
   assert.ok(picked.ok && picked.terms.type === 'order')
-  assert.deepEqual([picked.terms.qty, picked.terms.marginUsdt, picked.terms.setLeverage], ['2.5', 25, undefined]) // 10x is the slot's already
+  assert.deepEqual([picked.terms.qty, picked.terms.marginUsdt], ['2.5', 25])
   const broke = resolve(a, sym, { ...market, balance: { equity: 100, available: 40 } }, undefined, undefined, { size: 250, leverage: 5 })
   assert.equal(!broke.ok && broke.code, 'insufficient') // 50 USDT margin, 40 free
 })

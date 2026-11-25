@@ -5,6 +5,7 @@ import { createServer, type Transcribe } from '../src/http.ts'
 import { tokenProblem } from '../src/config.ts'
 import { createStore } from '../src/store.ts'
 import { createSession } from '../src/session.ts'
+import { createNotifier } from '../src/notify.ts'
 import { FakeExchange } from '../src/fake-exchange.ts'
 import { template as draft } from './removed-templates.ts'
 import type { Position } from '../src/types.ts'
@@ -14,13 +15,14 @@ const btc: Position = {
   stopLoss: 60000, takeProfit: 0, positionIM: 310, leverage: 10, isolated: true, positionIdx: 0, openedAt: 0,
 }
 
-async function serve(o: { transcribe?: Transcribe; source?: string } = {}) {
+async function serve(o: { transcribe?: Transcribe; source?: string; telegram?: boolean } = {}) {
   const ex = new FakeExchange()
   ex.list = [structuredClone(btc)]
   const store = createStore(':memory:')
   store.seed()
-  const session = createSession(ex, store)
-  const server = createServer({ session, store, token: 'secret', apiKeyInfo: () => ex.apiKeyInfo(), ...o })
+  const notifier = o.telegram ? createNotifier({ store, token: 'test-bot' }) : undefined
+  const session = createSession(ex, store, Date.now, notifier?.route)
+  const server = createServer({ session, store, notifier, token: 'secret', apiKeyInfo: () => ex.apiKeyInfo(), ...o })
   await new Promise<void>(r => server.listen(0, '127.0.0.1', r))
   after(() => server.close())
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`
@@ -58,6 +60,25 @@ test('state tells the lens what only the server knows: voice and which account',
   assert.equal(body.source, 'Bybit testnet')
   assert.equal(body.positions.length, 1)
   assert.equal(body.card, null)
+})
+
+test('phone state reads allow Telegram fallback; a lens heartbeat marks glasses active', async () => {
+  const { store, session, call } = await serve({ telegram: true })
+  store.saveTelegram({ offset: 0, chatId: 42 })
+  const made = store.createShortcut({ ...draft(6), action: { type: 'NOTIFY' } })
+  assert.ok(made.ok)
+  await session.tick()
+
+  await call('GET', '/state')
+  assert.equal((await call('GET', '/state?client=lens', undefined, {})).status, 401)
+  await session.test(made.shortcut.id)
+  assert.deepEqual(store.history()[0].channels, ['telegram'])
+  assert.equal(store.dueOutbox(Date.now()).length, 1)
+
+  await call('GET', '/state?client=lens')
+  const result = await session.test(made.shortcut.id)
+  assert.deepEqual(store.alert(result.alertId!)?.channels, ['glasses'])
+  assert.equal(store.dueOutbox(Date.now()).length, 1)
 })
 
 test('shortcuts: create, list as tiles, edit with the version, pause, enable, delete', async () => {

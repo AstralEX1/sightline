@@ -162,8 +162,6 @@ export type Terms =
     stopLoss?: number; takeProfit?: number
     /** Open and Increase: what the lens prints next to qty */
     notionalUsdt?: number; leverage?: number; marginUsdt?: number
-    /** Open: the symbol's leverage differs from `leverage`, so it is set before the order */
-    setLeverage?: boolean
   }
   | { type: 'setStop'; symbol: string; positionIdx: number; price: number }
   | { type: 'setTakeProfit'; symbol: string; positionIdx: number; price: number }

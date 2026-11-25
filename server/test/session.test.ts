@@ -514,7 +514,7 @@ test('an Open with picks: no confirm until a pick, the pick builds the terms, th
   assert.equal(picked.supersedes, card.id)
   assert.equal(store.proposal(card.id)!.status, 'SUPERSEDED')
   assert.ok(picked.terms.type === 'order')
-  assert.deepEqual([picked.terms.side, picked.terms.notionalUsdt, picked.terms.leverage, picked.terms.setLeverage], ['Sell', 298.9, 5, true]) // what 0.098 ETH costs, not the 300 asked for
+  assert.deepEqual([picked.terms.side, picked.terms.notionalUsdt, picked.terms.leverage], ['Sell', 298.9, 5]) // what 0.098 ETH costs, not the 300 asked for
   const c = await s.confirm(picked.id, 'k1')
   assert.equal(c.execution!.status, 'ACKNOWLEDGED', c.message)
   assert.equal(ex.leverage.ETHUSDT, 5)
@@ -554,6 +554,90 @@ const cross = async (ex: FakeExchange, ticks: () => Promise<void>) => {
   ex.prices.ETHUSDT = 3050
   await ticks()
 }
+
+test('a failing rule cannot block a later near-liquidation rule', async () => {
+  const { store, s, ticks } = setup([btc()], [tpl(7), tpl(7)])
+  const [broken, healthy] = store.listShortcuts()
+  const trigger = store.trigger.bind(store)
+  store.trigger = key => {
+    if (key.startsWith(`${broken.id}:`)) throw new Error('cannot read this trigger')
+    return trigger(key)
+  }
+  await ticks(2)
+  assert.equal(s.state().card?.shortcutId, healthy.id)
+  assert.equal(store.auditLog(broken.id).filter(a => a.event === 'evaluation_failed').length, 1)
+})
+
+test('concurrent picks replace the original card at most once', async () => {
+  const { ex, store, s, ticks } = setup([], [ethOpen(['100', '300'], ['5'])])
+  await cross(ex, ticks)
+  const card = s.state().card!
+  const results = await Promise.all([s.pick(card.id, 100, 5), s.pick(card.id, 300, 5)])
+  assert.equal(results.filter(r => r.ok).length, 1)
+  assert.equal(results.find(r => !r.ok)?.message, 'Proposal is gone')
+  assert.equal(store.pendingProposals().length, 1)
+})
+
+test('a pick in flight cannot resurrect a dismissed or expired card', async () => {
+  for (const dismiss of [true, false]) {
+    const { ex, store, s, ticks, advance } = setup([], [ethOpen(['100', '300'], ['5'])])
+    await cross(ex, ticks)
+    const card = s.state().card!
+    let release!: () => void
+    const delayed = new Promise<void>(done => { release = done })
+    const slots = ex.slots.bind(ex)
+    ex.slots = async symbol => { await delayed; return slots(symbol) }
+    const pending = s.pick(card.id, 300, 5)
+    if (dismiss) s.dismiss(card.id, 'glasses')
+    else advance(card.expiresAt - START)
+    release()
+    assert.deepEqual(await pending, { ok: false, message: 'Proposal is gone' })
+    assert.equal(s.state().pending, 0)
+    if (dismiss) assert.equal(store.proposal(card.id)?.status, 'DISMISSED')
+  }
+})
+
+test('confirm sets the leverage shown on an Open even if the slot changed since the alert', async () => {
+  const { ex, s, ticks } = setup([], [ethOpen(['100'], ['10'])])
+  ex.leverage.ETHUSDT = 10
+  await cross(ex, ticks)
+  const card = s.state().card!
+  ex.leverage.ETHUSDT = 50
+  const place = ex.placeOrder.bind(ex)
+  ex.placeOrder = order => {
+    assert.equal(ex.leverage.ETHUSDT, 10)
+    return place(order)
+  }
+  assert.equal((await s.confirm(card.id, 'k1')).execution?.status, 'ACKNOWLEDGED')
+})
+
+test('a failed leverage write rejects an Open before sending an order', async () => {
+  const { ex, s, ticks } = setup([], [ethOpen(['100'], ['10'])])
+  ex.leverage.ETHUSDT = 10
+  await cross(ex, ticks)
+  ex.setLeverage = async () => { throw new Error('leverage denied') }
+  const r = await s.confirm(s.state().card!.id, 'k1')
+  assert.equal(r.execution?.status, 'REJECTED')
+  assert.match(r.message, /could not set 10x leverage/)
+  assert.equal(ex.calls.length, 0)
+})
+
+test('an ANY price-change match still authorizes a close when its loss branch is false', async () => {
+  const rule = tpl(7, d => {
+    d.action = { type: 'CLOSE_POSITION', percent: '50' }
+    d.conditions = { logic: 'ANY', items: [
+      { id: 'price', type: 'PRICE_CHANGE', source: 'LAST', direction: 'DOWN', percent: '1' },
+      { id: 'loss', type: 'LOSS', unit: 'USDT', threshold: '1000' },
+    ] }
+  })
+  const { ex, store, s, ticks } = setup([btc()], [rule])
+  await ticks()
+  ex.prices.BTCUSDT = 60_000
+  await ticks()
+  assert.deepEqual(last(store).matched, ['price'])
+  const result = await s.confirm(s.state().card!.id, 'k1')
+  assert.equal(result.execution?.status, 'ACKNOWLEDGED', result.message)
+})
 
 test('an Open with picks is offered when only some choices fit the balance', async () => {
   const { ex, s, ticks } = setup([], [ethOpen(['100', '300'], ['1', '10'])])

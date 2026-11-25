@@ -7,7 +7,7 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { TEMPLATES, VOICE_SEEDS, type Draft, type ShortcutRule } from './registry.ts'
-import { validateShortcut, type Issue } from './validate.ts'
+import { normalizeLegacyAction, validateShortcut, type Issue } from './validate.ts'
 import type { TriggerState } from './engine.ts'
 import {
   DEFAULT_SETTINGS,
@@ -114,6 +114,7 @@ export interface Store {
 
 const OPEN: ExecutionStatus[] = ['AUTHORIZED', 'VALIDATING', 'SUBMITTING', 'ACKNOWLEDGED', 'PARTIALLY_FILLED', 'UNKNOWN']
 const MAX_ATTEMPTS = 8
+const needsPriceReview = (r: ShortcutRule) => r.conditions.items.some(c => c.type === 'PRICE_CHANGE' && 'windowSec' in c)
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -253,6 +254,7 @@ export function createStore(path: string, clock: () => number = Date.now): Store
       const cur = current(scId, baseVersion)
       if (cur.enabled === enabled) return cur // a repeated tap must not withdraw live proposals
       if (enabled) {
+        if (needsPriceReview(cur)) throw new StoreError('conflict', 'Edit and save this shortcut before enabling it: Price change now measures from when it starts watching')
         const v = validateShortcut(cur, { phrasesInUse: store.phrasesInUse(scId) })
         if (!v.ok) throw new StoreError('conflict', v.issues.map(i => i.message).join('. '))
       }
@@ -359,14 +361,28 @@ export function createStore(path: string, clock: () => number = Date.now): Store
       .map(r => ({ at: r.at as number, entity: r.entity as string, event: r.event as string, detail: r.detail as string })),
   }
 
-  // SL_MISSING left the catalog (2026-11-25): drop it from stored rules; a rule left with nothing to fire on goes.
+  // Upgrade current rules only. Old versions still describe the rules that produced History.
   store.transaction(() => {
     for (const r of store.listShortcuts()) {
       const items = r.conditions.items.filter(c => (c.type as string) !== 'SL_MISSING')
-      if (items.length === r.conditions.items.length) continue
+      const removedCondition = items.length !== r.conditions.items.length
+      const action = normalizeLegacyAction(r.action)
+      const priceReview = needsPriceReview(r)
+      if (!removedCondition && action === r.action && !(priceReview && r.enabled)) continue
       if (!items.length && !r.voicePhrase) { store.deleteShortcut(r.id, r.version); continue }
-      const rule = { ...r, version: r.version + 1, conditions: { ...r.conditions, items } }
-      writeVersion({ ...rule, enabled: r.enabled && validateShortcut(rule, { phrasesInUse: store.phrasesInUse(r.id) }).ok }, 'edited')
+      const rule = { ...r, version: r.version + 1, conditions: { ...r.conditions, items }, action: action as ShortcutRule['action'] }
+      const v = validateShortcut(rule, { phrasesInUse: store.phrasesInUse(r.id) })
+      writeVersion({
+        ...rule, action: v.value?.action ?? rule.action, enabled: r.enabled && v.ok && !priceReview,
+        ...(!v.ok && { draft: true }),
+      }, priceReview ? 'price_change_needs_review' : 'migrated')
+      // An equivalent action conversion must not rearm a Once rule or discard its cooldown.
+      if (!removedCondition && !priceReview && v.ok) {
+        const prefix = `${r.id}:`
+        run(`UPDATE trigger_state SET json = json_set(json, '$.version', ?)
+          WHERE account_id = ? AND substr(key, 1, ?) = ? AND json_extract(json, '$.version') = ?`,
+        rule.version, ACCOUNT, prefix.length, prefix, r.version)
+      }
     }
   })
   return store

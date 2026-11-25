@@ -100,6 +100,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
   let tickers: Record<string, Ticker> = {}
   let lastSlow = -Infinity
   let lastPositionsKey = ''
+  let evaluationFailures = new Set<string>()
   // From the oldest open execution: an order acknowledged before a restart still reconciles from its fills.
   let lastFillTime = Math.min(startedAt, ...store.openExecutions().map(e => e.createdAt))
   const seenExec = new Set<string>()
@@ -305,24 +306,29 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     const t = targetsOf(rule, c.positions, c.orders).find(t => t.key === p.targetKey)
     if (!t) return { ok: false, reason: p.terms.type === 'cancel' ? 'order is no longer open' : 'position is closed' }
     const r = resolve(rule.action, t, await market(t.symbol, opens(rule.action), c), p.terms)
+    if (store.getShortcut(rule.id)?.version !== rule.version) return { ok: false, reason: 'shortcut changed' }
     if (!r.ok) return { ok: false, reason: r.reason }
     if (sameTerms(r.terms, p.terms)) return { ok: true, rule, t }
-    if (store.proposal(p.id)?.status !== p.status) return { ok: false, reason: 'it changed meanwhile', replaced: true } // a tap or another check got there first
-    replace(p, rule, r, 'Refreshed · the terms changed')
-    return { ok: false, reason: 'the terms changed: a new proposal is waiting', replaced: true }
+    const fresh = replace(p, rule, r, 'Refreshed · the terms changed')
+    return { ok: false, reason: fresh ? 'the terms changed: a new proposal is waiting' : 'it changed meanwhile', replaced: true }
   }
 
   /** A fresh proposal with new terms in place of `p`, which stops counting. Never adjusts terms in place. */
-  function replace(p: Proposal, rule: ShortcutRule, r: Extract<Resolved, { ok: true }>, status: string, extra: Partial<Proposal> = {}): Proposal {
+  function replace(p: Proposal, rule: ShortcutRule, r: Extract<Resolved, { ok: true }>, status: string, extra: Partial<Proposal> = {}): Proposal | null {
     const now = clock()
-    const fresh: Proposal = { ...p, id: crypto.randomUUID(), terms: r.terms, question: r.question, detail: detailOf(rule, r.note), createdAt: now, expiresAt: now + lifetimeMs(rule), supersedes: p.id, status: 'PENDING', ...extra }
-    store.transaction(() => {
-      if (store.proposal(p.id)?.status === 'PENDING') store.saveProposal({ ...p, status: 'SUPERSEDED' })
+    return store.transaction(() => {
+      const current = store.proposal(p.id)
+      if (!current || current.status !== p.status) return null
+      if (current.status === 'PENDING') {
+        if (current.expiresAt <= now) return null
+        store.saveProposal({ ...current, status: 'SUPERSEDED' })
+      } else if (current.status !== 'AUTHORIZED') return null
+      const fresh: Proposal = { ...p, id: crypto.randomUUID(), terms: r.terms, question: r.question, detail: detailOf(rule, r.note), createdAt: now, expiresAt: now + lifetimeMs(rule), supersedes: p.id, status: 'PENDING', ...extra }
       store.saveProposal(fresh)
       const a = store.alert(p.alertId)
       if (a) store.saveAlert({ ...a, status })
+      return fresh
     })
-    return fresh
   }
 
   const executor = createExecutor({
@@ -332,13 +338,17 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       const [ps, os, bal, tk] = await Promise.all([ex.positions(), ex.openOrders(), ex.balance(), ex.ticker(p.terms.symbol)])
       const c = await check(p, { positions: ps, orders: os, balance: bal, tickers: { [p.terms.symbol]: tk } })
       if (!c.ok) return { ok: false, message: c.reason }
-      if (p.voice) return { ok: true } // the phrase was the trigger, its conditions were never checked
-      const items = asStates(c.rule.conditions.items)
-      if (!items.length) return { ok: true }
+      const pass = { ok: true as const, openLeverage: opens(c.rule.action) && p.terms.type === 'order' ? p.terms.leverage : undefined }
+      if (p.voice) return pass // the phrase was the trigger, its conditions were never checked
+      const { logic, items: original } = c.rule.conditions
+      const items = asStates(original)
+      if (!items.length) return pass
+      // An event already recorded in History is still a true branch of an OR.
+      if (logic === 'ANY' && store.alert(p.alertId)?.matched.some(id => !items.some(item => item.id === id))) return pass
       const now = clock()
       // Strict, not the hysteresis band: a crossing must still be on its side, a loss still a loss (§9 step 2).
-      const g = evaluateGroup({ logic: c.rule.conditions.logic, items }, factsOf(c.t, now, os, undefined, tk), { now, staleMs: STALE_MS })
-      return g.verdict === 'TRUE' ? { ok: true } : { ok: false, message: g.verdict === 'FALSE' ? 'the condition no longer holds' : 'could not check the condition' }
+      const g = evaluateGroup({ logic, items }, factsOf(c.t, now, os, undefined, tk), { now, staleMs: STALE_MS })
+      return g.verdict === 'TRUE' ? pass : { ok: false, message: g.verdict === 'FALSE' ? 'the condition no longer holds' : 'could not check the condition' }
     },
   })
 
@@ -469,32 +479,42 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
 
     // The engine: every enabled shortcut with conditions, on every target of its scope. Voice-only ones are never evaluated.
     const waiting = new Set(store.pendingProposals().map(p => `${p.shortcutId}:${p.targetKey}`))
+    const failed = new Set<string>()
     // shortcut: trigger_state keeps a row per rule and position epoch for good; prune closed epochs if the table grows
     for (const rule of rules) {
-      if (!rule.conditions.items.length) continue
-      const live = targetsOf(rule, positions, orders)
-      for (const t of [...live, ...closedTargets(rule, live)]) {
-        const key = `${rule.id}:${t.key}`
-        const saved = store.trigger(key)
-        let s = saved?.version === rule.version ? saved : initialTriggerState(rule.version)
-        const q = quotes[t.symbol]
-        const pricesNow = q && Object.fromEntries(Object.entries(q).map(([src, x]) => [src, x.price]))
-        // Price change counts from the first price this version sees for the target: the switch-on, an edit, a new position.
+      try {
+        if (!rule.conditions.items.length) continue
+        const live = targetsOf(rule, positions, orders)
         const priced = rule.conditions.items.some(c => c.type === 'PRICE_CHANGE')
-        if (priced && pricesNow) s = { ...s, base: { ...pricesNow, ...s.base } }
-        const g = evaluateGroup(rule.conditions, factsOf(t, now, orders, s.base), { now, staleMs: STALE_MS, relaxed: s.phase === 'fired' })
-        const d = decide(rule, g, s, now, { cooldownSec: settings.cooldownSec, pending: waiting.has(key) })
-        if (d.fire) {
-          const cond = rule.conditions.items.find(c => c.id === g.reason?.id)
-          const r = await raise(rule, t, { reason: cond ? reasonText(cond, g.reason?.value) : 'matched', type: cond?.type, matched: g.matched }, c)
-          if (r.error) continue // a read error must not use up a Once shortcut or start its cooldown
-          if (r.proposal) waiting.add(key)
-          else if (r.alert.skip) d.next.latched = s.latched // nothing was sent: a skip does not use up a Once shortcut, it waits for a new entry
-          if (priced && pricesNow) d.next.base = pricesNow // the next alert needs a new move from here
+        for (const t of [...live, ...closedTargets(rule, live)]) {
+          const key = `${rule.id}:${t.key}`
+          const saved = store.trigger(key)
+          let s = saved?.version === rule.version ? saved : initialTriggerState(rule.version)
+          const q = quotes[t.symbol]
+          const pricesNow = q && Object.fromEntries(Object.entries(q).map(([src, x]) => [src, x.price]))
+          // Price change counts from the first price this version sees for the target.
+          if (priced && pricesNow) s = { ...s, base: { ...pricesNow, ...s.base } }
+          const g = evaluateGroup(rule.conditions, factsOf(t, now, orders, s.base), { now, staleMs: STALE_MS, relaxed: s.phase === 'fired' })
+          const d = decide(rule, g, s, now, { cooldownSec: settings.cooldownSec, pending: waiting.has(key) })
+          if (d.fire) {
+            const cond = rule.conditions.items.find(c => c.id === g.reason?.id)
+            const r = await raise(rule, t, { reason: cond ? reasonText(cond, g.reason?.value) : 'matched', type: cond?.type, matched: g.matched }, c)
+            if (r.error) continue // a read error must not use up a Once shortcut or start its cooldown
+            if (r.proposal) waiting.add(key)
+            else if (r.alert.skip) d.next.latched = s.latched // nothing was sent: a skip does not use up a Once shortcut, it waits for a new entry
+            if (priced && pricesNow) d.next.base = pricesNow // the next alert needs a new move from here
+          }
+          if (!saved || JSON.stringify(d.next) !== JSON.stringify(saved)) store.saveTrigger(key, d.next)
         }
-        if (!saved || JSON.stringify(d.next) !== JSON.stringify(saved)) store.saveTrigger(key, d.next)
+      } catch {
+        const key = `${rule.id}:${rule.version}`
+        failed.add(key)
+        if (evaluationFailures.has(key)) continue
+        console.warn(`Shortcut evaluation failed: ${key}`)
+        store.audit('shortcut', rule.id, 'evaluation_failed', `version ${rule.version}`)
       }
     }
+    evaluationFailures = failed
     updatedAt = now
   }
 
@@ -588,6 +608,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       if (!r.ok) return { ok: false, message: r.reason.charAt(0).toUpperCase() + r.reason.slice(1) }
       // No picks left: the next page is Review. A test stays a test.
       const fresh = replace(p, rule, r, `Chose ${size} USDT · ${leverage}x`, { picks: undefined })
+      if (!fresh) return { ok: false, message: 'Proposal is gone' }
       return { ok: true, message: fresh.question, proposalId: fresh.id }
     },
 

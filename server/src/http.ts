@@ -97,7 +97,7 @@ export function createServer(d: {
 
       // Lens
       if (route === 'GET /api/state') {
-        d.notifier?.seen('lens')
+        if (url.searchParams.get('client') === 'lens') d.notifier?.seen('lens')
         return send(res, 200, { ...session.state(), voice: !!d.transcribe, source: d.source ?? '' })
       }
       const proposal = path.match(/^\/api\/proposals\/([\w-]+)\/(confirm|dismiss|pick)$/)
