@@ -1,17 +1,20 @@
 /// <reference types="vite/client" />
-import type { AlertRecord, Execution, ExecutionStatus, Order, Position, ServerState, Settings } from '../../server/src/types.ts'
+import type { AlertRecord, Candle, Execution, ExecutionStatus, Order, Position, ServerState, Settings } from '../../server/src/types.ts'
 import type { catalog, ShortcutRule, Template } from '../../server/src/registry.ts'
 import type { EditableShortcut, Validation } from '../../server/src/validate.ts'
+import type { Command } from '../../server/src/session.ts'
 import { createStorage } from './storage.ts'
+import { serverAddress } from './server-address.ts'
+import { tipsShown } from './view.ts'
 
-/** Empty = this page's own origin: the Vite dev server forwards /api to the trading server. */
-export const DEFAULT_SERVER = ''
+/** Dev uses the Vite proxy. The packer supplies the remote origin for installed builds. */
+export const DEFAULT_SERVER: string = import.meta.env.VITE_TRADE_SHORTCUTS_BACKEND_ORIGIN ?? ''
 const TIMEOUT_MS = 4000
 const VOICE_TIMEOUT_MS = 20_000 // upload plus transcription
 // Dev server only: in a build DEV is false and the bundler drops the token.
 const devToken: string = import.meta.env.DEV ? import.meta.env.VITE_APP_TOKEN ?? '' : ''
 
-const store = createStorage(['gt.server', 'gt.token'], (() => { try { return localStorage } catch { return null } })())
+const store = createStorage(['gt.server', 'gt.token', 'gt.hints', 'gt.launches', 'gt.voice'], (() => { try { return localStorage } catch { return null } })())
 /** Call once the Even bridge is up: the settings live in its storage, not in the WebView's. */
 export const loadSettings = store.load
 
@@ -20,9 +23,19 @@ export function getSettings() {
 }
 
 export function saveSettings(server: string, token: string) {
-  store.set('gt.server', server.replace(/\/+$/, ''))
+  store.set('gt.server', serverAddress(server))
   store.set('gt.token', token)
 }
+
+const launches = () => Number(store.get('gt.launches')) || 0
+/** Optional gesture tips on the lens: the phone switch, or on for the first launches. */
+export const hintsOn = () => tipsShown(store.get('gt.hints'), launches())
+export const setHints = (on: boolean) => store.set('gt.hints', on ? 'on' : 'off')
+/** The mic opens for 5 s when an alert arrives, so a spoken yes or no answers it. On unless switched off on the phone. */
+export const voiceAnswersOn = () => store.get('gt.voice') !== 'off'
+export const setVoiceAnswers = (on: boolean) => store.set('gt.voice', on ? 'on' : 'off')
+/** Once per start, after the bridge's storage is read. */
+export const countLaunch = () => store.set('gt.launches', String(launches() + 1))
 
 /** A failed call: `status` is the HTTP status, `body` the server's answer (`issues` for an invalid shortcut). */
 export type ApiError = Error & { status?: number; body?: { error?: string; issues?: Validation['issues'] } }
@@ -30,7 +43,7 @@ export type ApiError = Error & { status?: number; body?: { error?: string; issue
 async function request<T>(method: string, path: string, body?: unknown, timeoutMs = TIMEOUT_MS): Promise<T> {
   const { server, token } = getSettings()
   const raw = body instanceof Uint8Array
-  const res = await fetch(server + path, {
+  const res = await fetch(serverAddress(server) + path, {
     method,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': raw ? 'application/octet-stream' : 'application/json' },
     body: body === undefined ? undefined : raw ? (body as BodyInit) : JSON.stringify(body),
@@ -52,10 +65,12 @@ export const confirm = (proposalId: string, idempotencyKey: string) =>
 export const dismiss = (proposalId: string, by: 'glasses' | 'app' = 'glasses') => request<Reply>('POST', `/api/proposals/${id(proposalId)}/dismiss`, { by })
 /** Until the lens moves to confirm/dismiss: a tap on the card's action, or on its safe choice. One key per card. */
 export const answer = (cardId: string, yes: boolean) => (yes ? confirm(cardId, `lens:${cardId}`) : dismiss(cardId, 'glasses'))
+export const getChart = (symbol: string) => request<Candle[]>('GET', `/api/chart?symbol=${encodeURIComponent(symbol)}`)
 export const getExecution = (executionId: string) => request<Execution>('GET', `/api/executions/${id(executionId)}`)
-/** Glasses menu: raise the seeded "protect all" (`stop`) or "lock profits" (`lock`) shortcut. */
-export const command = (kind: 'stop' | 'lock') => request<Reply>('POST', '/api/command', { command: kind })
-export const voice = (pcm: Uint8Array) => request<Reply & { heard: string }>('POST', '/api/voice', pcm, VOICE_TIMEOUT_MS)
+/** Glasses menu: raise the seeded "protect all" (`stop`), "lock profits" (`lock`) or "close all" (`close`) shortcut; `position` keeps one. */
+export const command = (kind: Command, position?: { symbol: string; positionIdx: number }) => request<Reply>('POST', '/api/command', { command: kind, position })
+/** The lens's answer to its alert: `answer` is null for silence or anything that is not a plain yes or no. */
+export const voice = (pcm: Uint8Array) => request<{ heard: string; answer: 'yes' | 'no' | null }>('POST', '/api/voice', pcm, VOICE_TIMEOUT_MS)
 
 // ── phone: shortcuts, editor, history, settings ───────────
 export type Catalog = ReturnType<typeof catalog>

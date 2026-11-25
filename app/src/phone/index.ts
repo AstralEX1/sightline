@@ -1,5 +1,5 @@
 /**
- * The phone page (docs/bybit-shortcuts-spec.md): hash routes, alert polling, banner. main.ts mounts it and keeps
+ * The phone page (docs/trade-shortcuts-spec.md): hash routes, alert polling, banner. main.ts mounts it and keeps
  * writing the lens state into #source, #glasses, #server-state, #server-box, #preview and #preview-icon (Settings).
  */
 import './phone.css'
@@ -8,9 +8,9 @@ import type { AlertRecord } from '../../../server/src/types.ts'
 import { renderHome } from './home.ts'
 import { enterEditor, leaveEditor } from './editor.ts'
 import { actionOf, chip, renderHistory } from './history.ts'
-import { buildSettings, renderSettings } from './settings.ts'
+import { buildSettings, renderSettings, syncHints } from './settings.ts'
 import { icon } from './icons.ts'
-import { app, h, isOffline, toast } from './ui.ts'
+import { app, h, isOffline, setBack, toast } from './ui.ts'
 
 const HOME_MS = 10_000
 const OFFLINE_MS = 5000
@@ -59,13 +59,13 @@ export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<un
     for (const [k, el] of Object.entries(screens)) el.hidden = k !== name
     scrollTo(0, 0)
     // the pressed link is hidden now: name the screen and move focus to it, or a screen reader stays on the old one
-    document.title = `${screens[name].getAttribute('aria-label')} · Sightline`
+    document.title = `${screens[name].getAttribute('aria-label')} · Trade Shortcuts`
     if (routed) screens[name].focus({ preventScroll: true })
     routed = true
     if (name === 'home') void refreshHome(true)
     if (name === 'editor') void enterEditor(screens.editor, decodeURIComponent(m![1]))
-    if (name === 'history') { setBadge(); void renderHistory(screens.history) }
-    if (name === 'settings') void renderSettings()
+    if (name === 'history') { setBadge(); void renderHistory(screens.history); setBack(screens.history) }
+    if (name === 'settings') { void renderSettings(); setBack(screens.settings) }
   }
 
   /** The badge on the home History button, kept in place between home refreshes. */
@@ -114,13 +114,22 @@ export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<un
 
   void (async () => {
     await o.settingsReady // the token lives in the bridge's storage
+    syncHints()
     const s = api.getSettings()
     const server = document.getElementById('server') as HTMLInputElement
     const token = document.getElementById('token') as HTMLInputElement
     server.value = s.server
     token.value = s.token
-    document.getElementById('connect')!.addEventListener('click', () => {
-      api.saveSettings(server.value.trim(), token.value.trim())
+    const connect = document.getElementById('connect')!
+    server.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); token.focus() } })
+    token.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); connect.click() } })
+    connect.addEventListener('click', () => {
+      try {
+        api.saveSettings(server.value.trim(), token.value.trim())
+      } catch (e) {
+        toast((e as Error).message)
+        return
+      }
       o.onConnect()
       toast('Saved')
       void renderSettings()

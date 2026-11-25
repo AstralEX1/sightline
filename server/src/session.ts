@@ -15,6 +15,9 @@ import { matchShortcut, normalizePhrase } from './rules.ts'
 import { coin, price } from './format.ts'
 
 type Reply = { ok: boolean; message: string }
+/** The glasses menu's commands and the seeded phrase each one raises. */
+export const PHRASE = { stop: 'protect all', lock: 'lock profits', close: 'close all' } as const
+export type Command = keyof typeof PHRASE
 
 export type Session = {
   tick(): Promise<void>
@@ -24,14 +27,16 @@ export type Session = {
   dismiss(proposalId: string, by: Channel): Reply
   /** Raises the proposals of the shortcut whose phrase was said. Nothing runs until a tap. */
   voice(text: string): Promise<Reply>
-  /** Glasses menu: the seeded "protect all" and "lock profits" shortcuts, by phrase. */
-  command(kind: 'stop' | 'lock'): Promise<Reply>
+  /** Glasses menu: the seeded "protect all", "lock profits" and "close all" shortcuts, by phrase; `at` keeps one position. */
+  command(kind: Command, at?: { symbol: string; positionIdx: number }): Promise<Reply>
   /** Editor · Options · Test: a simulated alert and proposal on the first target (§9). */
   test(shortcutId: string): Promise<Reply & { alertId?: string; proposalId?: string }>
   /** Editor: what a draft matches now ("3 now") and each condition's value per target. */
   preview(draft: Pick<EditableShortcut, 'scope' | 'conditions'>): { label: string; key: string; values: Record<string, number | null> }[]
   /** Apply to pickers: open positions with their epoch, and open non-protective orders. */
   pickers(): { positions: (Position & { epoch: string })[]; orders: Order[] }
+  /** Detail's chart: the last hour of 1-minute last-price candles (start, close), oldest first; only for a symbol with an open position. */
+  chart(symbol: string): Promise<Candle[]>
 }
 
 /** Where alerts go; without a notifier the lens is the only channel. */
@@ -50,6 +55,8 @@ const SOURCES: PriceSource[] = ['LAST', 'MARK', 'INDEX']
 const TRIGGER_BY: Record<string, PriceSource> = { LastPrice: 'LAST', MarkPrice: 'MARK', IndexPrice: 'INDEX' }
 /** Volume candles are read once a minute per symbol; older than this they are UNKNOWN. */
 const VOLUME_POLL_MS = 60_000
+/** Detail's chart: this many 1-minute closes, read again at most once a minute per symbol. */
+const CHART_MIN = 60
 const VOLUME_STALE_MS = 3 * VOLUME_POLL_MS
 /** A write that is not done by then gets no receipt: History already says what happened. */
 const RECEIPT_TTL_MS = 5 * 60_000
@@ -103,6 +110,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
   let closes = new Map<string, Close>()
   /** Last-price 1-minute candles per symbol for VOLUME_SPIKE, and when they were read. */
   const volumes = new Map<string, { at: number; candles: Candle[] }>()
+  const charts = new Map<string, { at: number; candles: Candle[] }>()
   const epochs = new Map(Object.entries(store.epochs()))
   // shortcut: in memory, so a restart between the tap and the fill leaves that one without a receipt; store `before` on the execution if that matters
   const receipts = new Map<string, { before?: Position; at: number }>()
@@ -482,13 +490,14 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     return store.pendingProposals().filter(p => p.expiresAt > now).sort(queueOrder)
   }
 
-  async function voice(text: string): Promise<Reply> {
+  async function voice(text: string, at?: { symbol: string; positionIdx: number }): Promise<Reply> {
     const reply = (message: string) => { say(message, true); return { ok: false, message } }
     if (!normalizePhrase(text)) return reply('Heard nothing')
     const rule = matchShortcut(text, store.listShortcuts().filter(r => r.enabled))
     if (!rule) return reply(`No shortcut for "${text}"`)
     let n = 0
     for (const t of targetsOf(rule, positions, orders)) {
+      if (at && (t.position?.symbol !== at.symbol || t.position.positionIdx !== at.positionIdx)) continue
       if ((await raise(rule, t, { reason: `Voice: ${rule.voicePhrase}`, matched: [], voice: true }, ctxNow())).proposal) n++
     }
     if (!n) return reply(`Heard "${rule.voicePhrase}" · nothing to change`)
@@ -546,8 +555,8 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       return { ok: true, message: 'Dismissed, nothing sent' }
     },
 
-    voice,
-    command: kind => voice(kind === 'stop' ? 'protect all' : 'lock profits'),
+    voice: text => voice(text),
+    command: (kind, at) => voice(PHRASE[kind], at),
 
     async test(shortcutId) {
       const rule = store.getShortcut(shortcutId)
@@ -572,5 +581,15 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       positions: positions.map(p => ({ ...p, epoch: epochOf(p) })),
       orders: orders.filter(o => !o.stopOrderType && o.leavesQty > 0),
     }),
+
+    async chart(symbol) {
+      if (!positions.some(p => p.symbol === symbol)) return [] // the lens never asks for others; nobody else spends the Bybit rate limit
+      const now = clock()
+      const c = charts.get(symbol)
+      if (c && now - c.at < VOLUME_POLL_MS) return c.candles
+      const candles = (await ex.kline(symbol, 'LAST', CHART_MIN)).sort((a, b) => a.start - b.start).map(k => ({ start: k.start, close: k.close }))
+      charts.set(symbol, { at: now, candles })
+      return candles
+    },
   }
 }

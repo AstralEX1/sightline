@@ -36,7 +36,7 @@ test('condition sheet offers only what fits the scope, the action and the other 
   // All positions has no absolute price, nor order events
   assert.ok(!types(draft({})).includes('Price'))
   assert.ok(!types(draft({})).includes('Order filled'))
-  // Increase Position is N with liquidation distance
+  // Increase position is N with liquidation distance
   assert.ok(!types(draft({ action: { type: 'INCREASE_POSITION', notionalUsdt: '100' } })).includes('Liquidation distance'))
   // Profit and Loss stay offered (O, not -): validate marks the AND (P14)
   assert.ok(types(draft({ conditions: { logic: 'ALL', items: [roi30] } })).includes('Loss in USDT'))
@@ -50,7 +50,7 @@ test('condition sheet offers only what fits the scope, the action and the other 
 test('action sheet: forbidden by scope hidden, ruled out by a condition under Needs changes (P13, P15)', () => {
   const { ok, needs } = actionChoices(cat, draft({ conditions: { logic: 'ANY', items: [roi30, liq5] } }))
   assert.ok(!ok.some(a => a.type === 'OPEN_POSITION') && !needs.some(a => a.type === 'OPEN_POSITION'))
-  assert.deepEqual(needs.find(a => a.type === 'INCREASE_POSITION'), { type: 'INCREASE_POSITION', title: 'Increase Position', reason: 'Not with liquidation distance' })
+  assert.deepEqual(needs.find(a => a.type === 'INCREASE_POSITION'), { type: 'INCREASE_POSITION', title: 'Increase position', reason: 'Not with liquidation distance' })
   assert.ok(ok.some(a => a.type === 'CLOSE_POSITION'))
   const symbol = actionChoices(cat, draft({ scope: { type: 'SYMBOL', symbol: 'BTCUSDT' } }))
   assert.deepEqual(symbol.ok.map(a => a.type), ['OPEN_POSITION', 'NOTIFY'])
@@ -63,7 +63,7 @@ test('Apply to hides scopes that cannot hold the action (P15)', () => {
   assert.equal(scopeChoices(cat, draft({})).length, 5)
 })
 
-test('Options: Increase Position fires Once only; crossings fire on event (P16)', () => {
+test('Options: Increase position fires Once only; crossings fire on event (P16)', () => {
   const inc = draft({ conditions: { logic: 'ALL', items: [roi30] }, action: { type: 'INCREASE_POSITION', notionalUsdt: '100' } })
   assert.deepEqual(triggerChoices(inc).filter(c => !c.why).map(c => c.mode), ['ONCE'])
   fitTrigger(inc)

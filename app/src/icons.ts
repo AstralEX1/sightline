@@ -1,3 +1,7 @@
+import { price } from '../../server/src/format.ts'
+import type { Candle } from '../../server/src/types.ts'
+import { encodePng4, gray4Levels } from './png.ts'
+
 /**
  * One icon set for the lens and the phone: SVG path data on a 24-unit grid, stroked, never filled.
  * The phone draws it as SVG; the lens gets it as a PNG drawn on a canvas from the same paths.
@@ -34,6 +38,10 @@ export const ICONS = {
   grow: ['M7 17 L17 7', 'M9 7 H17 V15'],
   /** Sent, waiting for Bybit */
   clock: [RING, 'M12 7 V12 L15 14'],
+  /** Funding due: its own sign, so it never reads as the "Sent" clock */
+  percent: ['M18 6 L6 18', 'M5 7 A2 2 0 1 0 9 7 A2 2 0 1 0 5 7', 'M15 17 A2 2 0 1 0 19 17 A2 2 0 1 0 15 17'],
+  /** Position closed: out of the trade, not the "Rejected" cross */
+  exit: ['M9 4 H5 V20 H9', 'M10 12 H20', 'M16 8 L20 12 L16 16'],
   /** Rejected */
   reject: [RING, 'M9 9 L15 15', 'M15 9 L9 15'],
   /** No answer yet */
@@ -48,7 +56,7 @@ export type IconName = keyof typeof ICONS
 export const svg = (name: IconName) =>
   `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name].map(d => `<path d="${d}"/>`).join('')}</svg>`
 
-/** A black canvas to draw on, and its PNG bytes: light on black, which the host turns into 4-bit grey. */
+/** A black canvas to draw on, and its PNG bytes: light on black, in the lens's 16 greys. */
 async function draw(w: number, h: number, paint: (g: CanvasRenderingContext2D) => void): Promise<Uint8Array> {
   const canvas = document.createElement('canvas')
   canvas.width = w
@@ -57,7 +65,8 @@ async function draw(w: number, h: number, paint: (g: CanvasRenderingContext2D) =
   g.fillStyle = '#000'
   g.fillRect(0, 0, w, h)
   paint(g)
-  const blob = await new Promise<Blob | null>(r => canvas.toBlob(r, 'image/png'))
+  if (typeof CompressionStream === 'function') return encodePng4(gray4Levels(g.getImageData(0, 0, w, h).data), w, h)
+  const blob = await new Promise<Blob | null>(r => canvas.toBlob(r, 'image/png')) // shortcut: an older WebView sends the 8-bit PNG
   if (!blob) throw new Error('no PNG')
   return new Uint8Array(await blob.arrayBuffer())
 }
@@ -69,40 +78,91 @@ export const png = (name: IconName, px: number) => draw(px, px, g => {
   for (const d of ICONS[name]) g.stroke(new Path2D(d))
 })
 
-/**
- * Dotted digits for the one number that leads the lens, like Even's own clock and weather. 7 rows each; '#' is a dot.
- * The native font has one size, so a big number has to be a picture.
- */
-const DOTS: Record<string, string[]> = {
-  '0': ['.###.', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
-  '1': ['..#..', '.##..', '..#..', '..#..', '..#..', '..#..', '.###.'],
-  '2': ['.###.', '#...#', '....#', '...#.', '..#..', '.#...', '#####'],
-  '3': ['####.', '....#', '....#', '.###.', '....#', '....#', '####.'],
-  '4': ['...#.', '..##.', '.#.#.', '#..#.', '#####', '...#.', '...#.'],
-  '5': ['#####', '#....', '####.', '....#', '....#', '#...#', '.###.'],
-  '6': ['..##.', '.#...', '#....', '####.', '#...#', '#...#', '.###.'],
-  '7': ['#####', '....#', '...#.', '..#..', '.#...', '.#...', '.#...'],
-  '8': ['.###.', '#...#', '#...#', '.###.', '#...#', '#...#', '.###.'],
-  '9': ['.###.', '#...#', '#...#', '.####', '....#', '...#.', '.##..'],
-  '$': ['..#..', '.####', '#.#..', '.###.', '..#.#', '####.', '..#..'],
-  '.': ['..', '..', '..', '..', '..', '##', '##'],
-  ',': ['..', '..', '..', '..', '..', '.#', '#.'],
-  'k': ['#....', '#....', '#..#.', '#.#..', '##...', '#.#..', '#..#.'],
-  '▼': ['.......', '.......', '#######', '.#####.', '..###..', '...#...', '.......'],
-  '▲': ['.......', '.......', '...#...', '..###..', '.#####.', '#######', '.......'],
-  '△': ['.......', '.......', '...#...', '..#.#..', '.#...#.', '#######', '.......'],
-}
-/** One dot and the gap after it, in lens pixels. */
-export const DOT_PX = 5
-
-/** The rows of dots for a string, one empty column between characters. Characters it has no dots for are left out. */
-export function dots(text: string): string[] {
-  const glyphs = [...text].map(c => DOTS[c]).filter(Boolean)
-  return Array.from({ length: 7 }, (_, y) => glyphs.map(g => g[y]).join('.'))
-}
-
-/** The dotted number as PNG bytes, left-aligned in a w × h image. */
-export const numeralPng = (text: string, w: number, h: number) => draw(w, h, g => {
+/** Detail's coin and side, as big as fits: the lens font has one size. */
+export const titlePng = (text: string, w: number, h: number) => draw(w, h, g => {
   g.fillStyle = '#fff'
-  dots(text).forEach((row, y) => [...row].forEach((c, x) => { if (c === '#') g.fillRect(x * DOT_PX, y * DOT_PX, DOT_PX - 1, DOT_PX - 1) }))
+  g.textBaseline = 'middle'
+  let px = 36
+  do g.font = `bold ${px}px sans-serif`; while (g.measureText(text).width > w && --px > 12)
+  g.fillText(text, 0, h / 2 + 1)
+})
+
+type Levels = { entry: number; stop: number; tp: number; liq: number }
+/** A stop or liquidation this close to the last price joins the scale, so it is drawn before it is hit. */
+const DANGER_PCT = 1
+
+/** The scale: the hour's closes, entry and stop always, liq once it is within DANGER_PCT of the last price. */
+export function chartRange(closes: number[], levels: Levels): { lo: number; hi: number } {
+  const now = closes[closes.length - 1]
+  const near = levels.liq > 0 && Math.abs(levels.liq - now) / now * 100 < DANGER_PCT ? [levels.liq] : []
+  const all = [...closes, ...[levels.entry, levels.stop].filter(v => v > 0), ...near]
+  const lo = Math.min(...all), hi = Math.max(...all)
+  const pad = Math.max(hi - lo, hi * 0.002) * 0.05 // a flat hour still shows as a line; nothing sits on the edge
+  return { lo: lo - pad, hi: hi + pad }
+}
+
+/** Label centres pushed apart to at least `gap`, kept inside 0…max, in the order given (sorted by y). */
+export function spread(ys: number[], gap: number, max: number): number[] {
+  const out = ys.map(y => Math.min(max - gap / 2, Math.max(gap / 2, y)))
+  for (let i = 1; i < out.length; i++) out[i] = Math.max(out[i], out[i - 1] + gap)
+  for (let i = out.length - 1; i >= 0; i--) out[i] = Math.min(out[i], (i < out.length - 1 ? out[i + 1] - gap : max - gap / 2))
+  return out
+}
+
+const AXIS_H = 16
+const LABEL_PX = 15
+
+/**
+ * Detail's last hour, calm like a ticker: the line with entry dotted and stop dashed across it, each named with its
+ * price at the right next to the last price, `−1h` and `now` under it. Liq appears only when near.
+ * The lens takes images up to 288 px wide, so the w-wide chart goes as slices: this is the one starting at `fromX`.
+ */
+export const chartPng = (candles: Candle[], levels: Levels, w: number, h: number, fromX: number, sliceW: number) => draw(sliceW, h, g => {
+  g.translate(-fromX, 0)
+  const closes = candles.map(c => c.close)
+  const now = closes[closes.length - 1]
+  const { lo, hi } = chartRange(closes, levels)
+  g.font = `${LABEL_PX}px sans-serif`
+  g.textBaseline = 'middle'
+  const inside = (v: number) => v > 0 && v >= lo && v <= hi
+  // Each line is named at its right end, so entry and stop read without a legend; the last price is the brightest.
+  const lines = [
+    { name: 'entry', v: levels.entry, color: '#777', dash: [2, 3] },
+    { name: 'stop', v: levels.stop, color: '#bbb', dash: [6, 4] },
+    { name: 'liq', v: levels.liq, color: '#bbb', dash: [10, 3] },
+  ].filter(l => inside(l.v))
+  const labels = [
+    ...lines.map(l => ({ text: `${l.name} ${price(l.v)}`, v: l.v, color: l.color })),
+    { text: price(now), v: now, color: '#fff' }, // brighter, not bold: bold smeared in 4-bit
+  ].sort((a, b) => b.v - a.v)
+  const labelW = Math.ceil(Math.max(...labels.map(l => g.measureText(l.text).width))) + 14
+  const plotW = w - labelW, plotH = h - AXIS_H
+  const y = (v: number) => Math.round(plotH * (hi - v) / (hi - lo))
+  const x = (i: number) => Math.round(closes.length < 2 ? plotW - 4 : (i * (plotW - 4)) / (closes.length - 1))
+
+  g.lineWidth = 1
+  for (const l of lines) {
+    g.strokeStyle = l.color
+    g.setLineDash(l.dash)
+    g.beginPath(); g.moveTo(0, y(l.v) + 0.5); g.lineTo(plotW, y(l.v) + 0.5); g.stroke()
+  }
+  g.setLineDash([])
+
+  spread(labels.map(l => y(l.v)), LABEL_PX + 2, plotH).forEach((ly, i) => {
+    g.fillStyle = labels[i].color
+    g.fillText(labels[i].text, plotW + 10, ly)
+  })
+  g.font = `${LABEL_PX - 2}px sans-serif`
+  g.fillStyle = '#888'
+  g.fillText('−1h', 0, plotH + AXIS_H / 2 + 1)
+  g.textAlign = 'right'
+  g.fillText('now', plotW, plotH + AXIS_H / 2 + 1)
+
+  g.strokeStyle = g.fillStyle = '#fff'
+  g.lineWidth = 2
+  g.lineJoin = 'round'
+  g.beginPath()
+  closes.forEach((c, i) => (i ? g.lineTo(x(i), y(c)) : g.moveTo(x(i), y(c))))
+  g.stroke()
+  g.beginPath(); g.arc(x(closes.length - 1), y(now), 3, 0, 2 * Math.PI); g.fill() // now
 })

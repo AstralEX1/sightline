@@ -173,7 +173,7 @@ export interface AlertRecord {
   targetKey: string
   /** "BTCUSDT long" */
   target: string
-  /** The shortcut's name or action title, e.g. "Close Position" */
+  /** The shortcut's name or action title, e.g. "Close position" */
   title: string
   /** "liquidation distance 3.2%", or "Voice: protect all" */
   reason: string

@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trade Shortcuts · Bybit alerts on your Even G2</title>
+<meta name="description" content="Trading rules you build on your phone, answered on your glasses. Trade Shortcuts alerts you on every event linked to your Bybit positions and puts the exact trade on the G2 lens.">
+<link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- Layout and section styles ported from the reference landing; brand overrides below. -->
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/home.css">
+<style>
+[data-theme=light]{--accent-orange:#0b7a3b;--accent-orange-deep:#0a6b34;--accent-soft:#c9f2d6}
+body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
+.sl{--accent:#0b7a3b;--orange:#13a24f;--orange-soft:#c9f2d6;--app-blue:#13a24f}
+/* hero: the glasses view replaces the phone */
+.sl .i-assist .stage:before{background:#0e1424 url(img/scene-street.jpg) center/cover}
+.sl .g2hud{position:absolute;top:14px;right:14px;bottom:14px;width:44%;translate:0 var(--py,0px);transition:transform .7s var(--ease)}
+.sl .g2hud .fd-list{inset:40px 24px 44px;-webkit-mask-image:linear-gradient(#000 60%,transparent);mask-image:linear-gradient(#000 60%,transparent)}
+.sl .g2hud .fd-roll{padding:0}
+.sl .g2hud .fdi img{aspect-ratio:1152/430;object-fit:cover;object-position:top;mix-blend-mode:screen;transition:opacity .5s var(--ease)}
+.sl .g2hud .fdi+.fdi img{opacity:.55}
+.sl .g2hud .fdi+.fdi+.fdi img{opacity:.3}
+@media (hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){.sl .i-assist:hover .g2hud{transform:translateY(-8px)}}
+/* Base UI islands (src/islands.jsx): hero chips are toggle buttons, the FAQ is an accordion */
+.sl .ex{font-family:inherit;cursor:pointer}
+.sl .qa-i{border-bottom:1px solid var(--line-2)}
+.sl .qa-h{font:inherit;letter-spacing:normal}
+.sl .qa-t{width:100%;display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:64px;padding:16px 0;border:0;background:none;font:inherit;font-size:18px;font-weight:600;color:var(--ink);text-align:left;cursor:pointer}
+.sl .qa-t:after{content:"";flex:none;width:12px;height:12px;background:linear-gradient(var(--ink),var(--ink)) 50%/12px 2px no-repeat,linear-gradient(var(--ink),var(--ink)) 50%/2px 12px no-repeat;transition:transform .25s var(--ease)}
+.sl .qa-t[data-panel-open]:after{transform:rotate(45deg)}
+.sl .qa-p{height:var(--accordion-panel-height);overflow:hidden;transition:height .25s var(--ease)}
+.sl .qa-p[data-starting-style],.sl .qa-p[data-ending-style]{height:0}
+@media (max-width:760px){.sl .qa-t{font-size:16px;min-height:56px}}
+.sl .g2note{position:absolute;right:16px;bottom:14px;color:rgba(255,255,255,.7);font-size:12.5px;font-weight:600}
+@media (max-width:760px){.sl .g2hud{position:relative;top:auto;right:auto;bottom:auto;width:100%;padding:6px 14px 30px}.sl .g2hud .fd-list{position:relative;inset:auto;aspect-ratio:1/.8}}
+/* alert cards are lens screens: black, stacked on desktop; crop the empty photo under the text (lowest text: detail.jpg, y 463 of 576) */
+.sl .cards img{background:#000;border-color:rgba(0,0,0,.25);aspect-ratio:1152/490;object-fit:cover;object-position:top}
+@media (min-width:761px){.sl .cards:not(.one){grid-template-columns:minmax(0,1fr);gap:18px}.sl .cards .c1{width:84%}.sl .cards .c2{width:84%;justify-self:end;margin:0}}
+/* copy starts level with the first card or shot, the way otomato's feed reads: kick 22px below its top */
+@media (min-width:761px){.sl .fam .wrap,.sl .chan .wrap{align-items:start}.sl .fam .wrap>div:first-child,.sl .chan .wrap>div:first-child{padding-top:22px}}
+/* shortcuts section: phone frames left, copy right */
+.sl .pos .sc{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:60px;align-items:center}
+.sl .pos .pf-foot{justify-content:flex-start;margin-top:22px}
+.sl .pos .pf-foot a{padding-left:0}
+@media (max-width:760px){.sl .pos .sc{grid-template-columns:1fr;gap:36px}.sl .pos .sc>div:last-child{order:-1}}
+/* glasses shot in the channels section */
+.sl .g2shot{display:block;width:100%;border-radius:18px;box-shadow:var(--sh-2)}
+.sl .chan .g2shot{max-width:560px;justify-self:center}
+@media (min-width:761px){.sl .chan .wrap{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:56px}}
+/* phone frames use the .rise reveal (inline script); the second one follows 120ms later */
+.sl.fx .duo .phone:nth-child(2){transition-delay:.12s}
+/* press feedback; color transitions listed in full because transition-colors sets transition-property. The header sits outside .sl, so --ease gets its value as fallback */
+@media (prefers-reduced-motion:no-preference){
+.sl [data-cta] a,header a[href="#get"]{transition:color .15s,background-color .15s,border-color .15s,opacity .15s,box-shadow .15s,transform .16s var(--ease,cubic-bezier(.22,.8,.26,1))}
+.sl [data-cta] a.duration-500{transition-duration:.5s,.5s,.5s,.5s,.5s,.16s}
+.sl [data-cta] a:active,header a[href="#get"]:active{transform:scale(.97)}
+.sl .ex{transition:background .3s,color .3s,border-color .3s,transform .16s var(--ease)}
+.sl .ex:active{transform:scale(.96)}}
+/* stats row: 6 cells, 3 columns on desktop, 2 on mobile */
+.sl .nums{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:760px){.sl .nums div:nth-child(3){border-top:0;border-left:1px solid var(--line);padding-left:16px}}
+</style>
+</head>
+<body data-theme="light" class="antialiased bg-bg text-ink">
+<div class="contents">
+
+<header class="fixed inset-x-0 top-0 z-50 border-b bg-[rgba(243,244,246,0.88)] backdrop-blur-[14px] backdrop-saturate-[1.3] transition-colors duration-300 border-[rgba(26,22,18,0.08)]"><div class="mx-auto flex h-14 w-[calc(100%-32px)] items-center gap-7 min-[761px]:w-[min(1320px,calc(100%-40px))] min-[981px]:h-16"><a href="#top" aria-label="Trade Shortcuts home" class="flex min-h-[44px] items-center gap-[9px] text-[17px] font-extrabold tracking-[-0.02em] text-ink"><img src="img/lockup.svg" alt="Trade Shortcuts" width="214" height="20" class="h-5 w-auto"></a><nav aria-label="Main" class="ml-3 hidden items-center gap-[26px] min-[981px]:flex"><a href="#shortcuts" class="text-[14.5px] font-semibold text-ink-muted transition-colors hover:text-ink">Shortcuts</a><a href="#alerts" class="text-[14.5px] font-semibold text-ink-muted transition-colors hover:text-ink">Alerts</a><a href="#proof" class="text-[14.5px] font-semibold text-ink-muted transition-colors hover:text-ink">Build</a><a href="#templates" class="text-[14.5px] font-semibold text-ink-muted transition-colors hover:text-ink">Templates</a><a href="#faq" class="text-[14.5px] font-semibold text-ink-muted transition-colors hover:text-ink">FAQ</a><a href="#" class="text-[14.5px] font-semibold text-ink-muted transition-colors hover:text-ink">Docs</a></nav><a href="#get" class="group ml-auto inline-flex items-center gap-2.5 whitespace-nowrap rounded-full bg-[#151515] px-5 py-3 text-sm font-bold leading-[1.2] text-white transition-colors hover:bg-[#2c2724]">Get the app <span class="transition-transform duration-300 group-hover:translate-x-[3px]">→</span></a></div></header>
+<div aria-hidden="true" class="h-14 min-[981px]:h-16"></div>
+
+<div class="sl">
+<main id="top">
+
+<!-- HERO -->
+<section class="hero">
+  <div class="island i-assist" id="isAssist">
+    <div class="ihead"><span class="lg"><img src="img/symbol-on-dark.svg" alt=""></span><span class="pn">Trading assistant for Even G2</span></div>
+    <div class="hcopy">
+      <h1>Your positions, <em>watched.</em></h1>
+      <p class="isub">Trading rules you build on your phone, answered on your glasses. We alert you on every event linked to your Bybit positions and put the exact trade on the lens.</p>
+      <div class="iex"><span class="iexl">Alerts for</span><span class="ex on" data-lens="liq">Liquidation</span><span class="ex" data-lens="loss">Loss</span><span class="ex" data-lens="nostop">Missing stop</span><span class="ex" data-lens="nearstop">Stop loss</span><span class="ex" data-lens="profit">Profit</span><span class="ex" data-lens="tp">Take profit</span><span class="ex" data-lens="plevel">Price</span><span class="ex" data-lens="filled">Order fills</span></div>
+      <div class="cta-slot" data-cta="hero"><div class="max-w-[500px]"><div class="flex flex-wrap gap-2.5"><div class="min-w-0 flex-1 md:min-w-[235px]"><div class="w-full"><a href="#get" class="flex h-12 w-full items-center justify-center gap-2.5 rounded-full px-4 text-[15px] font-semibold transition-colors duration-500 md:h-[52px] md:px-6 bg-ink text-white shadow-soft"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 14h4M3 14l1.5-6M21 14l-1.5-6"/></svg>Get it on Even Hub</a></div></div><a href="#" class="hidden h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-full border border-ink/10 bg-white px-3 text-[13px] font-semibold text-ink-muted transition-colors hover:text-ink md:flex md:h-[52px] md:min-w-[235px] md:gap-2.5 md:px-5 md:text-[15px]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>Try the demo</a></div><div class="mt-3 flex justify-center md:justify-start"><a href="#" class="inline-flex items-center gap-1.5 text-sm font-medium text-accent-orange transition-opacity hover:opacity-80"><svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="M6.5 11.8l10-4.1-1.7 9.2-3.4-2.6-1.7 1.7v-2.6l4.3-4-5.5 3.4z" fill="#fff"/></svg>Alerts in Telegram</a></div></div></div>
+    </div>
+    <div class="stage" aria-hidden="true">
+      <div class="g2hud">
+        <div class="fd-list"><div class="fd-roll" id="iroll"><div class="fdi"><img src="img/hud/liq.png" alt=""></div></div></div>
+        <span class="g2note">Through the G2 lens</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- YOUR SHORTCUTS: frames from the phone app -->
+<section class="pos" id="shortcuts">
+  <div class="wrap sc">
+    <div class="duo">
+      <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/home.jpg" alt="Phone app: your shortcuts as tiles, each with its own on and off switch"></div></div>
+      <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/templates.jpg" alt="Phone app: templates such as Close Position, near liquidation, half"></div></div>
+    </div>
+    <div>
+      <span class="kick">Your shortcuts</span>
+      <h2>Every rule you trade by, <em>one switch away.</em></h2>
+      <p class="plede">Shortcuts live in the Even app on your phone. Each one is a tile: switch it on, pause it, tap it to change it. Start from 25 templates and edit any of them.</p>
+      <div class="pf-foot"><a href="#alerts">See the alerts they send <span>↓</span></a></div>
+    </div>
+  </div>
+</section>
+
+<!-- THE FEED: one family of events per section, each with its lens screens -->
+<section class="intro" id="alerts">
+  <div class="wrap">
+    <h2>Every event on your positions, <em>on one lens.</em></h2>
+  </div>
+</section>
+<div class="feed">
+  <section class="fam">
+    <div class="wrap">
+      <div>
+        <span class="kick">Positions</span>
+        <h2>Every open position. <em>Right on the lens.</em></h2>
+        <p>Main lists every open position with its price, move and liquidation distance. Tap one to open it: size, liquidation, stop, PnL and how many shortcuts are watching.</p>
+        <div class="plist"><span><img src="img/ic/btc.svg" alt="">BTC long</span><span><img src="img/ic/eth.svg" alt="">ETH short</span><span><img src="img/ic/sol.svg" alt="">SOL long</span></div>
+      </div>
+      <div class="cards"><img class="c1" src="img/cards/main.jpg" alt="Lens Main: Bybit Demo, 3 positions. BTC long 61,640, down 5.8%, liq 3.5%. ETH short 3,080, up 6.5%, no stop. SOL long 145.00, up 35.7%" draggable="false"><img class="c2" src="img/cards/detail.jpg" alt="Lens position: BTC long 10x, 0.05 BTC, liquidation 59,500 is 3.1% away, no stop. PnL minus 30 USDT, ROI minus 9.7%" draggable="false"></div>
+    </div>
+  </section>
+  <section class="fam">
+    <div class="wrap">
+      <div>
+        <span class="kick">Liquidation risk</span>
+        <h2>Your liquidation gets close. <em>You see it first.</em></h2>
+        <p>Leveraged positions close to liquidation, while there is still time to add margin or close half.</p>
+        <div class="plist"><span><img src="img/ic/close.svg" alt="">Close Position</span><span><img src="img/ic/margin.svg" alt="">Add Margin</span><span><img src="img/ic/notify.svg" alt="">Notify</span></div>
+      </div>
+      <div class="cards" style="--t2:120px;--pb:60px"><img class="c1" src="img/cards/liq.jpg" alt="Lens alert: BTC long, 3.2% to liquidation. Close 50%, 0.025 BTC" draggable="false"><img class="c2" src="img/cards/loss.jpg" alt="Lens alert: BTC long, ROI minus 18.2%. Add 100 USDT margin" draggable="false"></div>
+    </div>
+  </section>
+  <section class="fam">
+    <div class="wrap">
+      <div>
+        <span class="kick">Stops and take profits</span>
+        <h2>Your price nears the stop. <em>You know before it hits.</em></h2>
+        <p>Close to the stop, no stop at all, closed by stop, take profit or liquidation: every step of your exit plan.</p>
+        <div class="plist"><span><img src="img/ic/stop.svg" alt="">Set Stop Loss</span><span><img src="img/ic/close.svg" alt="">Close Position</span><span><img src="img/ic/notify.svg" alt="">Notify</span></div>
+      </div>
+      <div class="cards"><img class="c1" src="img/cards/nostop.jpg" alt="Lens alert: SOL long has no stop. Set stop at 178.75" draggable="false"><img class="c2" src="img/cards/nearstop.jpg" alt="Lens alert: XRP long, 0.9% to stop" draggable="false"></div>
+    </div>
+  </section>
+  <section class="fam">
+    <div class="wrap">
+      <div>
+        <span class="kick">Orders</span>
+        <h2>Your order fills. <em>Your glasses say so.</em></h2>
+        <p>Limit orders, take-profit and stop-loss on Bybit perps, partial fills and orders open too long included.</p>
+        <div class="plist"><span><img src="img/ic/tp.svg" alt="">Set Take Profit</span><span><img src="img/ic/cancel.svg" alt="">Cancel Order</span><span><img src="img/ic/notify.svg" alt="">Notify</span></div>
+      </div>
+      <div class="cards"><img class="c1" src="img/cards/filled.jpg" alt="Lens alert: SOL long order filled at 182.40. Set take profit at 191.52" draggable="false"><img class="c2" src="img/cards/partial.jpg" alt="Lens alert: BTC buy order 0.010 of 0.025 filled. Cancel the rest" draggable="false"></div>
+    </div>
+  </section>
+  <section class="fam">
+    <div class="wrap">
+      <div>
+        <span class="kick">Price, volume and funding</span>
+        <h2>Holding it got expensive. <em>Now you know.</em></h2>
+        <p>Price crossing your level, a fast move in minutes, a volume spike, funding running hot: what your position costs and where it is heading.</p>
+        <div class="plist"><span><img src="img/ic/open.svg" alt="">Open Position</span><span><img src="img/ic/open.svg" alt="">Increase Position</span><span><img src="img/ic/notify.svg" alt="">Notify</span></div>
+      </div>
+      <div class="cards"><img class="c1" src="img/cards/pchange.jpg" alt="Lens alert: ETH long up 5.1% in 15 minutes. Review add, 200 USDT" draggable="false"><img class="c2" src="img/cards/plevel.jpg" alt="Lens alert: BTC crossed above 90,000. Review long, 500 USDT" draggable="false"></div>
+    </div>
+  </section>
+  <section class="fam">
+    <div class="wrap">
+      <div>
+        <span class="kick">Profit</span>
+        <h2>Your trade works. <em>You lock it in at once.</em></h2>
+        <p>ROI above your line, price close to take profit: move the stop to entry or take half off the table before the move gives it back.</p>
+        <div class="plist"><span><img src="img/ic/move.svg" alt="">Move Stop Loss</span><span><img src="img/ic/close.svg" alt="">Close Position</span></div>
+      </div>
+      <div class="cards"><img class="c1" src="img/cards/profit.jpg" alt="Lens alert: ETH short ROI plus 31.4%. Move stop to entry" draggable="false"><img class="c2" src="img/cards/tp.jpg" alt="Lens alert: ETH short 0.8% to take profit. Close 50%" draggable="false"></div>
+    </div>
+  </section>
+  <section class="fam">
+    <div class="wrap">
+      <div>
+        <span class="kick">Voice</span>
+        <h2>A phrase is enough. <em>We line it up.</em></h2>
+        <p>Tap the lens and say “protect all” or “lock profits”. Every shortcut with that phrase raises its proposals at once; each still needs its own tap.</p>
+        <div class="plist"><span><img src="img/ic/voice.svg" alt="">“protect all”</span><span><img src="img/ic/voice.svg" alt="">“lock profits”</span></div>
+      </div>
+      <div class="cards"><img class="c1" src="img/cards/voice1.jpg" alt="Voice alert 1 of 3: SOL long. Set stop at 178.75" draggable="false"><img class="c2" src="img/cards/voice2.jpg" alt="Voice alert 2 of 3: ETH short. Set stop at 3,162" draggable="false"></div>
+    </div>
+  </section>
+  <section class="fam">
+    <div class="wrap">
+      <div>
+        <span class="kick">Review</span>
+        <h2>An open adds risk. <em>Read it before it lands.</em></h2>
+        <p>Open and Increase never go straight to Bybit: a Review shows size, margin, leverage and stop first. The result comes back from the exchange, not from us.</p>
+        <div class="plist"><span><img src="img/ic/open.svg" alt="">Open Position</span><span><img src="img/ic/open.svg" alt="">Increase Position</span></div>
+      </div>
+      <div class="cards"><img class="c1" src="img/cards/review.jpg" alt="Review: Open BTC long, 0.0055 BTC, 500 USDT, 5x, stop 88,200" draggable="false"><img class="c2" src="img/cards/sent.jpg" alt="Sent, waiting for the fill from Bybit" draggable="false"></div>
+    </div>
+  </section>
+</div>
+
+<!-- YOUR TAP, OR NOTHING -->
+<section class="proof" id="proof">
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <span class="kick">Make your own</span>
+        <h2>Build a shortcut. <em>Apply to, when, do.</em></h2>
+        <p class="lead">No code, no scripts. Choose the positions it watches, add one or more conditions, pick the action. Nothing reaches Bybit until you tap that action on your glasses. Demo and testnet only for now.</p>
+      </div>
+      <div class="duo">
+        <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/cond.jpg" alt="Phone app: Add condition, from price change and funding rate to a missing stop loss"></div></div>
+        <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/edit.jpg" alt="Phone app: a finished shortcut. When liquidation distance is below 3%, close position by 50%"></div></div>
+      </div>
+    </div>
+    <div class="nums">
+      <div><b>900+</b><span>possible combinations</span></div>
+      <div><b>25</b><span>battle-tested templates</span></div>
+      <div><b>2 s</b><span>between checks of your Bybit account</span></div>
+    </div>
+    <div class="protos" id="templates">
+      <div class="protos-h"><p>25 templates, ready to switch on</p><a href="#">See all templates <span>→</span></a></div>
+      <div class="mq r1"><div class="mq-t" data-mq="move:Move Stop Loss · ROI above 30%|close:Close Position · ROI above 30% · half|close:Close Position · Profit above 100 USDT|close:Close Position · Near take profit · half|close:Close Position · ROI below −20% · all|close:Close Position · Near liquidation · half|margin:Add Margin · Near liquidation|stop:Set Stop Loss · No stop loss"></div></div>
+      <div class="mq r2 rev"><div class="mq-t" data-mq="close:Close Position · Near stop loss · half|notify:Notify · Price crosses a level|notify:Notify · Price falls 3% in 5 min|notify:Notify · Price rises 3% in 5 min|open:Open Position · Price crosses a level|tp:Set Take Profit · Order filled|cancel:Cancel Order · Order partly filled"></div></div>
+      <div class="mq r3"><div class="mq-t" data-mq="move:Move Stop Loss · ROI above 30%|close:Close Position · Near liquidation · half|margin:Add Margin · Near liquidation|stop:Set Stop Loss · No stop loss|notify:Notify · Price crosses a level|open:Open Position · Price crosses a level|tp:Set Take Profit · Order filled|cancel:Cancel Order · Order partly filled"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- CHANNELS -->
+<section class="chan">
+  <div class="wrap">
+    <div>
+      <span class="kick">Where you read it</span>
+      <h2>One feed. <em>Three places to read it.</em></h2>
+      <div class="clist">
+        <div><b>The G2 lens</b><small>Alerts, positions and the one tap that sends the trade.</small></div>
+        <div><b>The phone, in the Even app</b><small>Your shortcuts, a notification when the glasses are off, and the history of every alert.</small></div>
+        <div><b>Telegram</b><small>The same alerts, in the chat you already keep open. Telegram can never confirm a trade.</small></div>
+      </div>
+      <div class="cta-slot" data-cta="channels"><div class="max-w-[500px]"><div class="flex flex-wrap gap-2.5"><div class="min-w-0 flex-1 md:min-w-[235px]"><div class="w-full"><a href="#get" class="flex h-12 w-full items-center justify-center gap-2.5 rounded-full px-4 text-[15px] font-semibold transition-colors duration-500 md:h-[52px] md:px-6 bg-ink text-white shadow-soft"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 14h4M3 14l1.5-6M21 14l-1.5-6"/></svg>Get it on Even Hub</a></div></div><a href="#" class="hidden h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-full border border-ink/10 bg-white px-3 text-[13px] font-semibold text-ink-muted transition-colors hover:text-ink md:flex md:h-[52px] md:min-w-[235px] md:gap-2.5 md:px-5 md:text-[15px]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>Try the demo</a></div><div class="mt-3 flex justify-center md:justify-start"><a href="#" class="inline-flex items-center gap-1.5 text-sm font-medium text-accent-orange transition-opacity hover:opacity-80"><svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="M6.5 11.8l10-4.1-1.7 9.2-3.4-2.6-1.7 1.7v-2.6l4.3-4-5.5 3.4z" fill="#fff"/></svg>Alerts in Telegram</a></div></div></div>
+    </div>
+    <img class="g2shot" src="img/lens-positions.jpg" alt="Through the G2: three demo positions, BTC long 0.3% from liquidation">
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="faq" id="faq">
+  <div class="wrap">
+    <span class="kick">FAQ</span>
+    <h2>Questions, <em>answered.</em></h2>
+    <div class="qa">
+      <details><summary>How does Trade Shortcuts handle my keys and my money?</summary><p>Your Bybit keys stay on your own Trade Shortcuts server, never on the phone or the glasses. Every trade is a proposal you confirm on the lens; a second tap or a resend returns the same execution. No withdrawals, no transfers.</p></details>
+      <details><summary>How do the alerts work?</summary><p>Build a shortcut on the phone: apply to one scope, when one or more conditions, do one action. The server checks Bybit every 2 seconds. When a shortcut fires, the lens shows the position, the strongest reason and one exact command, with Dismiss first.</p></details>
+      <details><summary>Can a shortcut trade without me?</summary><p>No. Nothing reaches the exchange until you tap the action on your glasses. Terms never change silently: if the size or price moved, a new proposal replaces the old one and the old tap does nothing.</p></details>
+      <details><summary>Which exchanges does Trade Shortcuts support?</summary><p>Bybit demo and testnet. The server refuses any other host at startup. A built-in demo exchange runs without any keys.</p></details>
+      <details><summary>What types of alerts can I receive?</summary><p>Liquidation distance, profit and loss, stop and take-profit distance, a missing stop, closed by stop, take profit or liquidation, price levels and price changes, volume spikes, funding, and orders filled, partly filled or open too long.</p></details>
+      <details><summary>What do I need?</summary><p>Even Realities G2 glasses, the Even app on your phone, and a Trade Shortcuts server you run yourself. Voice needs an OpenAI key on that server.</p></details>
+      <details><summary>How do I receive alerts?</summary><p>On the G2 lens and in the open phone app, according to your notification settings. A linked Telegram chat can receive alerts when the glasses are off or no other channel takes the alert.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- END -->
+<section class="end" id="get">
+  <div class="wrap">
+    <img class="ic" src="img/app-icon.svg" alt="">
+    <h2>Switch on your first shortcut. <em>It takes a minute.</em></h2>
+    <p>Pick a template, flip the switch. Nothing trades without your tap.</p>
+    <div class="cta-slot" data-cta="end"><div class="inline-flex flex-col gap-3 mx-auto"><a href="#" class="btn-shine group inline-flex items-center gap-3 rounded-full bg-ink px-7 py-3.5 text-base font-semibold text-white shadow-soft transition-all hover:bg-[#000000] hover:shadow-strong active:scale-[0.98]"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 14h4M3 14l1.5-6M21 14l-1.5-6"/></svg>Get it on Even Hub</a><a href="#" class="self-center inline-flex items-center gap-1.5 text-sm font-medium text-accent-orange transition-opacity hover:opacity-80"><svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="M6.5 11.8l10-4.1-1.7 9.2-3.4-2.6-1.7 1.7v-2.6l4.3-4-5.5 3.4z" fill="#fff"/></svg>Alerts in Telegram</a></div></div>
+  </div>
+</section>
+</main>
+</div>
+
+<footer data-footer="true" class="border-t border-[rgba(26,22,18,0.08)] bg-bg pb-12 pt-10 text-sm font-medium text-ink-faint"><div class="mx-auto flex w-[calc(100%-32px)] flex-col gap-4 min-[761px]:w-[min(1200px,calc(100%-40px))]"><div class="flex flex-wrap items-center gap-x-7 gap-y-2"><a href="#top" aria-label="Trade Shortcuts home" class="flex min-h-[44px] items-center gap-[9px] text-[17px] font-extrabold tracking-[-0.02em] text-ink"><img src="img/lockup.svg" alt="Trade Shortcuts" width="214" height="20" loading="lazy" class="h-5 w-auto"></a><nav aria-label="Footer" class="flex flex-wrap gap-x-[18px] min-[761px]:ml-auto min-[761px]:gap-x-[22px] min-[761px]:gap-y-2.5"><a href="#alerts" class="inline-flex min-h-[44px] items-center transition-colors hover:text-ink min-[761px]:min-h-0">Alerts</a><a href="#proof" class="inline-flex min-h-[44px] items-center transition-colors hover:text-ink min-[761px]:min-h-0">Safety</a><a href="#templates" class="inline-flex min-h-[44px] items-center transition-colors hover:text-ink min-[761px]:min-h-0">Templates</a><a href="#faq" class="inline-flex min-h-[44px] items-center transition-colors hover:text-ink min-[761px]:min-h-0">FAQ</a><a href="#" class="inline-flex min-h-[44px] items-center transition-colors hover:text-ink min-[761px]:min-h-0">Docs</a></nav></div><div class="flex flex-wrap items-center gap-x-[18px] min-[761px]:gap-x-[22px]"><span class="mr-auto inline-flex min-h-[44px] items-center min-[761px]:min-h-0">© 2026 Trade Shortcuts</span><span class="inline-flex min-h-[44px] items-center min-[761px]:min-h-0">Bybit demo and testnet only</span><span class="inline-flex min-h-[44px] items-center min-[761px]:min-h-0">Not financial advice</span><span class="inline-flex min-h-[44px] items-center min-[761px]:min-h-0">Not affiliated with Bybit or Even Realities</span></div></div></footer>
+</div>
+
+<script>
+// Page behaviour ported from the reference landing's vanilla script (reveal, counters, card swipe, parallax).
+// Hero chips with the lens feed and the FAQ are Base UI islands: src/islands.jsx.
+(function(){
+var RM=matchMedia("(prefers-reduced-motion: reduce)").matches, $=function(s){return document.querySelector(s)}, island=$("#isAssist");
+
+// marquee rows: each chip list twice, the copy hidden from assistive tech
+[].forEach.call(document.querySelectorAll("[data-mq]"),function(t){
+  var g=t.dataset.mq.split("|").map(function(x){var i=x.indexOf(":");return '<span class="pp"><img src="img/ic/'+x.slice(0,i)+'.svg" alt="">'+x.slice(i+1)+"</span>"}).join("");
+  t.innerHTML='<div class="mq-g">'+g+'</div><div class="mq-g dup" aria-hidden="true">'+g+"</div>";
+});
+
+// reveal on scroll, counters, row stagger, hero parallax
+(function(){
+  if(RM||!("IntersectionObserver" in window))return;
+  $(".sl").classList.add("fx");
+  var t,n=document.querySelectorAll(".pos .kick,.pos h2,.pos .plede,.intro h2,.faq .kick,.faq h2,.fam .wrap>div:first-child,.proof .top>div:first-child,.chan .kick,.chan h2,.end h2,.end p,.duo .phone,.chan .g2shot,.end .ic");
+  [].forEach.call(n,function(e){e.classList.add("rise")});
+  var nums=[].slice.call(document.querySelectorAll(".nums b")).map(function(b){var m=b.textContent.match(/^([\d,]+)(.*)$/);if(!m||m[1]==="0")return null;var v=+m[1].replace(/,/g,"");b.textContent="0"+m[2];return{b:b,v:v,suf:m[2]}}).filter(Boolean);
+  var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){show(e.target);io.unobserve(e.target)}})},{threshold:0,rootMargin:"0px 0px -8% 0px"});
+  var all=[].slice.call(n).concat([].slice.call(document.querySelectorAll(".cards,.nums")));
+  all.forEach(function(e){io.observe(e)});
+  requestAnimationFrame(sweep);
+  addEventListener("hashchange",function(){setTimeout(sweep,60)});
+  addEventListener("scroll",function(){clearTimeout(t);t=setTimeout(sweep,140)},{passive:true});
+  var hud=$(".g2hud"),k=matchMedia("(max-width:760px)").matches?-.035:-.06,busy=false;
+  addEventListener("scroll",function(){if(busy)return;busy=true;requestAnimationFrame(function(){busy=false;var y=scrollY;if(y<=island.offsetHeight+200)hud.style.setProperty("--py",Math.max(-22,y*k).toFixed(1)+"px")})},{passive:true});
+  function show(e){
+    if(e.classList.contains("in"))return;
+    e.classList.add("in");
+    if(e.classList.contains("cards"))setTimeout(function(){e.classList.add("landed")},760);
+    if(e.classList.contains("nums"))nums.forEach(function(x){var t0=performance.now();(function f(now){var r=Math.min(1,(now-t0)/900);x.b.textContent=Math.round(x.v*(1-Math.pow(1-r,3))).toLocaleString("en-US")+x.suf;if(r<1)requestAnimationFrame(f)})(t0)});
+  }
+  function sweep(){all.forEach(function(e){if(!e.classList.contains("in")&&e.getBoundingClientRect().top<.92*innerHeight){show(e);io.unobserve(e)}})}
+})();
+
+// alert cards: float while visible; on phones, tap or swipe swaps the two cards
+(function(){
+  var cards=[].slice.call(document.querySelectorAll(".cards"));
+  if("IntersectionObserver" in window){var io=new IntersectionObserver(function(es){es.forEach(function(e){e.target.classList.toggle("live",e.isIntersecting)})},{rootMargin:"80px 0px"});cards.forEach(function(c){io.observe(c)})}
+  var narrow=matchMedia("(max-width:760px)");
+  cards.filter(function(c){return!c.classList.contains("one")}).forEach(function(c){
+    var dots=document.createElement("div");
+    function swap(){if(!narrow.matches)return;var s=c.classList.toggle("sw");dots.children[0].classList.toggle("on",!s);dots.children[1].classList.toggle("on",s)}
+    dots.className="dots";dots.setAttribute("aria-hidden","true");dots.innerHTML='<i class="on"></i><i></i>';c.appendChild(dots);
+    if(narrow.matches){c.setAttribute("role","button");c.setAttribute("tabindex","0");c.setAttribute("aria-label","Show the other alert card")}
+    var x0=null,y0=0;
+    c.addEventListener("pointerdown",function(e){x0=e.clientX;y0=e.clientY});
+    c.addEventListener("pointerup",function(e){if(x0===null)return;var dx=e.clientX-x0,dy=e.clientY-y0;x0=null;if((Math.abs(dx)>36&&Math.abs(dx)>Math.abs(dy))||(Math.abs(dx)<8&&Math.abs(dy)<8))swap()});
+    c.addEventListener("pointercancel",function(){x0=null});
+    c.addEventListener("keydown",function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();swap()}});
+  });
+})();
+
+})();
+</script>
+<script type="module" src="js/islands.js"></script>
+</body>
+</html>

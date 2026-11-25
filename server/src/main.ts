@@ -8,7 +8,7 @@ import { tokenProblem } from './config.ts'
 import { assertTestnet, createBybit } from './bybit.ts'
 import { demoExchange } from './fake-exchange.ts'
 import { transcribe } from './stt.ts'
-import { STARTER_RULES, VOICE_SEEDS } from './registry.ts'
+import { CLOSE_SEED, STARTER_RULES, VOICE_SEEDS } from './registry.ts'
 
 const TICK_MS = 2000
 const env = process.env
@@ -44,6 +44,7 @@ if (mode === 'bybit') {
 // One file per exchange mode, so demo shortcuts and alerts never mix with a real account's.
 const store = createStore(fileURLToPath(new URL(`../data/${mode}.db`, import.meta.url)))
 store.seed([...STARTER_RULES, ...VOICE_SEEDS])
+store.seed([CLOSE_SEED], 'seeded:close')
 const notifier = createNotifier({ store, token: env.TELEGRAM_BOT_TOKEN || undefined })
 const session = createSession(ex, store, Date.now, notifier.route)
 
@@ -88,5 +89,5 @@ const openaiKey = env.OPENAI_API_KEY
 createServer({
   session, store, token, notifier, source,
   apiKeyInfo: () => ex.apiKeyInfo(),
-  transcribe: openaiKey ? (pcm, hint) => transcribe(pcm, openaiKey, hint) : undefined,
-}).listen(port, host, () => console.log(`Sightline server on http://${host}:${port} (exchange: ${mode}, voice: ${openaiKey ? 'on' : 'off'}, telegram: ${env.TELEGRAM_BOT_TOKEN ? 'on' : 'off'})`))
+  transcribe: openaiKey ? pcm => transcribe(pcm, openaiKey) : undefined,
+}).listen(port, host, () => console.log(`Trade Shortcuts server on http://${host}:${port} (exchange: ${mode}, voice: ${openaiKey ? 'on' : 'off'}, telegram: ${env.TELEGRAM_BOT_TOKEN ? 'on' : 'off'})`))

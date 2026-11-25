@@ -1,12 +1,14 @@
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { timingSafeEqual } from 'node:crypto'
 import type { ApiKeyInfo } from './types.ts'
-import type { Session } from './session.ts'
+import { PHRASE, type Command, type Session } from './session.ts'
 import { StoreError, validateSettings, type Store } from './store.ts'
 import type { createNotifier } from './notify.ts'
 import { ACTION_TITLE, TEMPLATES, catalog } from './registry.ts'
 import { validateShortcut } from './validate.ts'
 import { conditionSummary } from './proposals.ts'
+import { answerOf } from './rules.ts'
+import { loud } from './stt.ts'
 
 const MAX_BODY = 64 * 1024
 // 16 kHz s16le mono is 32 KB per second; the app stops listening after 5 s
@@ -63,7 +65,7 @@ const version = (v: unknown) => {
   return v as number
 }
 
-export type Transcribe = (pcm: Uint8Array, hint: string) => Promise<string>
+export type Transcribe = (pcm: Uint8Array) => Promise<string>
 type Notifier = ReturnType<typeof createNotifier>
 
 /** Every route needs the bearer token and works on the token's one account (§10). */
@@ -113,18 +115,22 @@ export function createServer(d: {
         if (!d.transcribe) throw new HttpError(503, 'Voice is off: set OPENAI_API_KEY on the server')
         const pcm = await readBody(req, MAX_VOICE)
         if (pcm.length < MIN_VOICE) throw new HttpError(400, 'Too short')
+        if (!loud(pcm)) return send(res, 200, { heard: '', answer: null })
         let heard: string
         try {
-          heard = await d.transcribe(pcm, store.phrasesInUse().join(', '))
+          heard = await d.transcribe(pcm)
         } catch (e) {
           throw new HttpError(502, `Transcription failed: ${(e as Error).message}`)
         }
-        return send(res, 200, { heard, ...(await session.voice(heard)) })
+        // The lens answers its alert with this; shortcut phrases are off for now (session.voice stays for the menu).
+        return send(res, 200, { heard, answer: answerOf(heard) })
       }
       if (route === 'POST /api/command') {
         const b = await readJson(req)
-        if (b.command !== 'stop' && b.command !== 'lock') throw new HttpError(400, 'Expected {command: "stop" | "lock"}')
-        return send(res, 200, await session.command(b.command))
+        if (typeof b.command !== 'string' || !Object.hasOwn(PHRASE, b.command)) throw new HttpError(400, 'Expected {command: "stop" | "lock" | "close"}')
+        const at = b.position as { symbol?: unknown; positionIdx?: unknown } | undefined
+        if (at !== undefined && (typeof at?.symbol !== 'string' || !Number.isInteger(at.positionIdx))) throw new HttpError(400, 'Expected {position: {symbol, positionIdx}}')
+        return send(res, 200, await session.command(b.command as Command, at as { symbol: string; positionIdx: number } | undefined))
       }
 
       // Shortcuts, editor
@@ -164,6 +170,7 @@ export function createServer(d: {
           return r ? send(res, 200, tile(r)) : send(res, 404, { error: 'Not found' })
         }
       }
+      if (route === 'GET /api/chart') return send(res, 200, await session.chart(url.searchParams.get('symbol') ?? ''))
       if (route === 'GET /api/positions') return send(res, 200, session.pickers().positions)
       if (route === 'GET /api/orders/open') return send(res, 200, session.pickers().orders)
 

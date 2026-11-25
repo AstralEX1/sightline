@@ -200,7 +200,7 @@ test('Filled or Partial may Notify but cannot Cancel: the Filled row is flagged'
   assert.deepEqual(v.issues.map(i => [i.code, i.conditionId]), [['incompatible_action', 'c1']])
 })
 
-test('Profit or Loss with Increase Position flags the Loss row', () => {
+test('Profit or Loss with Increase position flags the Loss row', () => {
   const v = check(rule({ logic: 'ANY', items: [COND.PROFIT, COND.LOSS], action: ACT.INCREASE_POSITION, trigger: ONCE }))
   assert.deepEqual(v.issues.map(i => [i.code, i.conditionId]), [['incompatible_action', 'c2']])
 })
@@ -409,30 +409,30 @@ const words = (o: object): string => Object.entries(o).filter(([k]) => k !== 'id
 
 // Card, scope, trigger, condition and action as §12 states them (a prefix of the draft's own words).
 const BRIEF_TEMPLATES: [string, ScopeType, string, string, string][] = [
-  ['Move Stop Loss · ROI above 20% · breakeven', 'ALL_POSITIONS', 'ON_ENTRY', 'PROFIT ROI_PERCENT 20', 'MOVE_SL ENTRY_OFFSET 0'],
-  ['Close Position · ROI above 50% · half', 'ALL_POSITIONS', 'ON_ENTRY', 'PROFIT ROI_PERCENT 50', 'CLOSE_POSITION 50'],
-  ['Close Position · Profit above 100 USDT', 'ALL_POSITIONS', 'ON_ENTRY', 'PROFIT USDT 100', 'CLOSE_POSITION 25'],
-  ['Close Position · Near take profit · half', 'ALL_POSITIONS', 'ON_ENTRY', 'NEAR_TP 0.5', 'CLOSE_POSITION 50'],
-  ['Close Position · ROI below −30% · all', 'ALL_POSITIONS', 'ON_ENTRY', 'LOSS ROI_PERCENT 30', 'CLOSE_POSITION 100'],
-  ['Close Position · Near liquidation · half', 'ALL_POSITIONS', 'ON_ENTRY', 'NEAR_LIQUIDATION 3', 'CLOSE_POSITION 50'],
-  ['Add Margin · Near liquidation', 'ALL_POSITIONS', 'ON_ENTRY', 'NEAR_LIQUIDATION 5', 'ADD_MARGIN 50'],
-  ['Set Stop Loss · No stop loss', 'ALL_POSITIONS', 'ON_ENTRY', 'SL_MISSING', 'SET_SL ENTRY_OFFSET -2'],
+  ['Move stop loss · ROI above 20% · breakeven', 'ALL_POSITIONS', 'ON_ENTRY', 'PROFIT ROI_PERCENT 20', 'MOVE_SL ENTRY_OFFSET 0'],
+  ['Close position · ROI above 50% · half', 'ALL_POSITIONS', 'ON_ENTRY', 'PROFIT ROI_PERCENT 50', 'CLOSE_POSITION 50'],
+  ['Close position · Profit above 100 USDT', 'ALL_POSITIONS', 'ON_ENTRY', 'PROFIT USDT 100', 'CLOSE_POSITION 25'],
+  ['Close position · Near take profit · half', 'ALL_POSITIONS', 'ON_ENTRY', 'NEAR_TP 0.5', 'CLOSE_POSITION 50'],
+  ['Close position · ROI below −30% · all', 'ALL_POSITIONS', 'ON_ENTRY', 'LOSS ROI_PERCENT 30', 'CLOSE_POSITION 100'],
+  ['Close position · Near liquidation · half', 'ALL_POSITIONS', 'ON_ENTRY', 'NEAR_LIQUIDATION 3', 'CLOSE_POSITION 50'],
+  ['Add margin · Near liquidation', 'ALL_POSITIONS', 'ON_ENTRY', 'NEAR_LIQUIDATION 5', 'ADD_MARGIN 50'],
+  ['Set stop loss · No stop loss', 'ALL_POSITIONS', 'ON_ENTRY', 'SL_MISSING', 'SET_SL ENTRY_OFFSET -2'],
   ['Notify · Near stop loss', 'ALL_POSITIONS', 'ON_ENTRY', 'NEAR_SL 0.5', 'NOTIFY'],
   ['Notify · Loss above 50 USDT', 'ALL_POSITIONS', 'ON_ENTRY', 'LOSS USDT 50', 'NOTIFY'],
   ['Notify · Closed by stop loss', 'ALL_POSITIONS', 'ON_EVENT', 'POSITION_CLOSED SL', 'NOTIFY'],
   ['Notify · Closed by take profit', 'ALL_POSITIONS', 'ON_EVENT', 'POSITION_CLOSED TP', 'NOTIFY'],
   ['Notify · Liquidated', 'ALL_POSITIONS', 'ON_EVENT', 'POSITION_CLOSED LIQUIDATION', 'NOTIFY'],
   ['Notify · Funding above 0.05% in 30 min', 'ALL_POSITIONS', 'ON_ENTRY', 'FUNDING 0.05 30', 'NOTIFY'],
-  ['Close Position · Funding above 0.1% · close', 'ALL_POSITIONS', 'ON_ENTRY', 'FUNDING 0.1 10', 'CLOSE_POSITION 100'],
+  ['Close position · Funding above 0.1% · close', 'ALL_POSITIONS', 'ON_ENTRY', 'FUNDING 0.1 10', 'CLOSE_POSITION 100'],
   ['Notify · Volume 3× in 5 min', 'SYMBOL', 'ON_ENTRY', 'VOLUME_SPIKE 3 300', 'NOTIFY'],
-  ['Move Stop Loss · Volume 5× · breakeven', 'ALL_POSITIONS', 'ON_ENTRY', 'VOLUME_SPIKE 5 300', 'MOVE_SL ENTRY_OFFSET 0'],
+  ['Move stop loss · Volume 5× · breakeven', 'ALL_POSITIONS', 'ON_ENTRY', 'VOLUME_SPIKE 5 300', 'MOVE_SL ENTRY_OFFSET 0'],
   ['Notify · Price crosses a level', 'SYMBOL', 'ON_EVENT', 'PRICE', 'NOTIFY'],
   ['Notify · Price falls 2% in 5 min', 'SYMBOL', 'ON_ENTRY', 'PRICE_CHANGE LAST DOWN 2 300', 'NOTIFY'],
   ['Notify · Price rises 2% in 5 min', 'SYMBOL', 'ON_ENTRY', 'PRICE_CHANGE LAST UP 2 300', 'NOTIFY'],
-  ['Open Position · Price crosses a level', 'SYMBOL', 'ONCE', 'PRICE', 'OPEN_POSITION LONG 100 5 ENTRY_OFFSET -2'],
-  ['Set Take Profit · Order filled', 'ORDER', 'ON_EVENT', 'ORDER_FILLED', 'SET_TP ENTRY_OFFSET 3'],
-  ['Cancel Order · Order partly filled', 'ORDER', 'ON_EVENT', 'ORDER_PARTIAL', 'CANCEL_ORDER'],
-  ['Cancel Order · Order open over 1 h', 'ALL_ORDERS', 'ON_ENTRY', 'ORDER_STALE 60', 'CANCEL_ORDER'],
+  ['Open position · Price crosses a level', 'SYMBOL', 'ONCE', 'PRICE', 'OPEN_POSITION LONG 100 5 ENTRY_OFFSET -2'],
+  ['Set take profit · Order filled', 'ORDER', 'ON_EVENT', 'ORDER_FILLED', 'SET_TP ENTRY_OFFSET 3'],
+  ['Cancel order · Order partly filled', 'ORDER', 'ON_EVENT', 'ORDER_PARTIAL', 'CANCEL_ORDER'],
+  ['Cancel order · Order open over 1 h', 'ALL_ORDERS', 'ON_ENTRY', 'ORDER_STALE 60', 'CANCEL_ORDER'],
   ['Notify · Order open over 15 min', 'ALL_ORDERS', 'ON_ENTRY', 'ORDER_STALE 15', 'NOTIFY'],
 ]
 
@@ -642,9 +642,9 @@ test('condition ids must be present and unique', () => {
 
 // ---- The Incompatible screen (§7) ----
 
-test('ROI above 30% or liquidation distance below 5% with Increase Position flags the liquidation row', () => {
+test('ROI above 30% or liquidation distance below 5% with Increase position flags the liquidation row', () => {
   const v = check(rule({ scope: SCOPE.ALL_POSITIONS, logic: 'ANY', items: [COND.PROFIT, COND.NEAR_LIQUIDATION], action: ACT.INCREASE_POSITION, trigger: ONCE }))
   assert.deepEqual(v.issues.map(({ code, conditionId, message }) => ({ code, conditionId, message })), [
-    { code: 'incompatible_action', conditionId: 'c2', message: 'Liquidation distance is incompatible with Increase Position' },
+    { code: 'incompatible_action', conditionId: 'c2', message: 'Liquidation distance is incompatible with Increase position' },
   ])
 })

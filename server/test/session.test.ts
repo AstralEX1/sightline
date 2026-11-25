@@ -4,7 +4,7 @@ import { createSession } from '../src/session.ts'
 import { createStore, type Store } from '../src/store.ts'
 import { demoExchange, FakeExchange } from '../src/fake-exchange.ts'
 import { receiptLine } from '../src/proposals.ts'
-import { STARTER_RULES, TEMPLATES, VOICE_SEEDS, type Draft } from '../src/registry.ts'
+import { CLOSE_SEED, STARTER_RULES, TEMPLATES, VOICE_SEEDS, type Draft } from '../src/registry.ts'
 import { closeProposal } from '../src/execute.ts'
 import type { Position } from '../src/types.ts'
 
@@ -613,4 +613,32 @@ test('a close whose fills read failed on the tick the position went still alerts
   ex.fills.push({ id: 'e1', orderId: 'bust', orderLinkId: '', symbol: 'BTCUSDT', side: 'Sell', qty: 0.05, price: 59500, leavesQty: 0, time: now(), closedBy: 'LIQUIDATION' })
   await ticks()
   assert.equal(store.history()[0]?.reason, 'liquidated at 59,500')
+})
+
+test('chart: an open position\'s candles oldest first, read once a minute; nothing for other symbols', async () => {
+  const { ex, s, ticks, advance } = setup()
+  ex.candles.BTCUSDT = [{ start: 2, close: 61100 }, { start: 1, close: 61000 }]
+  ex.candles.ETHUSDT = [{ start: 1, close: 3000 }, { start: 2, close: 3001 }]
+  await ticks()
+  const closes = async (sym: string) => (await s.chart(sym)).map(c => c.close)
+  assert.deepEqual(await s.chart('BTCUSDT'), [{ start: 1, close: 61000 }, { start: 2, close: 61100 }])
+  assert.deepEqual(await closes('ETHUSDT'), [])
+  ex.candles.BTCUSDT.push({ start: 3, close: 61200 })
+  assert.deepEqual(await closes('BTCUSDT'), [61000, 61100])
+  advance(60_000)
+  assert.deepEqual(await closes('BTCUSDT'), [61000, 61100, 61200])
+})
+
+test('the menu closes one position or all of them, each as a card to confirm', async () => {
+  const eth: Position = { ...btc(), symbol: 'ETHUSDT', side: 'Sell', size: 1, entryPrice: 3100, markPrice: 3080, liqPrice: 3600, unrealisedPnl: 20, positionIM: 310 }
+  const { ex, store, s, ticks } = setup([btc(), eth], [])
+  ex.prices.ETHUSDT = 3080
+  store.seed([CLOSE_SEED], 'seeded:close')
+  await ticks()
+  assert.deepEqual(await s.command('close', { symbol: 'ETHUSDT', positionIdx: 0 }), { ok: true, message: 'Heard "close all" · 1 proposal' })
+  assert.deepEqual(store.pendingProposals().map(p => p.question), ['Close 100% · 1 ETH?'])
+  assert.deepEqual(await s.command('close'), { ok: true, message: 'Heard "close all" · 2 proposals' }) // ETH's card already up
+  assert.deepEqual(store.pendingProposals().map(p => p.question).sort(), ['Close 100% · 0.05 BTC?', 'Close 100% · 1 ETH?'])
+  assert.equal((await s.command('close', { symbol: 'SOLUSDT', positionIdx: 0 })).ok, false)
+  assert.equal(ex.calls.length, 0)
 })

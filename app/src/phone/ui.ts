@@ -68,61 +68,76 @@ export type Sheet = { close: () => void; setDone: (enabled: boolean) => void; el
 
 /**
  * Bottom sheet: Cancel · title · Done. `onDone` returns false to stay open. Cancel, a scrim tap, Escape and a drag down
- * discard. Focus moves in (to `focus`, else the first control) and goes back with `back()` (the token, found again after
- * the editor re-rendered).
+ * discard and call `onCancel`; while `dirty()` is true only Cancel does, the others nudge the sheet and keep it (like
+ * iOS isModalInPresentation). Focus moves in (to `focus`, else the first control) and goes back with `back()` (the
+ * token, found again after the editor re-rendered).
  */
-export function sheet(o: { title: string; body: Kid[]; onDone?: () => boolean | void; back?: () => void; focus?: HTMLElement }): Sheet {
+export function sheet(o: {
+  title: string; body: Kid[]; onDone?: () => boolean | void; onCancel?: () => void; dirty?: () => boolean; back?: () => void; focus?: HTMLElement
+}): Sheet {
   const scrim = h('div', { class: 'scrim' })
   const done = o.onDone && h('button', { class: 'link-btn link-btn--strong', type: 'button' }, 'Done')
   const el = h('section', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': o.title },
     h('div', { class: 'sheet__grabber', 'aria-hidden': 'true' }),
     h('div', { class: 'sheet__nav' },
-      h('button', { class: 'link-btn', type: 'button', onclick: () => close() }, 'Cancel'),
+      h('button', { class: 'link-btn', type: 'button', onclick: () => close(true) }, 'Cancel'),
       h('h2', { class: 'sheet__title' }, o.title),
       done || h('span')),
     h('div', { class: 'sheet__body' }, ...o.body))
   let closed = false
-  const close = () => {
+  const opened = performance.now()
+  const close = (cancel = false) => {
     if (closed) return
     closed = true
     el.classList.add('is-closing')
     el.classList.remove('is-open')
     scrim.classList.remove('is-open')
+    scrim.classList.add('is-closing')
     el.inert = scrim.inert = true // screen readers and Tab leave it now, not after the slide
     el.style.transition = el.style.transform = '' // a drag's spring-back can still hold them, and they would pin the sheet in place
     el.removeAttribute('aria-modal')
     setTimeout(() => { el.remove(); scrim.remove() }, 350)
+    if (cancel) o.onCancel?.()
     o.back?.()
   }
+  /** Scrim, Escape, drag: they close only a sheet with nothing to lose. */
+  const dismiss = () => {
+    if (!o.dirty?.()) return close(true)
+    el.classList.remove('is-held')
+    void el.offsetWidth // restart the nudge
+    el.classList.add('is-held')
+    return false
+  }
   done?.addEventListener('click', () => { if (!done.disabled && o.onDone!() !== false) close() })
-  scrim.addEventListener('click', close)
-  trap(el, close)
-  drag(el, scrim, close)
+  scrim.addEventListener('click', () => { if (performance.now() - opened > 400) dismiss() }) // the second tap of a double tap lands here: it must not close what the first opened
+  trap(el, () => void dismiss())
+  drag(el, scrim, dismiss)
   app.root.append(scrim, el)
   requestAnimationFrame(() => { el.classList.add('is-open'); scrim.classList.add('is-open') })
   ;(o.focus ?? el.querySelector<HTMLElement>(FOCUSABLE))?.focus({ preventScroll: true }) // `focus` opens the keyboard: only for a sheet that is one field
-  return { close, el, setDone: on => { if (done) done.disabled = !on } }
+  return { close: () => close(), el, setDone: on => { if (done) done.disabled = !on } }
 }
 
-/** Drag down from the grabber or nav: 1:1, the scrim dims with it; dismiss past half the height or on a fast flick, else spring back. */
-function drag(el: HTMLElement, scrim: HTMLElement, close: () => void) {
-  // shortcut: a CSS curve stands in for the velocity-handoff spring of §3.5; under reduced motion nothing follows the finger, a release past the threshold still closes
-  const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches
-  let y0 = 0, dy = 0, on = false, still = false
+/**
+ * Drag down from the grabber or nav: 1:1, the scrim dims with it; dismiss past half the height or on a fast flick, else
+ * spring back. `close` returns false when the sheet keeps itself open (unsaved edits): then it springs back too.
+ */
+function drag(el: HTMLElement, scrim: HTMLElement, close: () => void | false) {
+  // shortcut: a CSS curve stands in for the velocity-handoff spring of §3.5. Reduced motion keeps the 1:1 follow (direct manipulation is not decoration); its CSS drops the spring-back slide
+  let y0 = 0, dy = 0, on = false
   let pts: { t: number; y: number }[] = [] // the last ~100 ms of moves, for the release velocity
   const grip = (e: PointerEvent) => (e.target as HTMLElement).closest('.sheet__grabber, .sheet__nav') && !(e.target as HTMLElement).closest('button')
   el.addEventListener('pointerdown', e => {
     if (!grip(e)) return
-    on = true; still = reduce(); y0 = e.clientY; dy = 0; pts = [{ t: e.timeStamp, y: e.clientY }]
+    on = true; y0 = e.clientY; dy = 0; pts = [{ t: e.timeStamp, y: e.clientY }]
     el.setPointerCapture(e.pointerId)
-    if (!still) el.style.transition = scrim.style.transition = 'none'
+    el.style.transition = scrim.style.transition = 'none'
   })
   el.addEventListener('pointermove', e => {
     if (!on) return
     dy = Math.max(0, e.clientY - y0)
     pts.push({ t: e.timeStamp, y: e.clientY })
     while (pts.length > 2 && e.timeStamp - pts[1].t >= 100) pts.shift()
-    if (still) return
     el.style.transform = `translateY(${dy}px)`
     scrim.style.opacity = String(Math.max(0, 1 - dy / el.offsetHeight))
   })
@@ -133,9 +148,13 @@ function drag(el: HTMLElement, scrim: HTMLElement, close: () => void) {
     while (pts.length > 2 && e.timeStamp - pts[1].t >= 100) pts.shift() // a finger that rested before lifting sent no moves
     const v = (pts[pts.length - 1].y - pts[0].y) / Math.max(1, e.timeStamp - pts[0].t) // px per ms, downward
     const fling = v > .5 || dy + v * 200 > el.offsetHeight / 2
-    if (still) { if (fling) close(); return }
     el.style.transition = scrim.style.transition = scrim.style.opacity = '' // the scrim's own transition takes it on from here: back to 1, or out with the close
-    if (fling) { el.style.transform = ''; close(); return }
+    if (fling) {
+      const held = el.style.transform
+      el.style.transform = ''
+      if (close() !== false) return
+      el.style.transform = held // kept open: spring back from where the finger left it
+    }
     // spring back: overshoot a touch, then settle (cubic-bezier stands in for the §3.5 spring)
     el.style.transition = 'transform .35s cubic-bezier(.2, 1.1, .3, 1)'
     el.style.transform = 'translateY(0)'
@@ -213,11 +232,24 @@ export const rowSwitch = (on: boolean, labelledBy: string, onToggle: (on: boolea
   return el
 }
 
-/** History and Settings nav: back link to Shortcuts, centered title, optional right button. */
+/** History and Settings nav: back link, centered title, optional right button. The router names the link after the screen before (`setBack`). */
 export const subNav = (title: string, right?: Node) => h('div', { class: 'nav nav--sub' },
-  h('a', { class: 'back-link', href: '#/', html: `${icon('back', 20, 2.6)}<span>Shortcuts</span>` }),
+  h('a', {
+    class: 'back-link', href: '#/', html: `${icon('back', 20, 2.6)}<span>Shortcuts</span>`,
+    // back pops history when it goes where we came from, so the system back does not return here afterwards
+    onclick: (e: Event) => { if (app.from === (e.currentTarget as HTMLAnchorElement).getAttribute('href')) { e.preventDefault(); history.back() } },
+  }),
   h('h1', { class: 'nav-title' }, title),
   right ?? h('span'))
+
+/** Back goes to History when the screen was opened from there, else to Shortcuts. */
+export function setBack(screen: HTMLElement) {
+  const a = screen.querySelector<HTMLAnchorElement>('.back-link')
+  if (!a) return
+  const toHistory = app.from === '#/history'
+  a.setAttribute('href', toHistory ? '#/history' : '#/')
+  a.querySelector('span')!.textContent = toHistory ? 'History' : 'Shortcuts'
+}
 
 /** Re-renders `el` and puts focus back on the button with the same text, which a replaceChildren would drop to <body>. */
 export function keepFocus(el: HTMLElement, render: () => void) {

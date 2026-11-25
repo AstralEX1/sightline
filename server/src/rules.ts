@@ -7,6 +7,43 @@ export function liqDistancePct(p: Position): number {
 
 export const normalizePhrase = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 
+// Whole answers only: "yes, close it" or "no idea" stays unanswered, so a stray sentence never confirms a trade.
+const YES = [
+  'yes', 'yeah', 'yep', 'yup', 'ya', 'ok', 'okay', 'o k', 'sure', 'confirm', 'confirmed', 'approve', 'accept', 'affirmative', 'correct',
+  'right', 'do it', 'go', 'go ahead', 'send', 'send it', 'execute', 'proceed', 'absolutely', 'of course', 'yes please', 'ok go',
+  'да', 'ага', 'угу', 'ок', 'окей', 'хорошо', 'давай', 'да давай', 'конечно', 'подтверждаю', 'подтвердить', 'отправляй', 'отправить', 'верно', 'точно', 'делай',
+  'гаразд', 'добре', 'підтверджую', // uk
+  'ja', 'jawohl', 'klar', 'genau', 'bestätigen', 'bestätige', 'los', // de, nl
+  'oui', 'ouais', 'd accord', 'confirme', 'confirmer', 'vas y', 'allez', // fr
+  'sí', 'si', 'sì', 'claro', 'vale', 'dale', 'confirmar', 'confirmo', 'certo', 'va bene', 'conferma', 'confermo', // es, it
+  'sim', 'pode', 'beleza', // pt
+  'tak', 'dobrze', 'potwierdzam', 'evet', 'tamam', 'onaylıyorum', 'prima', 'oké', 'bevestig', // pl, tr, nl
+  '是', '是的', '好', '好的', '对', '确认', '可以', '行', 'はい', 'うん', 'ええ', '確認', 'オーケー', 'いいよ', '네', '예', '응', '확인', '좋아',
+  'نعم', 'أجل', 'हाँ', 'हां', 'haan', 'כן', 'ναι', 'ano', 'igen', 'da',
+]
+const NO = [
+  'no', 'nope', 'nah', 'cancel', 'stop', 'dismiss', 'reject', 'decline', 'skip', 'abort', 'wait', 'hold', 'hold on', 'not now', 'no thanks',
+  'no thank you', 'don t', 'do not', 'never mind', 'nevermind', 'no no',
+  'нет', 'неа', 'не', 'не надо', 'нет не надо', 'отмена', 'отменить', 'отмени', 'стоп', 'стой', 'подожди', 'отклонить', 'отклоняю', 'не сейчас',
+  'ні', 'скасувати', 'скасуй', 'не треба', // uk
+  'nein', 'nee', 'abbrechen', 'stopp', 'nicht', 'warte', 'annuleren', // de, nl
+  'non', 'annuler', 'annule', 'arrête', 'attends', // fr
+  'cancelar', 'cancela', 'para', 'espera', 'annulla', 'aspetta', 'não', 'nao', // es, it, pt
+  'nie', 'anuluj', 'hayır', 'iptal', 'dur', // pl, tr
+  '不', '不要', '不是', '取消', '算了', 'いいえ', 'いや', 'キャンセル', 'やめて', '아니', '아니요', '아니오', '취소',
+  'لا', 'إلغاء', 'नहीं', 'nahin', 'nahi', 'לא', 'όχι', 'ne', 'nem',
+]
+// Left out on purpose: Russian 'так' ("so…") and 'ha' (a laugh) start too many non-answers.
+// Unicode letters kept, so "Да." and "好的。" survive; diacritics too ("sí" is not "si" everywhere).
+const answerKey = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+const YES_SET = new Set(YES.map(answerKey))
+const NO_SET = new Set(NO.map(answerKey))
+/** A spoken answer to the alert on the lens, in any of the languages above; null for anything else. */
+export function answerOf(text: string): 'yes' | 'no' | null {
+  const t = answerKey(text).replace(/ (please|пожалуйста|bitte|por favor|per favore|s il vous plaît|proszę)$/u, '')
+  return NO_SET.has(t) ? 'no' : YES_SET.has(t) ? 'yes' : null // no wins: a word in both lists must never trade
+}
+
 /** The shortcut with the longest voice phrase that appears in the text as whole words. */
 export function matchShortcut<T extends { voicePhrase?: string }>(text: string, shortcuts: T[]): T | null {
   const t = ` ${normalizePhrase(text)} `

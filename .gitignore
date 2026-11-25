@@ -8,3 +8,5 @@ references/repos/
 .DS_Store
 .playwright-cli/
 /*.png
+screens/
+.server-tmp/

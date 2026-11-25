@@ -1,4 +1,4 @@
-# Sightline · Bybit Shortcuts for Even G2
+# Trade Shortcuts · Rules for Bybit on Even G2
 
 Trading rules you build on your phone, answered on your glasses.
 
@@ -24,7 +24,7 @@ Bybit **demo / testnet only**: the server refuses any other host at startup. A b
 - Unknown results (timeout, 5xx, Bybit 10000/10016) are never retried blindly; the position is blocked until Bybit settles it (orders, stops and cancels are looked up 30 s later). An unknown add margin has nothing to look up: it blocks only another add margin until the position closes, a Close still goes out.
 - Stops only tighten and must sit behind the price; a close never exceeds one market order; Open needs the leverage you set; Add Margin needs isolated margin.
 - Test alerts are simulated end to end and cannot reach the exchange adapter.
-- No withdrawals, no transfers, no live host, no secrets on the phone.
+- Bybit keys, the OpenAI key and the Telegram bot token stay on the server. The phone stores its server access token in Even Hub storage, with local storage as a browser fallback. The exchange adapter supports demo/testnet trading only and exposes no transfers or withdrawals.
 
 ## Run the demo
 
@@ -54,7 +54,13 @@ npm run sim
 
 Open http://localhost:5173 for the phone page (type the server token once in Settings › Connection, or set `VITE_APP_TOKEN` for local dev only). Add a template such as **Close Position · Near liquidation · half** or **Set Stop Loss · No stop loss**, switch it on, and watch the alert appear on the simulated lens. Tap the action to send it to the demo exchange; History shows the result.
 
-Real glasses: `npm run qr` (same Wi-Fi). Bybit demo or testnet: set `EXCHANGE=bybit`, `BYBIT_BASE`, `BYBIT_API_KEY`, `BYBIT_API_SECRET`. Voice: `OPENAI_API_KEY`. Telegram: `TELEGRAM_BOT_TOKEN`, then Settings › Telegram › Connect.
+`npm run screens` takes lens screenshots on demo data (Main, Detail, the next positions) into `screens/`, on its own ports and without Telegram, so a running server is not touched. It needs `VITE_APP_TOKEN` in `.env`.
+
+For QR preview on G2, pair the glasses and update their firmware. Sign in to Even Hub with the same account as the phone app, then restart the phone app to get Developer Mode. Keep the phone and laptop on the same Wi-Fi. Start Vite with `npm run dev -- --host`, then run `npm run qr` on macOS and scan from the Even app. Keep `VITE_APP_TOKEN` empty for LAN preview and enter the server token under Settings › Connection. [Even Hub hardware setup](https://hub.evenrealities.com/docs/get-started/quickstart/hardware)
+
+Bybit demo or testnet: set `EXCHANGE=bybit`, `BYBIT_BASE`, `BYBIT_API_KEY`, `BYBIT_API_SECRET`. Voice: `OPENAI_API_KEY`. Telegram: `TELEGRAM_BOT_TOKEN`, then Settings › Telegram › Connect.
+
+To build an installable package, run `npm run pack -- https://your-backend.example` with the HTTPS origin that serves your `/api`. Packaging sets the default backend and allowlists that exact origin. After installation, enter the server token under Settings › Connection.
 
 ## Architecture
 
@@ -81,7 +87,7 @@ One Node process, no framework, built-in `node:sqlite`, REST polling (`docs/shor
 npm run typecheck && npm test && npm run build
 ```
 
-Specs: `docs/shortcuts-architecture.md` (server), `docs/bybit-shortcuts-spec.md` (phone), `docs/glasses-shortcuts.md` (lens), `docs/design.md`.
+Specs: `docs/shortcuts-architecture.md` (server), `docs/trade-shortcuts-spec.md` (phone), `docs/glasses-shortcuts.md` (lens), `docs/design.md`.
 
 ## For agents picking this up
 
@@ -95,8 +101,7 @@ Start with `docs/handoff.md`: purpose, sources of truth, commands, current state
 ## Known limits
 
 - Tried against the demo exchange and the simulator; every mutation ran on Bybit testnet and a real Telegram bot delivered an alert; ROI parity with the Bybit app and real glasses still need a run.
-- The packaged app has no Vite proxy: put your server's https origin in `app/app.json` (network whitelist) before `npm run pack`.
 - One account per server; REST polling (WebSockets are the planned upgrade when fills arrive too late).
 - Every other known limit is a `shortcut:` comment in the code.
 
-Sightline never gives advice. Every alert comes from a rule you wrote.
+Trade Shortcuts never gives advice. Every alert comes from a rule you wrote.

@@ -22,7 +22,7 @@ export interface Screen {
   text: Record<string, string>
   /** Container name → textColor: 4 primary and selected, 3 ordinary text, 2 hints and supporting values */
   tone: Record<string, number>
-  /** The 48 px icon in the frame, '' on Main and Detail (Detail uses the big numeral instead) */
+  /** The 48 px icon in the frame, '' on Main and Detail */
   icon: IconName | ''
   /** What a tap does on opt1, opt2; none while waiting for Bybit */
   choices: Choice[]
@@ -30,8 +30,10 @@ export interface Screen {
   at: number
   /** The alert or Review on the lens (not a result): the proposal a tap answers */
   card: Proposal | null
-  /** Detail's dotted PnL picture; only set on the detail layout */
-  numeral?: string
+  /** Detail's coin and side, drawn big ("BTC long") */
+  title?: string
+  /** Detail's price chart: whose closes to fetch and the position's levels drawn across them (0 = none) */
+  chart?: { symbol: string; entry: number; stop: number; tp: number; liq: number }
 }
 
 /** What became of the card the lens answered, or lost before an answer. On the lens until OK or Dismiss. */
@@ -60,7 +62,8 @@ export interface View {
   detail?: boolean
   /** The server answered 401, so the phone page still needs the token */
   needToken?: boolean
-  /** The gesture line on Main. Shown for a moment after launch: it teaches, then gets out of the way. */
+  /** The optional tips on Main and Detail (tap: details, tap, hold: menu, swipe: next position). Double tap and the
+   * lines on alerts, reviews and results are always drawn: they say what a tap does, or the only way out. */
   hints?: boolean
   /** Phone clock for the time in the top line; none in tests */
   now?: number
@@ -71,28 +74,33 @@ export interface View {
   hide?: string
   /** Where a swipe put `>`, on the page with this key */
   cursor?: { key: string; at: number }
-  /** Enabled shortcuts that apply to the focused position (Detail info line) */
-  onCount?: number
 }
 
 export const ROWS = 5
+/** Optional tips stay on for this many launches, unless the phone switch was set. */
+const TIP_LAUNCHES = 3
+/** `setting` is the phone switch ('on', 'off', '' if never touched), `launches` counts the earlier starts. */
+export const tipsShown = (setting: string, launches: number) => (setting ? setting === 'on' : launches < TIP_LAUNCHES)
 /** "liq 5.9%" shows in the flag column below this distance. */
 const LIQ_FLAG_PCT = 10
 /** Inner width of each box in main.ts LAYOUTS: its width minus 2 × 2 px padding. */
 export const INNER_PX: Record<string, number> = {
-  top: 540, name: 140, price: 124, loss: 100, gain: 100, flag: 164, hint: 540,
+  top: 540, name: 140, cur: 140, price: 124, loss: 100, gain: 100, flag: 164, hint: 540,
   who: 380, why: 380, queue: 68, ask: 452, terms: 452, opt1: 540, opt2: 540,
-  table: 268, loud: 268, label: 236, unit: 236, info: 540,
+  table: 236, lev: 268, pnl: 236,
 }
 /** Brightness of each box unless a state says otherwise (§4). */
 const TONE: Record<string, number> = {
-  top: 3, name: 3, price: 3, loss: 4, gain: 3, flag: 4, hint: 2,
+  top: 3, name: 3, cur: 4, price: 3, loss: 4, gain: 2, flag: 4, hint: 2,
   frame: 3, who: 4, why: 3, queue: 2, ask: 4, terms: 3, opt1: 3, opt2: 3,
-  table: 3, loud: 4, label: 2, unit: 2, info: 2,
+  table: 3, lev: 3, pnl: 4,
 }
 const SPACE_PX = getTextWidth(' ')
 /** As wide as '> ' (15 px), so an unselected choice lines up with the selected one. */
 const UNMARKED = '   '
+/** Main's row mark, and blanks as wide as it (▶ is 20 px, a space 5) */
+const ROW_MARK = '▶ '
+const ROW_UNMARKED = '     '
 
 /** Cut to `px` with a one-character ellipsis (pretext's pxTruncate adds three dots). */
 export function fit(s: string, px: number): string {
@@ -126,7 +134,8 @@ export function clampFocus(focus: number | undefined, n: number): number {
   return ((focus ?? 0) % n + n) % n
 }
 
-/** Dotted PnL for Detail: cents under 100, whole numbers from 100, `k` from 10,000 (glasses-shortcuts §4). */
+/** PnL for Detail with ▲ / ▼: tenths under 10, whole numbers from 10, `k` from 10,000 (glasses-shortcuts §4).
+ * Coarse on purpose: cents would change it on nearly every price tick. */
 export function pnlNumeral(n: number): string {
   const sign = n < 0 ? '▼' : '▲'
   const a = Math.abs(n)
@@ -134,15 +143,15 @@ export function pnlNumeral(n: number): string {
     const k = a / 1000
     return `${sign}${k >= 100 ? Math.round(k).toLocaleString('en-US') : k.toFixed(1)}k`
   }
-  if (a >= 100) return `${sign}${Math.round(a).toLocaleString('en-US')}`
-  return `${sign}${a.toFixed(2)}`
+  if (a >= 10) return `${sign}${Math.round(a).toLocaleString('en-US')}`
+  return `${sign}${a.toFixed(1)}`
 }
 
 /** The condition behind the alert names its icon; the text says it too. */
 const REASON_ICON: Record<ConditionType, IconName> = {
   NEAR_LIQUIDATION: 'warn', LOSS: 'trendDown', SL_MISSING: 'shieldOff', NEAR_SL: 'shield', PROFIT: 'trendUp',
   NEAR_TP: 'target', PRICE_CHANGE: 'pulse', PRICE: 'bell', ORDER_FILLED: 'check', ORDER_PARTIAL: 'half',
-  VOLUME_SPIKE: 'pulse', FUNDING: 'clock', ORDER_STALE: 'hourglass', POSITION_CLOSED: 'reject',
+  VOLUME_SPIKE: 'pulse', FUNDING: 'percent', ORDER_STALE: 'hourglass', POSITION_CLOSED: 'exit',
 }
 // shortcut: a test alert has no reasonType, so it wears the bell; send the shortcut's first condition type with a test to show its own icon
 export const iconOf = (c: Proposal): IconName => (c.reasonType ? REASON_ICON[c.reasonType] : c.voice ? 'mic' : 'bell')
@@ -171,10 +180,10 @@ function roi(p: Position): string {
 function row(p: Position, on: boolean): string[] {
   const dist = liqDistancePct(p)
   const r = roi(p)
-  const cell = r && alignRight(r, INNER_PX.loss)
+  const cell = r && fit(r, INNER_PX.loss)
   const flag = dist < LIQ_FLAG_PCT ? `liq ${dist.toFixed(1)}%` : p.stopLoss ? '' : 'no stop'
-  const mark = on ? '> ' : UNMARKED
-  return [mark + name(p, getTextWidth(mark)), alignRight(price(p.markPrice), INNER_PX.price), r.startsWith('▼') ? cell : '', r.startsWith('▲') ? cell : '', flag && alignRight(flag, INNER_PX.flag)]
+  const mark = on ? ROW_MARK : ROW_UNMARKED
+  return [mark + name(p, getTextWidth(mark)), fit(price(p.markPrice), INNER_PX.price), r.startsWith('▼') ? cell : '', r.startsWith('▲') ? cell : '', flag && alignRight(flag, INNER_PX.flag)]
 }
 
 /** The top line, with the time at its right edge. */
@@ -182,8 +191,12 @@ function top(text: string, now?: number): string {
   if (!now) return fit(text, INNER_PX.top)
   const clock = hhmm(now)
   const left = fit(text, INNER_PX.top - getTextWidth(clock) - 3 * SPACE_PX)
-  return left + ' '.repeat(Math.floor((INNER_PX.top - getTextWidth(left) - getTextWidth(clock)) / SPACE_PX)) + clock
+  let spaces = Math.floor((INNER_PX.top - getTextWidth(left) - getTextWidth(clock)) / SPACE_PX)
+  while (spaces > 1 && getTextWidth(left + ' '.repeat(spaces) + clock) > INNER_PX.top) spaces--
+  return left + ' '.repeat(spaces) + clock
 }
+
+const pauseLine = (s: ServerState | null, min: number) => (min > 0 ? `Cards paused · ${min} min left${s?.pending ? ` · ${s.pending} waiting` : ''}` : '')
 
 function main(s: ServerState | null, v: View): Screen {
   const pausedMin = v.pausedMin ?? 0
@@ -194,11 +207,12 @@ function main(s: ServerState | null, v: View): Screen {
   const problem = v.voice || (v.needToken ? 'Server token missing · enter it on the phone' : '') ||
     (v.offline ? 'No connection to your server · retrying' : '') || (!s ? 'Connecting…' : '') ||
     (s?.error ? (s.updatedAt ? `Bybit data stale since ${hhmm(s.updatedAt)} · retrying` : `Bybit: ${s.error}`) : '') ||
-    s?.toast || (pausedMin > 0 ? `Cards paused · ${pausedMin} min left${s?.pending ? ` · ${s.pending} waiting` : ''}` : '')
+    s?.toast || pauseLine(s, pausedMin)
   const source = s?.source === 'Demo data' || s?.source === 'Bybit demo' ? 'Bybit Demo' : s?.source || 'Bybit'
   const head = problem || `${source} · ${n ? `${n} position${n === 1 ? '' : 's'}` : 'no open positions'}`
-  const text: Record<string, string> = { top: top(head, v.now), name: '', price: '', loss: '', gain: '', flag: '', hint: '' }
-  const tone: Record<string, number> = { ...TONE, top: problem ? 4 : 3 }
+  const text: Record<string, string> = { top: top(head, v.now), name: '', cur: '', price: '', loss: '', gain: '', flag: '', hint: '' }
+  // A pause is a state you chose, not news: it stays at ordinary brightness for its 15 minutes.
+  const tone: Record<string, number> = { ...TONE, top: problem && problem !== pauseLine(s, pausedMin) ? 4 : 3 }
   if (live) {
     // More than fit: pages of ROWS - 1, and the last row says where you are.
     const paged = ranked.length > ROWS
@@ -206,73 +220,70 @@ function main(s: ServerState | null, v: View): Screen {
     const from = paged ? Math.floor(focus / per) * per : 0
     const slice = ranked.slice(from, from + per)
     const rows = slice.map((p, i) => row(p, from + i === focus))
-    if (paged) rows.push([`${from + 1}–${from + slice.length} of ${ranked.length}`, '', '', '', ''])
+    if (paged) rows.push([`▼ ${from + 1}–${from + slice.length} of ${ranked.length}`, '', '', '', ''])
     ;(['name', 'price', 'loss', 'gain', 'flag'] as const).forEach((box, i) => { text[box] = rows.map(r => r[i]).join('\n').trimEnd() })
-    if (live.error) for (const box of ['name', 'price', 'loss', 'gain', 'flag']) tone[box] = 2 // stale numbers step back; the top line says since when
-    if (v.hints) {
-      const bits = [
-        ...(n > 1 ? ['swipe: choose'] : n > ROWS ? ['swipe: more'] : []),
-        ...(n ? ['tap: details'] : []),
-        'double tap: exit',
-        'tap, hold: menu',
-      ]
-      text.hint = bits.join(' · ')
-    }
+    // The selected name moves to `cur`, drawn brighter on top of the same column
+    const sel = focus - from
+    text.cur = rows.map((r, i) => (i === sel ? r[0] : '')).join('\n').trimEnd()
+    text.name = rows.map((r, i) => (i === sel ? '' : r[0])).join('\n').trimEnd()
+    if (live.error) for (const box of ['name', 'cur', 'price', 'loss', 'gain', 'flag']) tone[box] = 2 // stale numbers step back; the top line says since when
   }
+  // Double tap is the only way out, offline too. No "swipe: choose": the `>` and the page counter already show it.
+  const tips = v.hints && live
+  text.hint = fit([tips && n ? 'tap: details' : '', 'double tap: exit', tips ? 'tap, hold: menu' : ''].filter(Boolean).join(' · '), INNER_PX.hint)
   return { layout: 'main', key: 'main', text, tone, icon: '', choices: [], at: 0, card: null }
 }
 
-/** ROI as `−4.2%` / `+24.0%` for the Detail unit line. */
-function roiSigned(p: Position): string {
-  if (!(p.positionIM > 0)) return ''
-  const r = (100 * p.unrealisedPnl) / p.positionIM
-  const a = Math.abs(r)
-  return `${r < 0 ? '−' : '+'}${a >= 1000 ? Math.round(a).toLocaleString('en-US') : a.toFixed(1)}%`
+/** Signed distance from the mark price to a level, as `−1.9%` / `+3.3%`. */
+function away(level: number, mark: number): string {
+  const d = (100 * (level - mark)) / mark
+  return `${d < 0 ? '−' : '+'}${Math.abs(d).toFixed(1)}%`
 }
 
-/** Weather layout: short table left, one big dotted PnL right (glasses-shortcuts §4). */
-function detail(s: ServerState, p: Position, at: number, total: number, v: View): Screen {
-  const side = sideWord(p.side)
-  const who = `${fit(coin(p.symbol), INNER_PX.top - getTextWidth(` ${side} · ${p.leverage}×`))} ${side}`
-  const title = `${who} · ${p.leverage}×`
+/**
+ * Coin and side big top left (a picture: the font has one size), leverage under it; the dotted PnL top right with the
+ * stop and liquidation distances under it; the last hour across the bottom (glasses-shortcuts §4).
+ */
+function detail(p: Position, at: number, total: number, v: View): Screen {
+  const stop = p.stopLoss ? `stop ${away(p.stopLoss, p.markPrice)}` : ''
+  const liq = p.liqPrice > 0 ? `liq ${away(p.liqPrice, p.markPrice)}` : ''
+  const table = [stop, liq].filter(Boolean).join(' · ')
+  const hint = fit(total > 1 && v.hints ? 'swipe: next position · double tap: back' : 'double tap: back', INNER_PX.hint - 60)
   const place = total > 1 ? `${at + 1}/${total}` : ''
-  const left = place ? fit(title, INNER_PX.top - getTextWidth(place) - 3 * SPACE_PX) : fit(title, INNER_PX.top)
-  const topLine = place
-    ? left + ' '.repeat(Math.floor((INNER_PX.top - getTextWidth(left) - getTextWidth(place)) / SPACE_PX)) + place
-    : left
-  const missing = !p.stopLoss
-  const parts: { table: string; loud: string }[] = [
-    { table: `${p.size} ${coin(p.symbol)}`, loud: '' },
-    ...(p.liqPrice > 0 ? [{ table: `liq ${price(p.liqPrice)}`, loud: '' }] : []),
-    { table: missing ? '' : `stop ${price(p.stopLoss)}`, loud: missing ? '× no stop' : '' },
-    ...(p.takeProfit > 0 ? [{ table: `tp ${price(p.takeProfit)}`, loud: '' }] : []),
-  ]
-  const table = parts.map(r => fit(r.table, INNER_PX.table)).join('\n')
-  const loud = parts.map(r => fit(r.loud, INNER_PX.loud)).join('\n')
-  const signed = roiSigned(p)
-  const unit = signed ? `USDT · ROI ${signed}` : 'USDT'
-  const bal = s.balance ? `balance ${usdt(s.balance.available)}` : ''
-  const on = v.onCount !== undefined ? `${v.onCount} shortcut${v.onCount === 1 ? '' : 's'} on` : ''
-  const info = [on, bal].filter(Boolean).join(' · ')
   return {
-    layout: 'detail', key: `detail:${p.symbol}:${p.positionIdx}`, text: {
-      top: topLine, table, loud, label: 'PnL', unit: fit(unit, INNER_PX.unit), info: fit(info, INNER_PX.info),
-      hint: fit(total > 1 ? 'swipe: next position · double tap: back' : 'double tap: back', INNER_PX.hint),
-    }, tone: { ...TONE }, icon: '', choices: [], at: 0, card: null, numeral: pnlNumeral(p.unrealisedPnl),
+    layout: 'detail', key: 'detail', text: {
+      lev: fit(`${p.leverage}×`, INNER_PX.lev), pnl: fit(pnlNumeral(p.unrealisedPnl), INNER_PX.pnl), table: fit(table, INNER_PX.table),
+      hint: place ? hint + ' '.repeat(Math.floor((INNER_PX.hint - getTextWidth(hint) - getTextWidth(place)) / SPACE_PX)) + place : hint,
+    }, tone: { ...TONE }, icon: '', choices: [], at: 0, card: null,
+    title: `${coin(p.symbol)} ${sideWord(p.side)}`,
+    chart: { symbol: p.symbol, entry: p.entryPrice, stop: p.stopLoss, tp: p.takeProfit, liq: p.liqPrice },
   }
 }
 
 /** The framed pages: `head` is the text inside the frame, `labels` go in opt1 and opt2 with `>` on one. */
-function framed(o: { layout: 'alert' | 'review'; key: string; head: Record<string, string>; labels: string[]; choices: Choice[]; icon: IconName; card: Proposal | null; hint: string }, v: View): Screen {
+/** What a tap does on the choice under `>`, said in the hint line. */
+const TAP: Record<Choice, string> = { dismiss: 'tap: dismiss', confirm: 'tap: confirm', review: 'tap: review', close: 'tap: close' }
+
+function framed(o: { layout: 'alert' | 'review'; key: string; head: Record<string, string>; labels: string[]; choices: Choice[]; icon: IconName; card: Proposal | null; hint: (at: number) => string }, v: View): Screen {
   const at = v.cursor?.key === o.key ? Math.min(v.cursor.at, o.labels.length - 1) : 0 // Dismiss first: a stray tap must not trade
-  const text: Record<string, string> = { frame: '', opt1: '', opt2: '', hint: fit(o.hint, INNER_PX.hint) }
+  const text: Record<string, string> = { frame: '', opt1: '', opt2: '', hint: fit(v.voice || o.hint(at), INNER_PX.hint) } // the mic bar, a countdown or a voice note
   for (const [box, t] of Object.entries(o.head)) text[box] = t.split('\n').map(l => (box === 'queue' ? l && alignRight(l, INNER_PX.queue) : fit(l, INNER_PX[box]))).join('\n')
-  const tone = { ...TONE }
+  const tone: Record<string, number> = { ...TONE, queue: o.head.queue === 'TEST' || o.head.queue === 'NEW' ? 4 : TONE.queue } // a warning, not a counter
   o.labels.forEach((l, i) => {
     text[`opt${i + 1}`] = fit(`${i === at ? '> ' : UNMARKED}${l}`, INNER_PX.opt1)
     tone[`opt${i + 1}`] = i === at ? 4 : 3
   })
   return { layout: o.layout, key: o.key, text, tone, icon: o.icon, choices: o.choices, at, card: o.card }
+}
+
+/** The server's reason in the lens's words (glasses-shortcuts §5): "stop", never "stop loss". */
+export function lensWhy(why: string): string {
+  return sentence(why
+    .replace(/^liquidation distance (.+%)$/i, '$1 to liquidation')
+    .replace(/^stop loss distance (.+%)$/i, '$1 to stop')
+    .replace(/^take profit distance (.+%)$/i, '$1 to take profit')
+    .replace(/^no stop loss$/i, 'no stop')
+    .replace(/stop loss/gi, 'stop'))
 }
 
 function alert(s: ServerState, c: Proposal, v: View): Screen {
@@ -281,9 +292,9 @@ function alert(s: ServerState, c: Proposal, v: View): Screen {
   const action = s.error ? [] : [t.type === 'order' && grows(c) ? `Review ${heldBy(s, c) ? 'add' : sideWord(t.side)} · ${usdt(t.notionalUsdt)}` : c.question.replace(/\?$/, '')]
   return framed({
     layout: 'alert', key: `alert:${c.id}`, card: c, icon: s.error ? 'hourglass' : iconOf(c),
-    head: { who: c.who, why: s.error ? 'Bybit data is stale' : sentence(c.why.replace(/^liquidation distance (.+%)$/i, '$1 to liquidation')), queue: c.simulated ? 'TEST' : c.supersedes ? 'NEW' : s.pending > 1 ? `1/${s.pending}` : '' },
+    head: { who: c.who, why: s.error ? 'Bybit data is stale' : lensWhy(c.why), queue: c.simulated ? 'TEST' : c.supersedes ? 'NEW' : s.pending > 1 ? `1/${s.pending}` : '' },
     labels: ['Dismiss', ...action], choices: ['dismiss', ...(action.length ? [grows(c) ? 'review' as const : 'confirm' as const] : [])],
-    hint: action.length ? 'swipe: choose · tap: confirm' : 'tap: dismiss',
+    hint: at => (action.length ? `swipe: choose · ${TAP[at ? (grows(c) ? 'review' : 'confirm') : 'dismiss']}` : 'tap: dismiss'),
   }, v)
 }
 
@@ -297,7 +308,7 @@ function review(s: ServerState, c: Proposal & { terms: { type: 'order' } }, v: V
   return framed({
     layout: 'review', key: `review:${c.id}`, card: c, icon: 'grow', head,
     labels: ['Dismiss', held ? `Add · ${qty}` : `Open ${sideWord(t.side)} · ${qty}`], choices: ['dismiss', 'confirm'],
-    hint: 'swipe: choose · tap: confirm · double tap: back',
+    hint: at => `swipe: choose · ${TAP[at ? 'confirm' : 'dismiss']} · double tap: back`,
   }, v)
 }
 
@@ -317,7 +328,7 @@ function told(o: Outcome): [IconName, string, string?] {
     case 'PARTIALLY_FILLED': return ['half', `Partly filled · ${e.filledQty} of ${t.type === 'order' ? t.qty : '?'} ${coinName}`, 'OK']
     case 'APPLIED': return ['check', t.type === 'setStop' ? `Stop at ${price(t.price)}` : t.type === 'setTakeProfit' ? `Take profit at ${price(t.price)}`
       : t.type === 'addMargin' ? `Added ${usdt(t.usd)} margin` : 'Order cancelled', 'OK']
-    case 'REJECTED': return ['reject', `Rejected: ${e.message}`, 'OK']
+    case 'REJECTED': return ['reject', 'Rejected by Bybit', 'OK'] // the reason goes on the row under OK
     case 'UNKNOWN': return ['question', 'No answer from Bybit yet', 'OK'] // the server reconciles, never retries
     case 'SIMULATED': return [iconOf(o.card), 'Test only · nothing was sent', 'OK']
   }
@@ -328,11 +339,16 @@ function result(o: Outcome, v: View): Screen {
   const sc = framed({
     layout: 'alert', key: `alert:${o.card.id}`, card: null, icon, head: { who: o.card.who, why, queue: '' },
     labels: label ? [label] : [], choices: label ? ['close'] : [],
-    hint: label ? `tap: ${label === 'OK' ? label : label.toLowerCase()}` : 'waiting for Bybit…',
+    hint: () => (label ? `tap: ${label === 'OK' ? label : label.toLowerCase()}` : 'waiting for Bybit · double tap: hide'),
   }, v)
-  // The receipt goes in the empty second row, under OK: it arrives a poll later, and nothing on screen moves for it.
-  const receipt = o.execution?.receipt
-  if (receipt && label) sc.text.opt2 = fit(`${UNMARKED}${receipt}`, INNER_PX.opt2)
+  // The second row, under OK, is free: a receipt arrives a poll later and nothing on screen moves for it; a rejection's
+  // reason is too long for the frame. Dimmer than a choice, so it never reads as one.
+  const e = o.execution
+  const extra = e?.status === 'REJECTED' ? e.message : label ? e?.receipt : ''
+  if (extra) {
+    sc.text.opt2 = fit(`${UNMARKED}${extra}`, INNER_PX.opt2)
+    sc.tone.opt2 = e?.status === 'REJECTED' ? 3 : 2
+  }
   return sc
 }
 
@@ -347,7 +363,7 @@ export function screen(s: ServerState | null, v: View = {}): Screen {
     const ranked = rankPositions(live.positions)
     const focus = clampFocus(v.focus, ranked.length)
     const p = ranked[focus]
-    if (p) return detail(live, p, focus, ranked.length, v)
+    if (p) return detail(p, focus, ranked.length, v)
   }
   return main(s, v)
 }
@@ -356,14 +372,16 @@ export function screen(s: ServerState | null, v: View = {}): Screen {
 export function previewText(sc: Screen): string {
   const t = sc.text
   if (sc.layout === 'detail') {
-    const table = t.table.split('\n').map((l, i) => t.loud.split('\n')[i] || l).filter(Boolean)
-    return [t.top, ...table, '', t.label, sc.numeral ?? '', t.unit, t.info, '', t.hint].filter((l, i, a) => l || a[i - 1]).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+    return [[sc.title, t.pnl].filter(Boolean).join('   '), [t.lev, t.table].filter(Boolean).join('   '), '', t.hint].filter((l, i, a) => l || a[i - 1]).join('\n').replace(/\n{3,}/g, '\n\n').trim()
   }
   if (sc.layout !== 'main') {
     const head = sc.layout === 'review' ? [t.ask, ...t.terms.split('\n')] : [[t.who, t.queue.trim()].filter(Boolean).join('   '), t.why]
     return [...head, '', t.opt1, t.opt2, '', t.hint].join('\n').replace(/\n{3,}/g, '\n\n').trim()
   }
+  const cur = t.cur.split('\n')
   const cols = ['name', 'price', 'loss', 'gain', 'flag'].map(b => t[b].split('\n'))
+  cols[0] = cols[0].map((l, i) => cur[i] || l)
+  for (let i = cols[0].length; i < cur.length; i++) cols[0][i] = cur[i]
   const rows = cols[0].map((_, i) => cols.map(c => (c[i] ?? '').trim()).filter(Boolean).join('  ')).filter(Boolean)
   return [t.top.replace(/ {2,}/, '   '), ...rows, ...(t.hint ? ['', t.hint] : [])].join('\n')
 }

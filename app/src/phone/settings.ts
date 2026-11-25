@@ -6,13 +6,22 @@ import * as api from '../api.ts'
 import type { SettingsPage } from '../api.ts'
 import type { Settings } from '../../../server/src/types.ts'
 import { parseDec } from './sentence.ts'
-import { h, rowSwitch, sheet, subNav, toast } from './ui.ts'
+import { icon } from './icons.ts'
+import { dialog, h, rowSwitch, sheet, subNav, toast } from './ui.ts'
 
 let page: SettingsPage | null = null
 let dynamic: HTMLElement
 /** main.ts writes the account line and the glasses state here; moved, never rebuilt, so they always exist once. */
 const sourceEl = h('span', { id: 'source', class: 'row__value' }, 'Connecting…')
 const glassesEl = h('span', { id: 'glasses', class: 'row__value' }, 'Looking for glasses…')
+/** Stored on the phone, not the server: it works offline, and the lens reads it on the next draw. */
+const hintsEl = rowSwitch(api.hintsOn(), 'set-hints', (on, el) => { el.setAttribute('aria-checked', String(on)); api.setHints(on) })
+const voiceEl = rowSwitch(api.voiceAnswersOn(), 'set-voice', (on, el) => { el.setAttribute('aria-checked', String(on)); api.setVoiceAnswers(on) })
+/** Call once the bridge's storage is read: until then the switches may show the default. */
+export const syncHints = () => {
+  hintsEl.setAttribute('aria-checked', String(api.hintsOn()))
+  voiceEl.setAttribute('aria-checked', String(api.voiceAnswersOn()))
+}
 
 const row = (label: string, value: Node | string, id?: string) =>
   h('div', { class: 'row' }, h('span', { id }, label), typeof value === 'string' ? h('span', { class: 'row__value' }, value) : value)
@@ -28,12 +37,29 @@ export function buildSettings(el: HTMLElement) {
     h('div', { class: 'group' },
       h('details', { id: 'server-box', class: 'server-box' },
         h('summary', { class: 'row row--summary' }, h('span', {}, 'Server'), h('span', { id: 'server-state', class: 'row__value' }, 'Connecting…')),
-        h('label', { class: 'row row--field' }, h('span', {}, 'Address'), h('input', { id: 'server', class: 'row__input', placeholder: 'Same as this page', autocomplete: 'off', 'aria-label': 'Server address' })),
-        h('label', { class: 'row row--field' }, h('span', {}, 'Token'), h('input', { id: 'token', class: 'row__input', type: 'password', placeholder: 'APP_TOKEN', autocomplete: 'off', 'aria-label': 'Server token' })),
+        h('label', { class: 'row row--field' }, h('span', {}, 'Address'), h('input', {
+          id: 'server', class: 'row__input', type: 'url', inputmode: 'url', placeholder: 'Same as this page', autocomplete: 'off',
+          autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false', enterkeyhint: 'next', 'aria-label': 'Server address',
+        })),
+        h('label', { class: 'row row--field' }, h('span', {}, 'Token'), h('input', {
+          id: 'token', class: 'row__input', type: 'password', placeholder: 'APP_TOKEN', autocomplete: 'off',
+          autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false', enterkeyhint: 'go', 'aria-label': 'Server token',
+        })),
         h('div', { class: 'row' }, h('button', { id: 'connect', class: 'row--btn is-accent', type: 'button' }, 'Connect')))),
     h('h2', { class: 'group-label' }, 'On your glasses'),
+    h('div', { class: 'group' },
+      h('div', { class: 'row row--switch' }, h('span', { id: 'set-hints' }, 'Gesture tips'), hintsEl),
+      h('div', { class: 'row row--switch' }, h('span', { id: 'set-voice' }, 'Answer alerts by voice'), voiceEl)),
+    h('p', { class: 'footnote' }, 'Tips like “tap: details”. Alerts and trades always say what a tap does, and double tap always shows.'),
+    h('p', { class: 'footnote' }, 'When an alert arrives the mic listens for 5 s. Say yes or no in any language. After yes, a 5 s countdown runs before anything is sent; any tap, swipe or “no” stops it.'),
+    h('h2', { class: 'group-label' }, 'Lens now'),
     h('div', { class: 'lens' }, h('span', { id: 'preview-icon', class: 'lens__icon' }), h('pre', { id: 'preview', class: 'lens__text' })),
-    h('p', { class: 'footnote' }, 'Every trade is confirmed on Even G2. The phone never confirms one.'))
+    h('p', { class: 'footnote' }, 'What Even G2 shows right now. Every trade is confirmed there; the phone never confirms one.'))
+  // main.ts replaces these once the bridge answers; in a plain browser it never does
+  setTimeout(() => {
+    if (sourceEl.textContent === 'Connecting…') sourceEl.textContent = 'Not connected'
+    if (glassesEl.textContent === 'Looking for glasses…') glassesEl.textContent = 'Not connected'
+  }, 15_000)
 }
 
 async function save(next: Settings) {
@@ -52,7 +78,7 @@ function timing(label: string, get: (s: Settings) => number, set: (s: Settings, 
       const note = h('p', { class: 'footnote' }, 'From 10 to 300 seconds')
       const ok = () => { const v = parseDec(input.value); return v !== null && Number.isInteger(Number(v)) && Number(v) >= 10 && Number(v) <= 300 ? Number(v) : null }
       const sh = sheet({
-        title: label, back: () => btn.focus(), focus: input,
+        title: label, back: () => btn.focus(), focus: input, dirty: () => input.value !== String(get(page!.settings)),
         body: [h('label', { class: 'numeric' }, h('span', { class: 'numeric__word' }, 'Every'), h('span', { class: 'numeric__value' }, input), h('span', { class: 'numeric__unit' }, 's')), note],
         onDone: () => {
           const v = ok()
@@ -66,7 +92,7 @@ function timing(label: string, get: (s: Settings) => number, set: (s: Settings, 
       input.addEventListener('input', () => { const v = ok(); sh.setDone(v !== null); note.classList.toggle('is-error', v === null && input.value !== ''); note.textContent = v === null && input.value !== '' ? 'Enter a number from 10 to 300' : 'From 10 to 300 seconds' })
       input.select()
     },
-  }, h('span', {}, label), h('span', { class: 'row__value num' }, `${get(s)} s`))
+  }, h('span', {}, label), h('span', { class: 'row__value num' }, `${get(s)} s`, h('span', { class: 'row__chev', 'aria-hidden': 'true', html: icon('right', 14, 2.6) })))
   return btn
 }
 
@@ -97,6 +123,11 @@ function telegramRow() {
   return h('div', { class: 'row' }, h('span', {}, t.name ? `Connected · @${t.name}` : 'Connected'), h('button', {
     class: 'row__action is-danger', type: 'button', 'aria-label': 'Disconnect Telegram',
     onclick: async () => {
+      const pick = await dialog({
+        title: 'Disconnect Telegram?', text: 'Alerts stop reaching Telegram when the glasses are off.',
+        buttons: [{ label: 'Disconnect', danger: true }, { label: 'Cancel', primary: true }],
+      })
+      if (pick !== 0) return
       try { await api.unlinkTelegram(); await renderSettings() } catch (e) { toast((e as Error).message) }
     },
   }, 'Disconnect'))
@@ -126,14 +157,15 @@ export async function renderSettings() {
       row('API access', access),
       row('Withdrawals', key?.withdraw ? 'On' : 'Off'),
       row('Live trading', 'Off')),
+    h('p', { class: 'footnote' }, 'Read from your Bybit API key. Change these on Bybit.'),
     h('h2', { class: 'group-label' }, 'Even G2'),
     h('div', { class: 'group' }, row('Glasses', glassesEl)),
     h('h2', { class: 'group-label' }, 'Notifications'),
     h('div', { class: 'group' },
-      notifySwitch('Show alerts on glasses', 'set-glasses', 'glasses'),
-      notifySwitch('In-app notifications', 'set-app', 'app'),
+      notifySwitch('Show on glasses', 'set-glasses', 'glasses'),
+      notifySwitch('Show in this app', 'set-app', 'app'),
       telegramRow()),
-    h('p', { class: 'footnote' }, 'Alerts reach Telegram when the glasses are off. Telegram cannot confirm a trade.'),
+    h('p', { class: 'footnote' }, 'For every shortcut; each one can turn these off in its Options. Alerts reach Telegram when the glasses are off. Telegram cannot confirm a trade.'),
     h('h2', { class: 'group-label' }, 'Timing'),
     h('div', { class: 'group' },
       timing('Repeat cooldown', s => s.cooldownSec, (s, v) => { s.cooldownSec = v }),

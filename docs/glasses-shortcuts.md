@@ -1,22 +1,22 @@
-# Bybit Shortcuts on the G2 lens
+# Trade Shortcuts on the G2 lens
 
-Lens side of `bybit-shortcuts-spec.md` (§1, §8.3, §10). Shortcuts are created, edited, turned on and off only in the phone app; the lens shows open positions and answers the shortcuts that fire. Built on Sightline's card (`app/src/main.ts` `CARD`, `docs/design.md`) and the G2 UI rules (8 px grid, three brightness levels, one focus marker, hint line last).
+Lens side of `trade-shortcuts-spec.md` (§1, §8.3, §10). Shortcuts are created, edited, turned on and off only in the phone app; the lens shows open positions and answers the shortcuts that fire. Built on Trade Shortcuts's card (`app/src/main.ts` `CARD`, `docs/design.md`) and the G2 UI rules (8 px grid, three brightness levels, one focus marker, hint line last).
 
 Screens drawn at 576 × 288: https://claude.ai/artifact/1n89NY12383wwVqdkFS1Pr. Page Flow holds the chosen design (main screen, every alert, review and result); page Position detail holds the detail screen (top row; the row below is the earlier, overloaded version); the other pages keep rejected variants. Switch on the `guides` tweak to see the container boxes.
 
-Status: built in `app/src/view.ts` + `app/src/main.ts` (Main with `>`, Detail with dotted PnL, Alert, Review, Result). Every line below was measured with `@evenrealities/pretext` and fits its box. Nothing here was tried on real glasses yet.
+Status: built in `app/src/view.ts` + `app/src/main.ts` (Main with `▶`, Detail with dotted PnL, Alert, Review, Result). Every line below was measured with `@evenrealities/pretext` and fits its box. Nothing here was tried on real glasses yet.
 
 ## 1. What each screen answers
 
 | Screen | The one question | Answer on the lens | Next |
 |---|---|---|---|
 | Main | How are my positions? | header-less table: position, price, ROI, a flag only when in trouble | swipe, tap |
-| Detail | How is this position doing? | big PnL, then size, liquidation, stop, take profit; alerts count and balance in one line | swipe, double tap |
+| Detail | How is this position doing? | coin and side big, leverage under; dotted PnL; stop and liquidation distance; the last hour as a plain line | swipe, double tap |
 | Alert | What fired, and what will a tap do? | framed notification with an icon, choices below the frame | swipe, tap |
 | Review | What exactly am I opening? | qty, notional, leverage, margin, stop | swipe, tap |
 | Result | Did it happen? | the exchange's real status | nothing, or OK |
 
-The lens never edits or pauses shortcuts: that is the phone app's job (spec §2). Detail only counts the ones that are on for a position. No menu on the lens.
+The lens never edits or pauses shortcuts: that is the phone app's job (spec §2). Detail only counts the ones that are on for a position. The contextual menu offers Protect all, Lock profits, Pause/Resume cards and, when voice is available, Speak.
 
 ## 2. Flow
 
@@ -26,7 +26,7 @@ Main ──tap──▶ Detail ──swipe──▶ next position's Detail
 Main ──rule fires──▶ Alert ──tap action──▶ Sent ──▶ Filled / Rejected / Unknown ──OK──▶ next Alert or Main
                       │  └─tap Dismiss / double tap──────────────────────────────────▶ next Alert or Main
                       ├─ Open / Increase: tap "Review…" ──▶ Review ──tap action──▶ Sent
-                      │                                      └─double tap──▶ back to Alert
+                      │                                      └─double tap──▶ back to Alert on Dismiss, proposal still pending
                       └─ time runs out / position or rule changed ──▶ Expired (Dismiss only)
 ```
 
@@ -41,11 +41,11 @@ Main ──rule fires──▶ Alert ──tap action──▶ Sent ──▶ Fi
 
 | Input | Main | Detail | Alert | Review | Result |
 |---|---|---|---|---|---|
-| Swipe (temple or R1) | move `>`; past the 5th row, next page | next or previous position | move `>` | move `>` | nothing |
-| Tap | open Detail of the `>` position | nothing | do the `>` item | do the `>` item | OK |
+| Swipe (temple or R1) | move `▶`; past the 5th row, next page | next or previous position | move `>` | move `>` | nothing |
+| Tap | open Detail of the `▶` position | nothing | do the `>` item | do the `>` item | OK |
 | Double tap | host exit dialog | back to Main | Dismiss | back to Alert | OK |
 
-The hint is the last line, dim, lower case: `swipe: choose · tap: confirm`, on Main `swipe: choose · tap: details · double tap: exit · tap, hold: menu`. On Main it shows for 10 s after launch (`HINT_MS`), then leaves. An alert that fires while Detail is open takes over the lens; after it, the lens goes back to Detail. Speak is on the menu (not a Main tap). Swipes are gated to one per 700 ms (`SWIPE_GATE_MS`). Taps while sending are ignored.
+The hint is the last line, dim, lower case, and says what a tap does on the choice under `>`: `swipe: choose · tap: dismiss`, then `tap: confirm` (or `tap: review`) once `>` is on the action. `double tap: exit` on Main and `double tap: back` on Detail always show, offline too. The other tips (`tap: details`, `tap, hold: menu` on Main, `swipe: next position` on Detail) are optional: on for the first 3 launches, then off, unless the phone's Settings › Gesture tips switch says otherwise. Alerts, Review and results always keep their line. A `>` left on an action goes back to Dismiss after 8 s without a swipe (`CURSOR_IDLE_MS`). An alert that fires while Detail is open takes over the lens; after it, the lens goes back to Detail. Speak is on the menu (not a Main tap). Swipes are gated to one per 700 ms (`SWIPE_GATE_MS`). Taps while sending are ignored.
 
 ## 4. Layouts
 
@@ -53,23 +53,23 @@ Absolute pixels on an 8 px grid, 16 px edge inset, 27 px a text line, 4 px paddi
 
 ```yaml
 main:            # text 8, image 0; no frames
-  - {name: top,    type: text, x: 16,  y: 16,  w: 544, h: 32,  brightness: 3, capture: true}  # "Bybit Demo · 4 positions" … "14:05"; 4 when it carries a problem
-  - {name: cursor, type: text, x: 16,  y: 56,  w: 144, h: 144, brightness: 4}                 # only the `>` row: "> BTC long"
+  - {name: top,    type: text, x: 16,  y: 16,  w: 544, h: 32,  brightness: 3, capture: true}  # "Bybit Demo · 3 positions" … "14:05"; 4 when it carries a problem
+  - {name: cur,    type: text, x: 16,  y: 56,  w: 144, h: 144, brightness: 4}                 # only the selected row: "▶ BTC long"
   - {name: name,   type: text, x: 16,  y: 56,  w: 144, h: 144, brightness: 3}                 # the other rows, indented under the cursor column
   - {name: price,  type: text, x: 160, y: 56,  w: 128, h: 144, brightness: 3}                 # 61,240.5, right-aligned, no currency
   - {name: loss,   type: text, x: 288, y: 56,  w: 104, h: 144, brightness: 4}                 # ▼ 4.2% ROI; losses brighter than gains
-  - {name: gain,   type: text, x: 288, y: 56,  w: 104, h: 144, brightness: 3}                 # ▲ 24.0%
+  - {name: gain,   type: text, x: 288, y: 56,  w: 104, h: 144, brightness: 2}                 # ▲ 24.0%
   - {name: flag,   type: text, x: 392, y: 56,  w: 168, h: 144, brightness: 4}                 # only trouble: "liq 5.9%" under 10%, "no stop"
   - {name: hint,   type: text, x: 16,  y: 248, w: 544, h: 32,  brightness: 2}
-detail:          # text 7, image 1; the Weather layout: short table left, one big number right
-  - {name: top,    type: text, x: 16,  y: 16,  w: 544, h: 32,  brightness: 3, capture: true}  # "BTC long · 15×" … "1/4"
-  - {name: table,  type: text, x: 16,  y: 64,  w: 272, h: 112, brightness: 3}                 # 0.050 BTC / liq 57,623 / stop 59,600 / tp 64,500
-  - {name: loud,   type: text, x: 16,  y: 64,  w: 272, h: 112, brightness: 4}                 # "× no stop" on its row, brighter
-  - {name: label,  type: text, x: 320, y: 64,  w: 240, h: 32,  brightness: 2}                 # PnL
-  - {name: big,    type: image, x: 320, y: 96, w: 240, h: 56}                                 # dotted ▼8.60 (numeralPng, 7 px pitch)
-  - {name: unit,   type: text, x: 320, y: 152, w: 240, h: 32,  brightness: 2}                 # USDT · ROI −4.2%
-  - {name: info,   type: text, x: 16,  y: 208, w: 544, h: 32,  brightness: 2}                 # 3 alerts on · balance 2,140 USDT
-  - {name: hint,   type: text, x: 16,  y: 248, w: 544, h: 32,  brightness: 2}                 # swipe: next position · double tap: back
+detail:          # text 4, image 4 (the most a page takes); after the ticker apps: one hero line, one number, a plain line
+  - {name: title,  type: image, x: 16,  y: 12,  w: 288, h: 44}                                 # "BTC long", bold, as big as fits (titlePng)
+  - {name: big,    type: image, x: 320, y: 12,  w: 240, h: 56}                                 # dotted ▼26 (numeralPng)
+  - {name: lev,    type: text, x: 16,  y: 56,  w: 272, h: 32,  brightness: 3}                 # 10×; takes the input
+  - {name: table,  type: text, x: 320, y: 72,  w: 240, h: 32,  brightness: 3}                 # stop −1.9% · liq −4.0% (distance from the mark)
+  - {name: loud,   type: text, x: 320, y: 72,  w: 240, h: 32,  brightness: 4}                 # × no stop, in place of the stop
+  - {name: chart0, type: image, x: 16,  y: 112, w: 272, h: 128}                                # the hour: plain line; high, low, last at the right; −1h and now (chartPng)
+  - {name: chart1, type: image, x: 288, y: 112, w: 272, h: 128}
+  - hint                                                                                          # double tap: back, and 2/3 at the right
 alert:           # text 6, image 1
   - {name: frame,  type: text, x: 16,  y: 16,  w: 544, h: 96,  border: 2, radius: 4, brightness: 3}  # the notification
   - {name: icon,   type: image, x: 32, y: 40,  w: 48,  h: 48}                                 # what fired; text says it too
@@ -92,9 +92,9 @@ review:          # text 5, image 1
 - The only frame is the notification. Selection is `>` plus brightness 4; the other choice is one level dimmer (3). A swipe moves `>` with two text updates (content and `textColor`), no page rebuild.
 - Screens with one choice (Notify, Expired, results) keep it in `opt1`; Sent has none.
 - The icon is a 48 × 48 PNG (2 px stroke on the 24 grid, scaled ×2). It arrives after the text; a failed transfer leaves a complete alert.
-- Detail follows Weather: the one number that matters, unrealized PnL, is big dotted digits on the right with `PnL` above and `USDT · ROI −4.2%` below. The table on the left has at most four rows: size, liquidation price, stop (`× no stop` bright when missing), take profit (row left out when none). One dim line under it: how many shortcuts are on for the position and the balance. Leverage is in the top line. Entry price, stop and take-profit costs, shortcut names, margin mode and funding stay on the phone.
-- The big number needs `▲` and `.` added to `DOTS` in `app/src/icons.ts` (it has `▼`, `△` and `,`). Cents up to 99.99; whole numbers from 100 (`▼1,235`, 238 px); `k` from 10,000. The image is sent only when the rounded value changes.
-- Main sorts rows by liquidation distance, closest first. The cursor moves with two text updates (cursor and name), no rebuild. More than 5 positions: pages of 4 plus a `1–4 of 7` row, swiped. Cells cut with `…` (`1000PEPE sh…`).
+- Detail, after even-g2-crypto-ticker and g2-kit's Kpi: coin and side big top left, leverage under it; the dotted PnL top right, the stop and liquidation distances from the mark under it (`× no stop` bright in place of the stop). Under them the last hour as a plain line with the hour's high and low and the last price at the right and `−1h` / `now` below. Entry is one dim dotted line when it falls inside the hour; stop and liquidation appear dashed only within 1% of the last price, when the scale stretches to take them. No grid, no price axis, no time ticks. Take profit, size, ROI, entry price, the shortcuts count and the balance stay on the phone. The chart is read at most once a minute and sent last; if it fails, every number that matters is still in text. The title is a picture too: if it fails the lens shows leverage without the coin until the next draw.
+- The dotted PnL uses ▲ for zero or gains and ▼ for losses. Absolute values below 10 show tenths, values from 10 show whole units, and values from 10,000 use thousands (one decimal below 100k, whole thousands thereafter). After a successful transfer the image is reused until the rounded display changes.
+- Main sorts rows by liquidation distance, closest first. The selection (`▶`, brightness 4) moves with two text updates (cur and name), no rebuild, and follows the position, not the row number, when the order changes. More than 5 positions: pages of 4 plus a `▼ 1–4 of 7` row, swiped. A swipe on Detail changes the position by text updates too. Cells cut with `…` (`1000PEPE sh…`).
 
 ## 5. Every alert
 
@@ -120,16 +120,16 @@ Ten alerts cover all ten conditions and all nine actions. The icon names the con
 | Open | `Open BTC long?` | `0.0055 BTC · 500 USDT · 5×`, `Margin ≈ 100 USDT · stop 88,200` | `Open long · 0.0055 BTC` |
 | Increase | `Add to ETH long?` | `0.06 ETH · 200 USDT`, `Stop 3,280 stays` | `Add · 0.06 ETH` |
 
-Review hint: `swipe: choose · tap: confirm · double tap: back`.
+Review hint: `swipe: choose · tap: dismiss · double tap: back`, `tap: confirm` once `>` is on the order.
 
 ## 6. After the tap, and other states
 
 | State | Icon | why | Choice, hint |
 |---|---|---|---|
-| Sent | clock | `Sent · waiting for the fill` | none; `waiting for Bybit…`, taps ignored |
+| Sent | clock | `Sent · waiting for the fill` | none; `waiting for Bybit · double tap: hide`, taps ignored, double tap goes back (the server carries on) |
 | Filled | check in circle | `Closed 0.025 BTC · avg 61,180` | `> OK`; back to Main in 5 s |
 | Partly filled | half-filled circle | `Partly filled · 0.015 of 0.025 BTC` | `> OK` |
-| Rejected | x in circle | `Rejected: below 0.001 BTC` (Bybit's reason) | `> OK` |
+| Rejected | x in circle | `Rejected by Bybit`; the reason, whole, on the row under OK (`below 0.001 BTC`) | `> OK` |
 | Unknown | question mark in circle | `No answer from Bybit yet` | `> OK`; the server reconciles, never retries |
 | Expired | hourglass | `Expired · nothing sent` | `> Dismiss` |
 | Unavailable | hourglass | `Bybit data is stale` | `> Dismiss` |

@@ -65,7 +65,7 @@ test('shortcuts: create, list as tiles, edit with the version, pause, enable, de
   const { call } = await serve()
   const made = await call('POST', '/shortcuts', { ...draft(6), enabled: true })
   assert.equal(made.status, 201)
-  assert.equal(made.body.title, 'Close Position')
+  assert.equal(made.body.title, 'Close position')
   assert.equal(made.body.summary, 'Liq. < 3%')
   const tiles = (await call('GET', '/shortcuts')).body
   assert.deepEqual(tiles.map((t: { summary: string }) => t.summary), ['Say "protect all"', 'Say "lock profits"', 'Liq. < 3%'])
@@ -133,7 +133,7 @@ test('validate flags the incompatible row and, when valid, the targets it matche
     delivery: { glasses: true, phone: true },
   }
   assert.deepEqual((await call('POST', '/shortcuts/validate', incompatible)).body, {
-    ok: false, issues: [{ code: 'incompatible_action', message: 'Liquidation distance is incompatible with Increase Position', conditionId: 'c2' }],
+    ok: false, issues: [{ code: 'incompatible_action', message: 'Liquidation distance is incompatible with Increase position', conditionId: 'c2' }],
   })
   const ok = (await call('POST', '/shortcuts/validate', draft(6))).body
   assert.equal(ok.ok, true)
@@ -197,21 +197,23 @@ test('notifications lists new alerts for the phone app', async () => {
   assert.deepEqual((await call('GET', `/notifications?after=${list[0].createdAt}`)).body, [])
 })
 
-test('voice transcribes with the phrases as a hint and raises the matching shortcut', async () => {
-  let hint = ''
-  const { ex, session, call } = await serve({
-    transcribe: async (pcm, h) => {
+test('voice answers the alert: yes or no in any language, silence never reaches the transcriber', async () => {
+  let calls = 0
+  let said = 'Да.'
+  const { call } = await serve({
+    transcribe: async pcm => {
+      calls++
       if (pcm.length === 32_000) throw new Error('quota')
-      hint = h
-      return 'lock profits'
+      return said
     },
   })
-  ex.list[0] = { ...btc, markPrice: 64000, unrealisedPnl: 100 }
-  await session.tick()
-  const r = await call('POST', '/voice', new Uint8Array(16_000))
-  assert.deepEqual(r.body, { heard: 'lock profits', ok: true, message: 'Heard "lock profits" · 1 proposal' })
-  assert.deepEqual(hint.split(', ').sort(), ['lock profits', 'protect all'])
-  const failed = await call('POST', '/voice', new Uint8Array(32_000))
+  const speech = (n: number) => { const b = new Uint8Array(n); for (let i = 1; i < n; i += 2) b[i] = i % 4 === 1 ? 0x10 : 0xf0; return b } // ±4096
+  assert.deepEqual((await call('POST', '/voice', speech(16_000))).body, { heard: 'Да.', answer: 'yes' })
+  said = 'No, cancel it'
+  assert.deepEqual((await call('POST', '/voice', speech(16_000))).body, { heard: 'No, cancel it', answer: null })
+  assert.deepEqual((await call('POST', '/voice', new Uint8Array(16_000))).body, { heard: '', answer: null })
+  assert.equal(calls, 2) // the silent one was never sent
+  const failed = await call('POST', '/voice', speech(32_000))
   assert.equal(failed.status, 502)
   assert.match(failed.body.error, /quota/)
   assert.equal((await call('POST', '/voice', new Uint8Array(100))).status, 400)
@@ -223,6 +225,8 @@ test('voice is 503 without a transcriber; the menu command maps to the seeded ph
   assert.equal((await call('POST', '/voice', new Uint8Array(16_000))).status, 503)
   assert.deepEqual((await call('POST', '/command', { command: 'lock' })).body, { ok: false, message: 'Heard "lock profits" · nothing to change' })
   assert.equal((await call('POST', '/command', { command: 'buy' })).status, 400)
+  assert.equal((await call('POST', '/command', { command: 'close', position: { symbol: 'BTCUSDT' } })).status, 400)
+  assert.equal((await call('POST', '/command', { command: 'toString' })).status, 400)
 })
 
 test('body over 64 KB is 413', async () => {
@@ -237,5 +241,5 @@ test('catalog and templates are served', async () => {
   assert.equal(c.conditionAction.LOSS.INCREASE_POSITION, 'N')
   const t = (await call('GET', '/templates')).body
   assert.equal(t.length, 25)
-  assert.equal(t[0].title, 'Move Stop Loss')
+  assert.equal(t[0].title, 'Move stop loss')
 })

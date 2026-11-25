@@ -1,22 +1,22 @@
 {
-  "package_id": "com.sightline.g2",
+  "package_id": "com.tradeshortcuts.g2",
   "edition": "202601",
-  "name": "Sightline",
+  "name": "Trade Shortcuts",
   "version": "0.1.0",
   "min_app_version": "2.2.10",
   "min_sdk_version": "0.0.16",
-  "tagline": "Your trading rules, in your line of sight.",
+  "tagline": "Set the rule. Tap the trade.",
   "entrypoint": "index.html",
-  "description": "Bybit Shortcuts on your G2: rules you build on the phone (one scope, conditions joined by and/or, one action) watch your positions and raise exact proposals on the lens. Every trade needs your tap on the glasses. Bybit demo/testnet only.",
+  "description": "Trade Shortcuts on your G2: rules you build on the phone (one scope, conditions joined by and/or, one action) watch your positions and raise exact proposals on the lens. Every trade needs your tap on the glasses. Bybit demo/testnet only.",
   "permissions": [
     {
       "name": "network",
-      "desc": "Talks to your own Sightline server, which holds the exchange keys.",
-      "whitelist": ["http://localhost:8787"]
+      "desc": "Talks to your own Trade Shortcuts server, which holds the exchange keys.",
+      "whitelist": []
     },
     {
       "name": "g2-microphone",
-      "desc": "Voice shortcuts. Listens only after you tap, for up to 5 seconds. The audio goes to your Sightline server, which sends it to OpenAI for transcription."
+      "desc": "Voice shortcuts. Listens only after you tap, for up to 5 seconds. The audio goes to your Trade Shortcuts server, which sends it to OpenAI for transcription."
     }
   ],
   "supported_languages": ["en"]

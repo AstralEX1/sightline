@@ -69,8 +69,9 @@ export interface Store {
   /** Soft delete: versions stay for History, the phrase is free again. */
   deleteShortcut(id: string, baseVersion: number): void
   phrasesInUse(exceptId?: string): string[]
-  /** First start only: `drafts` (VOICE_SEEDS unless given) as enabled shortcuts; never again, even after the user deletes them. */
-  seed(drafts?: Draft[]): void
+  /** Once per `key`: `drafts` (VOICE_SEEDS unless given) as enabled shortcuts; never again, even after the user deletes them.
+   * A draft whose phrase is taken already is left out. */
+  seed(drafts?: Draft[], key?: string): void
   trigger(key: string): TriggerState | null
   saveTrigger(key: string, s: TriggerState): void
   /** Position key 'BTCUSDT:0' → epoch. */
@@ -272,13 +273,14 @@ export function createStore(path: string, clock: () => number = Date.now): Store
       ACCOUNT, exceptId ?? null,
     ).map(r => r.voice_phrase as string),
 
-    seed: (drafts = VOICE_SEEDS) => store.transaction(() => {
-      if (get(`SELECT 1 FROM meta WHERE key = 'seeded'`)) return
+    seed: (drafts = VOICE_SEEDS, key = 'seeded') => store.transaction(() => {
+      if (get(`SELECT 1 FROM meta WHERE key = ?`, key)) return
       for (const draft of drafts) {
+        if (draft.voicePhrase && store.phrasesInUse().includes(draft.voicePhrase)) continue
         const r = store.createShortcut({ ...draft, enabled: true })
         if (!r.ok) throw new Error(`Seed "${draft.voicePhrase ?? draft.action.type}" is invalid: ${r.issues.map(i => i.message).join('. ')}`)
       }
-      run(`INSERT INTO meta VALUES ('seeded', ?)`, String(clock()))
+      run(`INSERT INTO meta VALUES (?, ?)`, key, String(clock()))
     }),
 
     trigger: key => one<TriggerState>('SELECT json FROM trigger_state WHERE account_id = ? AND key = ?', ACCOUNT, key),

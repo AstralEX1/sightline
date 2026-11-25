@@ -61,7 +61,13 @@ export async function renderHistory(el: HTMLElement) {
         group.ul.append(row(a))
         last = a.createdAt
       }
-      if (!list.childElementCount) list.append(h('p', { class: 'empty' }, 'No alerts yet.'))
+      if (!list.childElementCount) {
+        list.append(h('div', { class: 'empty-state' },
+          h('span', { class: 'empty-state__icon', html: icon('bell', 32, 1.8) }),
+          h('h2', { class: 'empty-state__title' }, 'No alerts yet'),
+          h('p', { class: 'empty-state__text' }, 'When one of your shortcuts fires, its alert lands here. Try one with Test alert in its menu.'),
+          h('div', { class: 'empty-state__actions' }, h('a', { class: 'pill-btn', href: '#/' }, 'Your shortcuts'))))
+      }
     } catch (e) {
       toast((e as Error).message)
     } finally {

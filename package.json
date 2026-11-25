@@ -1,5 +1,5 @@
 {
-  "name": "sightline",
+  "name": "trade-shortcuts",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -11,7 +11,8 @@
     "test": "node --test server/test/*.test.ts app/test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "vite build --config app/vite.config.ts",
-    "pack": "npm run build && evenhub pack app/app.json app/dist --sdk-ver 0.0.16 -o sightline.ehpk"
+    "pack": "node app/pack.ts",
+    "screens": "node --env-file-if-exists=.env scripts/screens.ts"
   },
   "engines": {
     "node": ">=22.18"

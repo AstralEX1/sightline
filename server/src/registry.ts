@@ -80,8 +80,8 @@ export const CONDITION_LABEL: Record<ConditionType, string> = {
   VOLUME_SPIKE: 'Volume spike', FUNDING: 'Funding rate', ORDER_STALE: 'Order age', POSITION_CLOSED: 'Position closed',
 }
 export const ACTION_TITLE: Record<ActionType, string> = {
-  CLOSE_POSITION: 'Close Position', MOVE_SL: 'Move Stop Loss', SET_SL: 'Set Stop Loss', SET_TP: 'Set Take Profit',
-  ADD_MARGIN: 'Add Margin', OPEN_POSITION: 'Open Position', INCREASE_POSITION: 'Increase Position', CANCEL_ORDER: 'Cancel Order', NOTIFY: 'Notify',
+  CLOSE_POSITION: 'Close position', MOVE_SL: 'Move stop loss', SET_SL: 'Set stop loss', SET_TP: 'Set take profit',
+  ADD_MARGIN: 'Add margin', OPEN_POSITION: 'Open position', INCREASE_POSITION: 'Increase position', CANCEL_ORDER: 'Cancel order', NOTIFY: 'Notify',
 }
 export const SCOPE_LABEL: Record<ScopeType, string> = { ALL_POSITIONS: 'All positions', POSITION: 'One position', SYMBOL: 'One symbol', ORDER: 'One order', ALL_ORDERS: 'All orders' }
 
@@ -235,11 +235,13 @@ export const TEMPLATES: Template[] = [
   t(25, 'Order open over 15 min', allOrders, one({ type: 'ORDER_STALE', minutes: 15 }), { type: 'NOTIFY' }, entry),
 ]
 
-/** Sightline's voice commands as voice-only shortcuts, seeded on first start (§12). */
+/** Trade Shortcuts's voice commands as voice-only shortcuts, seeded on first start (§12). */
 export const VOICE_SEEDS: Draft[] = [
   { voicePhrase: 'protect all', scope: all, conditions: { logic: 'ALL', items: [] }, action: { type: 'SET_SL', target: { kind: 'ENTRY_OFFSET', percent: '-2' } }, trigger: entry, delivery: { ...DEFAULT_DELIVERY } },
   { voicePhrase: 'lock profits', scope: all, conditions: { logic: 'ALL', items: [] }, action: { type: 'MOVE_SL', target: { kind: 'ENTRY_OFFSET', percent: '0' } }, trigger: entry, delivery: { ...DEFAULT_DELIVERY } },
 ]
+/** The menu's Close all and Detail's Close position; seeded apart, so servers seeded before it get it once too. */
+export const CLOSE_SEED: Draft = { voicePhrase: 'close all', scope: all, conditions: { logic: 'ALL', items: [] }, action: { type: 'CLOSE_POSITION', percent: '100' }, trigger: entry, delivery: { ...DEFAULT_DELIVERY } }
 
 /**
  * Three risk rules switched on at first start, so the lens has work before anyone opens the editor: near liquidation ·

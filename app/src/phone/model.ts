@@ -76,7 +76,7 @@ export function triggerChoices(d: Draft): { mode: TriggerMode; why?: string }[] 
   const states = d.conditions.items.length > 0 && !ev
   return MODES.map(mode => ({
     mode,
-    why: onceOnly(d.action) && mode !== 'ONCE' ? `${d.action!.type === 'OPEN_POSITION' ? 'Open Position' : 'Increase Position'} fires Once`
+    why: onceOnly(d.action) && mode !== 'ONCE' ? `${d.action!.type === 'OPEN_POSITION' ? 'Open position' : 'Increase position'} fires Once`
       : ev && (mode === 'ON_ENTRY' || mode === 'REPEAT') ? 'Not for crossings, fills and closes'
         : states && mode === 'ON_EVENT' ? 'Needs a price crossing, a fill or a close' : undefined,
   }))
@@ -156,8 +156,12 @@ export function newAction(type: ActionType): Action {
 export type Range = { gt?: number; ge?: number; lt?: number; le?: number }
 export const inRange = (n: number, r: Range) =>
   (r.gt === undefined || n > r.gt) && (r.ge === undefined || n >= r.ge) && (r.lt === undefined || n < r.lt) && (r.le === undefined || n <= r.le)
-export const rangeText = (r: Range) =>
-  r.gt !== undefined ? `Enter a number above ${r.gt}${r.le !== undefined ? `, up to ${r.le}` : ''}` : `Enter a number from ${r.ge} to ${r.le}`
+/** "Enter a number above 0%, up to 100%". `unit` as the sheet shows it: % and × sit on the number, words get a space. */
+export const rangeText = (r: Range, unit = '') => {
+  const u = (n: number) => `${n}${unit && !/^[%×]$/.test(unit) ? ' ' : ''}${unit}`
+  const top = r.le !== undefined ? `, up to ${u(r.le)}` : r.lt !== undefined && r.lt < 1e9 ? `, below ${u(r.lt)}` : ''
+  return r.gt !== undefined ? `Enter a number above ${u(r.gt)}${top}` : `Enter a number from ${u(r.ge!)} to ${u(r.le!)}`
+}
 
 /** One number the numeric sheet edits: what it shows and the bounds it accepts. */
 export type NumField = { title: string; word: string; unit: string; sign?: string; value: string; range: Range; integer?: boolean }

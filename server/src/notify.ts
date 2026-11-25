@@ -5,7 +5,7 @@ const OPEN_MS = 10_000 // a client that has not polled for this long counts as c
 const CODE_MS = 10 * 60_000
 const CALL_MS = 10_000
 const API = 'https://api.telegram.org/bot'
-const CONNECTED = 'Connected. Bybit Shortcuts alerts will arrive here as text. Trades are confirmed only on Even G2.'
+const CONNECTED = 'Connected. Trade Shortcuts alerts will arrive here as text. Trades are confirmed only on Even G2.'
 
 /** The part of the store delivery needs; the real store satisfies it structurally. */
 export type NotifyStore = {

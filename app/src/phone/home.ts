@@ -2,7 +2,7 @@
 import * as api from '../api.ts'
 import type { ApiError, Tile } from '../api.ts'
 import type { Template } from '../../../server/src/registry.ts'
-import { ACTION_ICON, icon } from './icons.ts'
+import { ACTION_ICON, WARN, icon } from './icons.ts'
 import { tileSub } from './sentence.ts'
 import { app, h, isOffline, toast } from './ui.ts'
 
@@ -20,7 +20,22 @@ function statusLine(s: api.SettingsPage | null, err: unknown) {
   return h('a', { class: 'status-line', href: '#/settings', 'aria-label': `${label}${err ? '' : `, Even ${g2()}`}. Settings` },
     h('span', { class: `dot${up && !err ? ' is-on' : err ? ' is-muted' : ''}`, 'aria-hidden': 'true' }),
     label,
-    err ? null : h('span', { class: 'status-line__g2', html: icon('glasses', 18, 1.8) }, g2()))
+    err ? null : h('span', { class: 'status-line__g2', html: icon('glasses', 18, 1.8) }, g2()),
+    h('span', { class: 'status-line__chev', 'aria-hidden': 'true', html: icon('right', 14, 2.6) }))
+}
+
+/** Nothing to show because the server did not answer: say why and offer the way out (HIG empty states). */
+function unreachable(err: unknown, retry: () => void) {
+  const unauthorized = (err as ApiError | null)?.status === 401
+  return h('div', { class: 'empty-state', role: 'status' },
+    h('span', { class: 'empty-state__icon', html: WARN.replace('width="16" height="16"', 'width="32" height="32"') }),
+    h('h2', { class: 'empty-state__title' }, unauthorized ? 'The server needs a token' : 'Can’t reach the server'),
+    h('p', { class: 'empty-state__text' }, unauthorized
+      ? 'Enter the APP_TOKEN in Settings to see your shortcuts.'
+      : 'Your shortcuts show here once it answers. Check the address in Settings, or try again.'),
+    h('div', { class: 'empty-state__actions' },
+      h('a', { class: 'pill-btn pill-btn--accent', href: '#/settings' }, 'Open Settings'),
+      unauthorized ? null : h('button', { class: 'pill-btn', type: 'button', onclick: retry }, 'Try again')))
 }
 
 function tile(t: Tile) {
@@ -31,9 +46,9 @@ function tile(t: Tile) {
     'aria-disabled': offline || t.draft ? 'true' : undefined,
   }, h('span', { class: 'tile__track' }, h('span', { class: 'tile__knob' })))
   sw.addEventListener('click', () => void toggle(t, sw))
-  return h('div', { class: 'tile', 'data-state': t.draft ? 'draft' : t.enabled ? 'on' : 'off', style: `--c: ${t.enabled ? color : 'var(--act-cancel)'}` },
+  return h('div', { class: 'tile', 'data-state': t.draft ? 'draft' : t.enabled ? 'on' : 'off', style: `--c: ${color}` },
     h('a', { class: 'tile__body', href: `#/shortcut/${encodeURIComponent(t.id)}`, 'aria-label': `${t.title}, ${sub}. Edit` },
-      h('span', { class: 'tile__glyph', html: icon(name, 26, 2) }),
+      h('span', { class: 'tile__glyph', html: icon(name, 24, 2.6) }),
       h('span', { class: 'tile__text' }, h('span', { class: 'tile__title' }, t.title), h('span', { class: 'tile__sub' }, sub))),
     sw)
 }
@@ -50,7 +65,6 @@ async function toggle(t: Tile, sw: HTMLButtonElement) {
     // update in place: a new tile would cut the knob's slide
     const el = sw.closest<HTMLElement>('.tile')!, sub = tileSub(t)
     el.dataset.state = t.draft ? 'draft' : t.enabled ? 'on' : 'off'
-    el.style.setProperty('--c', t.enabled ? ACTION_ICON[t.action.type].color : 'var(--act-cancel)')
     el.querySelector('.tile__sub')!.textContent = sub
     el.querySelector('.tile__body')!.setAttribute('aria-label', `${t.title}, ${sub}. Edit`)
     sw.setAttribute('aria-label', `${t.title}, ${t.summary}`)
@@ -69,26 +83,19 @@ async function toggle(t: Tile, sw: HTMLButtonElement) {
 function templateTile(t: Template) {
   const { icon: name, color } = ACTION_ICON[t.draft.action.type]
   return h('button', {
-    class: 'tile tile--template', type: 'button', 'aria-label': `Template: ${t.title}, ${t.sub}. Add`,
-    'aria-disabled': offline ? 'true' : undefined, onclick: () => void useTemplate(t),
+    class: 'tile tile--template', type: 'button', style: `--c: ${color}`, 'aria-label': `Template: ${t.title}, ${t.sub}. Add`,
+    'aria-disabled': offline ? 'true' : undefined, onclick: () => useTemplate(t),
   },
   h('span', { class: 'tile__top' },
-    h('span', { class: 'chip chip--tile', style: `--c: ${color}`, html: icon(name, 20, 2.2) }),
+    h('span', { class: 'tile__glyph', html: icon(name, 24, 2.6) }),
     h('span', { class: 'tile__badge', 'aria-hidden': 'true', html: icon('plus', 12, 3.4) })),
   h('span', { class: 'tile__text' }, h('span', { class: 'tile__title' }, t.title), h('span', { class: 'tile__sub' }, t.sub)))
 }
 
-/** Save the template off before opening its editor. */
-let adding = false // one create at a time: a double tap must not make two shortcuts
-async function useTemplate(t: Template) {
-  if (offline || adding) return
-  adding = true
-  try {
-    const sc = await api.createFromTemplate(t.id)
-    location.hash = `#/shortcut/${encodeURIComponent(sc.id)}`
-  } catch (e) {
-    toast((e as Error).message)
-  } finally { adding = false }
+/** Opens the template as a new, unsaved shortcut: nothing is created until Add (or an edit) in the editor. */
+function useTemplate(t: Template) {
+  if (offline) return
+  location.hash = `#/shortcut/new?tpl=${encodeURIComponent(t.id)}`
 }
 
 /** Renders into `el`; called on route enter and every 10 s while home is shown. */
@@ -122,9 +129,9 @@ export async function renderHome(el: HTMLElement, first: boolean) {
     h('h1', { class: 'title-large' }, 'Shortcuts'),
     statusLine(st, err),
     mine?.length ? h('div', { class: 'grid' }, ...mine.map(tile))
-      : h('p', { class: `empty${mine ? ' empty--hero' : ''}` }, mine ? 'No shortcuts yet. Start from a template below, or tap +.' : ''),
-    h('h2', { class: 'title-section' }, 'Templates'),
-    h('div', { class: 'grid' }, ...(templates ?? []).map(templateTile)))
+      : mine ? h('p', { class: 'empty empty--hero' }, 'No shortcuts yet. Start from a template below, or tap +.')
+      : unreachable(err, () => void renderHome(el, true)),
+    ...(templates?.length ? [h('h2', { class: 'title-section' }, 'Templates'), h('div', { class: 'grid' }, ...templates.map(templateTile))] : []))
   if (f) el.querySelector<HTMLElement>(`[aria-label="${CSS.escape(f)}"]`)?.focus({ preventScroll: true })
   return offline
 }

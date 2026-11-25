@@ -1,0 +1,16 @@
+{
+  "name": "trade-shortcuts-landing",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/islands.jsx --bundle --minify --format=esm --target=es2020 --jsx=automatic --define:process.env.NODE_ENV='\"production\"' --outfile=js/islands.js"
+  },
+  "dependencies": {
+    "@base-ui/react": "1.9.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10"
+  }
+}

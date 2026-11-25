@@ -168,6 +168,10 @@ export function demoExchange(now: number): { ex: FakeExchange; stop: () => void 
   ex.funding = { BTCUSDT: { ratePct: 0.06, at: now + 20 * 60_000 }, ETHUSDT: { ratePct: 0.01, at: now + 20 * 60_000 } }
   const minute = Math.floor(now / 60_000) * 60_000
   ex.candles.SOLUSDT = Array.from({ length: 70 }, (_, i) => ({ start: minute - (70 - i) * 60_000, close: 145, volume: i >= 65 ? 4000 : 1000 }))
+  // An hour that wanders into today's price, for Detail's chart.
+  const hour = (to: number, drift: number) => Array.from({ length: 60 }, (_, i) => ({ start: minute - (60 - i) * 60_000, close: to * (1 + drift * (60 - i) / 60 + 0.003 * Math.sin(i / 4)) }))
+  ex.candles.BTCUSDT = hour(61800, 0.008)
+  ex.candles.ETHUSDT = hour(3080, -0.006)
   ex.list = [
     { symbol: 'BTCUSDT', side: 'Buy', size: 0.05, entryPrice: 62000, markPrice: 61800, liqPrice: 59500, unrealisedPnl: -10, stopLoss: 0, takeProfit: 0, positionIM: 310, leverage: 10, isolated: true, positionIdx: 0, openedAt: now - 30_000 },
     { symbol: 'ETHUSDT', side: 'Sell', size: 1.2, entryPrice: 3100, markPrice: 3080, liqPrice: 3600, unrealisedPnl: 24, stopLoss: 0, takeProfit: 0, positionIM: 372, leverage: 10, isolated: false, positionIdx: 0, openedAt: now - 70_000 },

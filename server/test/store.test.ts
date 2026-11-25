@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { ACCOUNT, StoreError, createStore, validateSettings } from '../src/store.ts'
 import { initialTriggerState } from '../src/engine.ts'
+import { CLOSE_SEED } from '../src/registry.ts'
 import { DEFAULT_SETTINGS, type AlertRecord, type Execution, type ExecutionStatus, type Proposal } from '../src/types.ts'
 
 const draft = (over: Record<string, unknown> = {}) => ({
@@ -19,13 +20,13 @@ const draft = (over: Record<string, unknown> = {}) => ({
 })
 
 const alertRec = (id: string, shortcutId: string, createdAt: number): AlertRecord => ({
-  id, shortcutId, version: 1, targetKey: 'pos:BTCUSDT:0:e1', target: 'BTCUSDT long', title: 'Move Stop Loss', reason: 'ROI 31%',
+  id, shortcutId, version: 1, targetKey: 'pos:BTCUSDT:0:e1', target: 'BTCUSDT long', title: 'Move stop loss', reason: 'ROI 31%',
   matched: ['c1'], priority: 'NORMAL', simulated: false, delivery: { glasses: true, phone: true }, channels: ['glasses'],
   status: 'Waiting for confirmation', createdAt,
 })
 
 const proposalRec = (id: string, alertId: string, shortcutId: string, status: Proposal['status'], createdAt = 1): Proposal => ({
-  id, key: 'k', title: 'Move Stop Loss', detail: 'BTCUSDT long', question: 'Move stop to entry?', who: 'BTC long', why: 'ROI +31.2%', createdAt, expiresAt: createdAt + 60_000,
+  id, key: 'k', title: 'Move stop loss', detail: 'BTCUSDT long', question: 'Move stop to entry?', who: 'BTC long', why: 'ROI +31.2%', createdAt, expiresAt: createdAt + 60_000,
   alertId, shortcutId, version: 1, targetKey: 'pos:BTCUSDT:0:e1', terms: { type: 'setStop', symbol: 'BTCUSDT', positionIdx: 0, price: 88_000 },
   simulated: false, priority: 'NORMAL', status,
 })
@@ -37,8 +38,8 @@ const execRec = (id: string, proposalId: string, idempotencyKey: string, status:
 
 /** A store on a temp file plus a raw connection to look at the rows. */
 function onFile(t: TestContext) {
-  const dir = mkdtempSync(join(tmpdir(), 'sightline-store-'))
-  const path = join(dir, 'data', 'sightline.db') // the data directory does not exist yet
+  const dir = mkdtempSync(join(tmpdir(), 'trade-shortcuts-store-'))
+  const path = join(dir, 'data', 'trade-shortcuts.db') // the data directory does not exist yet
   const store = createStore(path, () => 1000)
   const raw = new DatabaseSync(path)
   t.after(() => { store.close(); raw.close(); rmSync(dir, { recursive: true, force: true }) })
@@ -161,6 +162,18 @@ test('seed adds the voice shortcuts once, and not again after they are deleted',
   for (const x of seeded) s.deleteShortcut(x.id, x.version)
   s.seed()
   assert.deepEqual(s.listShortcuts(), [])
+})
+
+test('a later seed key adds its shortcut once, and skips a phrase already taken', () => {
+  const s = createStore(':memory:')
+  s.seed()
+  s.seed([CLOSE_SEED], 'seeded:close')
+  s.seed([CLOSE_SEED], 'seeded:close')
+  assert.deepEqual(s.listShortcuts().map(x => x.voicePhrase), ['protect all', 'lock profits', 'close all'])
+  const t = createStore(':memory:')
+  t.seed([{ ...CLOSE_SEED, action: { type: 'MOVE_SL', target: { kind: 'ENTRY_OFFSET', percent: '0' } } }], 'mine')
+  t.seed([CLOSE_SEED], 'seeded:close')
+  assert.deepEqual(t.listShortcuts().map(x => x.action.type), ['MOVE_SL'])
 })
 
 test('edit, pause and delete supersede PENDING proposals and withdraw their alerts; AUTHORIZED stays', () => {

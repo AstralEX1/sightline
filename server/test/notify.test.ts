@@ -49,13 +49,13 @@ function setup(o: { tg?: TelegramLink; notifications?: Settings['notifications']
 }
 
 const alert = (o: Partial<AlertRecord> = {}): AlertRecord => ({
-  id: 'a1', shortcutId: 's1', version: 1, targetKey: 'pos:BTCUSDT:0:1', target: 'BTCUSDT long', title: 'Close Position',
+  id: 'a1', shortcutId: 's1', version: 1, targetKey: 'pos:BTCUSDT:0:1', target: 'BTCUSDT long', title: 'Close position',
   reason: 'liquidation distance 3.2%', matched: ['c1'], priority: 'CRITICAL', simulated: false,
   delivery: { glasses: true, phone: true }, channels: [], status: '', createdAt: 0, ...o,
 })
 
 const proposal: Proposal = {
-  id: 'p1', key: 'k', title: 'Close Position', detail: '', question: 'Close 50% · 0.025 BTC?', who: 'BTC long', why: 'liquidation distance 3.2%',
+  id: 'p1', key: 'k', title: 'Close position', detail: '', question: 'Close 50% · 0.025 BTC?', who: 'BTC long', why: 'liquidation distance 3.2%',
   createdAt: 1_000_000, expiresAt: 1_030_000,
   alertId: 'a1', shortcutId: 's1', version: 1, targetKey: 'pos:BTCUSDT:0:1',
   terms: { type: 'order', symbol: 'BTCUSDT', side: 'Sell', qty: '0.025', positionIdx: 0, reduceOnly: true, orderLinkId: 'x' },
@@ -126,8 +126,8 @@ test('no token: no Telegram even with a stored chat, and no bot calls', async ()
 test('the text is plain, with no link or button, and sendMessage sends only chat_id and text', async () => {
   const { n, calls } = setup({ tg: LINKED })
   const t = n.text(alert(), proposal)
-  assert.equal(t, 'Close Position · BTCUSDT long · liquidation distance 3.2%\nClose 50% · 0.025 BTC · confirm on Even G2 within 30 s')
-  assert.equal(n.text(alert({ simulated: true })), 'Close Position · BTCUSDT long · liquidation distance 3.2%\nTest · nothing will be sent')
+  assert.equal(t, 'Close position · BTCUSDT long · liquidation distance 3.2%\nClose 50% · 0.025 BTC · confirm on Even G2 within 30 s')
+  assert.equal(n.text(alert({ simulated: true })), 'Close position · BTCUSDT long · liquidation distance 3.2%\nTest · nothing will be sent')
   assert.doesNotMatch(t, /http|t\.me|button/i)
   n.route(alert(), proposal)
   await n.flush()

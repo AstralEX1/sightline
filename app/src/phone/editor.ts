@@ -60,6 +60,11 @@ export async function enterEditor(section: HTMLElement, param: string) {
     cat = await getCatalog()
     if (param === 'new') {
       s = fresh(emptyDraft())
+    } else if (param.startsWith('new?tpl=')) {
+      // a template is a new shortcut prefilled: untouched it saves nothing, Add or an edit saves it
+      const tpl = (await api.getTemplates()).find(x => x.id === param.slice(8))
+      if (!tpl) { toast('This template is gone'); return location.replace('#/') }
+      s = fresh(toDraft(structuredClone(tpl.draft)))
     } else {
       app.tiles = await api.listShortcuts()
       const t = app.tiles.find(x => x.id === param)
@@ -69,7 +74,7 @@ export async function enterEditor(section: HTMLElement, param: string) {
   } catch (e) {
     // §7.6: offline, the last data read-only, back leaves without saving
     const t = app.tiles?.find(x => x.id === param)
-    if (!isOffline(e) || !app.catalog || (param !== 'new' && !t)) { toast(isOffline(e) ? 'Server offline' : (e as Error).message); return location.replace('#/') }
+    if (!isOffline(e) || !app.catalog || (!param.startsWith('new') && !t)) { toast(isOffline(e) ? 'Server offline' : (e as Error).message); return location.replace('#/') }
     cat = app.catalog
     s = fresh(t ? toDraft(t) : emptyDraft(), { id: t?.id, version: t?.version, readOnly: true })
     toast('Server offline')
@@ -118,11 +123,26 @@ async function saveOrAsk(): Promise<boolean> {
     }
   }
   render()
+  // name the first problem, so the way to fix it is in the dialog itself
+  const why = s.issues[0]?.message
   const pick = await dialog({
-    title: 'Discard changes?', text: 'This shortcut has a problem that stops it from saving.',
-    buttons: [{ label: 'Keep editing', primary: true }, { label: 'Discard', danger: true }],
+    title: s.id ? 'Discard changes?' : 'Discard this shortcut?',
+    text: why ? `${why}. Fix it, or discard ${s.id ? 'your changes' : 'it'}.` : 'Something stops it from saving.',
+    buttons: [{ label: s.id ? 'Discard changes' : 'Discard', danger: true }, { label: 'Keep editing', primary: true }],
   })
-  return pick === 1
+  return pick === 0
+}
+
+/** Add, on a new shortcut: save now and go back (the same save as leaving). */
+async function add() {
+  if (leaving) return
+  leaving = true
+  try {
+    if (!(await saveOrAsk())) return
+    s.done = true
+    if (app.from === '#/') history.back()
+    else location.replace('#/')
+  } finally { leaving = false }
 }
 
 const payload = () => ({ ...(s.draft as EditableShortcut), ...(s.id && { id: s.id }) })
@@ -161,12 +181,15 @@ const replaceCond = (c: Condition) => commit(d => { d.conditions.items = d.condi
 // ── Rendering ────────────────────────────────────────────
 
 /** Markers only for problems the sentence does not show already (placeholders say what is missing). */
-const SILENT = new Set(['missing_value', 'bad_action', 'no_conditions', 'bad_scope'])
+const SILENT = new Set(['missing_value'])
+/** An empty When, Do or Apply to is the starting point, not an error: marked once the user has changed something. */
+const LATE = new Set(['bad_action', 'no_conditions', 'bad_scope'])
 
 function marks() {
   const m = { cond: new Map<string, Issue[]>(), action: [] as Issue[], scope: [] as Issue[], when: [] as Issue[], options: [] as Issue[] }
+  const late = changed()
   for (const i of s.issues) {
-    if (SILENT.has(i.code)) continue
+    if (SILENT.has(i.code) || (LATE.has(i.code) && !late)) continue
     if (i.conditionId) m.cond.set(i.conditionId, [...(m.cond.get(i.conditionId) ?? []), i])
     else if (i.field?.startsWith('action')) m.action.push(i)
     else if (i.field?.startsWith('scope')) m.scope.push(i)
@@ -219,7 +242,10 @@ function nav() {
     ? h('button', { class: 'title-pill', type: 'button', 'aria-label': `${titleOf(d)}, rename or show details`, 'data-fk': 'title', onclick: (e: Event) => titleMenu(e.currentTarget as HTMLElement) },
       chip, title, h('span', { class: 'title-pill__chev', html: icon('down', 10, 3.6) }))
     : h('span', { class: 'title-pill' }, chip, title)
-  return h('div', { class: 'nav nav--editor' }, backBtn(), pill, h('span'))
+  const right = !s.id && !s.readOnly
+    ? h('button', { class: 'link-btn link-btn--strong', type: 'button', 'data-fk': 'add', onclick: () => void add() }, 'Add')
+    : h('span')
+  return h('div', { class: 'nav nav--editor' }, backBtn(), pill, right)
 }
 
 function scopeValue(sc: Scope): { text: string; missing?: boolean } {
@@ -370,7 +396,8 @@ function doCard(issues: Issue[]) {
   if (!a) {
     return h('div', { class: 'card card--when sentence' },
       h('p', {}, h('span', { class: 'chip', html: icon('do-empty', 14, 2.6) }), 'Do'),
-      s.readOnly ? null : h('button', { class: 'add-btn', type: 'button', 'data-fk': 'add-action', html: icon('plus-circle', 20, 2), onclick: () => actionSheet('add-action') }, 'Add action'))
+      s.readOnly ? null : h('button', { class: 'add-btn', type: 'button', 'data-fk': 'add-action', html: icon('plus-circle', 20, 2), onclick: () => actionSheet('add-action') }, 'Add action'),
+      marker(issues))
   }
   const ic = ACTION_ICON[a.type]
   return h('div', { class: 'card sentence' }, h('div', { class: 'row-line' },
@@ -426,9 +453,10 @@ function onToken(t: Tok, condId: string | undefined, anchor: HTMLElement, fk: st
       return menu(anchor, cm.items.map(w => ({
         label: cap(w), checked: w === cm.current,
         onPick: () => {
+          const before = s.draft
           const next = setCompare(c, w)
           replaceCond(next)
-          if (next !== c && firstEmpty(conditionParts(next))) numericSheet('threshold', c.id, fk) // ROI above ↔ below asks for a new value
+          if (next !== c && firstEmpty(conditionParts(next))) numericSheet('threshold', c.id, fk, before) // ROI above ↔ below asks for a new value; Cancel puts the old one back
         },
       })), 'Comparison', back(fk))
     }
@@ -450,11 +478,12 @@ function conditionSheet(replacing?: string, fk = 'add-cond') {
           sh.close()
           // ROI keeps its side: replacing a LOSS ROI with ROI stays LOSS
           const type: ConditionType = c.unit === 'ROI_PERCENT' && old?.type === 'LOSS' ? 'LOSS' : c.type
+          const before = s.draft
           const next = old ? setMetric(old, type, c.unit) : newCondition(nextId(s.draft.conditions.items), type, c.unit)
           if (old) replaceCond(next)
           else commit(d => { if (d.conditions.items.length === 1) d.conditions.logic = 'ANY'; d.conditions.items.push(next) }) // a second line starts as or (P10)
           const key = firstEmpty(conditionParts(next))
-          if (key && next !== old) numericSheet(key, next.id, `${next.id}:${key}`)
+          if (key && next !== old) numericSheet(key, next.id, `${next.id}:${key}`, before) // Cancel there takes the whole step back
         },
       }, h('span', { class: 'radio-row__label' }, c.label), current(c) ? h('span', { class: 'radio-row__check', html: icon('check', 20, 2.4) }) : null)))]),
   })
@@ -469,10 +498,11 @@ function actionSheet(fk: string) {
       class: 'choice-row', type: 'button', 'aria-current': cur === a.type ? 'true' : undefined,
       onclick: () => {
         sh.close()
+        const before = s.draft
         const next = cur === a.type ? s.draft.action! : newAction(a.type)
         commit(d => { d.action = next })
         const key = firstEmpty(actionParts(next))
-        if (key) numericSheet(key, undefined, `a:${key}`)
+        if (key) numericSheet(key, undefined, `a:${key}`, next === before.action ? undefined : before)
       },
     },
     h('span', { class: 'chip chip--row', style: `--c: ${ic.color}`, html: icon(ic.icon, 16, 2.4) }),
@@ -507,7 +537,15 @@ function checkNum(raw: string, r: Range, integer?: boolean): string | null {
   return v !== null && inRange(Number(v), r) && (!integer || Number.isInteger(Number(v))) ? v : null
 }
 
-function numericSheet(key: string, condId: string | undefined, fk: string) {
+/** Puts the draft back as it was before a step whose sheet was cancelled. */
+function restore(before: Draft) {
+  s.draft = before
+  render()
+  validateSoon()
+}
+
+/** `before`: the draft ahead of the step that opened this sheet; Cancel restores it, so a cancelled Add leaves nothing behind. */
+function numericSheet(key: string, condId: string | undefined, fk: string, before?: Draft) {
   const f = numField(cat, s.draft, key, condId)
   if (!f) return
   const input = h('input', {
@@ -520,12 +558,13 @@ function numericSheet(key: string, condId: string | undefined, fk: string) {
     input.size = Math.max(2, input.value.length + 1) // the sign stays next to the number
     const ok = checkNum(input.value, f.range, f.integer) !== null
     const typed = input.value.trim() !== ''
-    note.textContent = !ok && typed ? rangeText(f.range) : now
+    note.textContent = !ok && typed ? rangeText(f.range, f.unit) : now
     note.classList.toggle('is-error', !ok && typed)
     sh.setDone(ok)
   }
   const sh = sheet({
     title: f.title, back: back(fk), focus: input,
+    dirty: () => input.value !== f.value, onCancel: before && (() => restore(before)),
     body: [h('label', { class: 'numeric' },
       h('span', { class: 'numeric__word' }, f.word),
       h('span', { class: 'numeric__value' }, f.sign ? h('span', { class: 'numeric__unit' }, f.sign) : null, input),
@@ -584,7 +623,7 @@ function targetSheet(fk: string) {
     const valid = value() !== null
     const typed = kind === 'pct' ? pct.value.trim() : kind === 'price' ? px.value.trim() : ''
     note.hidden = valid || !typed
-    note.textContent = note.hidden ? '' : rangeText(kind === 'pct' ? percentRange : priceRange)
+    note.textContent = note.hidden ? '' : kind === 'pct' ? rangeText(percentRange, '%') : rangeText(priceRange, 'USDT')
     sh.setDone(valid)
   }
   const group = h('div', { class: 'group', role: 'radiogroup', 'aria-label': tp ? 'Take profit' : 'Stop loss' })
@@ -617,7 +656,7 @@ function targetSheet(fk: string) {
   paint()
 }
 
-const HINT: Record<TriggerMode, string> = { ON_ENTRY: 'each time it becomes true', ON_EVENT: 'only for crossings and fills', ONCE: '', REPEAT: '' }
+const HINT: Record<TriggerMode, string> = { ON_ENTRY: 'each time it becomes true', ON_EVENT: 'only for crossings and fills', ONCE: 'the first time only', REPEAT: 'while it stays true' }
 
 function optionsSheet() {
   const o = { trigger: structuredClone(s.draft.trigger), delivery: { ...s.draft.delivery } }
@@ -634,8 +673,7 @@ function optionsSheet() {
   h('span', { class: 'radio-row__label' }, c.mode === 'REPEAT' ? `Repeat every ${cat.limits.repeatSec.default / 60} min` : { ON_ENTRY: 'On entry', ON_EVENT: 'On event', ONCE: 'Once' }[c.mode]),
   h('span', { class: 'radio-row__detail' }, c.why ?? HINT[c.mode])))))
   // shortcut: Repeat uses the 5 min default, add an interval token when someone needs another
-  const saved = !!s.id
-  const sh = sheet({
+  sheet({
     title: 'Options', back: back('options'),
     body: [
       h('h3', { class: 'group-label' }, 'When it fires'), fires,
@@ -643,13 +681,10 @@ function optionsSheet() {
       h('div', { class: 'group' },
         h('div', { class: 'row row--switch' }, h('span', { id: 'opt-glasses' }, 'Show on glasses'), rowSwitch(o.delivery.glasses, 'opt-glasses', (on, b) => { o.delivery.glasses = on; b.setAttribute('aria-checked', String(on)) })),
         h('div', { class: 'row row--switch' }, h('span', { id: 'opt-phone' }, 'Send to phone'), rowSwitch(o.delivery.phone, 'opt-phone', (on, b) => { o.delivery.phone = on; b.setAttribute('aria-checked', String(on)) }))),
-      h('h3', { class: 'group-label' }, 'Voice phrase'),
-      h('label', { class: 'text-field', html: icon('mic', 20, 2) }, phrase),
-      h('p', { class: 'footnote' }, 'Say it on Even G2 to run this shortcut now.'),
-      saved ? h('div', { class: 'group group--gap' },
-        h('button', { class: 'row row--btn is-accent', type: 'button', onclick: () => { sh.close(); void testAlert() } }, 'Send a test alert'),
-        h('button', { class: 'row row--btn is-danger', type: 'button', onclick: () => { sh.close(); void remove() } }, 'Delete shortcut')) : '',
+      // shortcut: voice phrases are hidden while voice only answers alerts (yes / no); show this group again to bring them back
     ],
+    // Test alert and Delete live in the title menu: here they would close the sheet and drop its edits
+    dirty: () => stable(o) !== stable({ trigger: s.draft.trigger, delivery: s.draft.delivery }) || normalizePhrase(phrase.value) !== (s.draft.voicePhrase ?? ''),
     onDone: () => commit(d => {
       d.trigger = o.trigger
       d.delivery = o.delivery
@@ -673,7 +708,7 @@ function titleMenu(anchor: HTMLElement) {
 function renameSheet() {
   const input = h('input', { class: 'text-field__input', type: 'text', value: s.draft.name ?? '', placeholder: s.draft.action ? titleOf({ action: s.draft.action }) : '', maxlength: cat.limits.maxName, 'aria-label': 'Name' })
   sheet({
-    title: 'Rename', back: back('title'), focus: input, body: [h('label', { class: 'text-field' }, input), h('p', { class: 'footnote' }, 'Leave it empty to use the action name.')],
+    title: 'Rename', back: back('title'), focus: input, dirty: () => input.value.trim() !== (s.draft.name ?? ''), body: [h('label', { class: 'text-field' }, input), h('p', { class: 'footnote' }, 'Leave it empty to use the action name.')],
     onDone: () => commit(d => { const v = input.value.trim(); if (v) d.name = v; else delete d.name }),
   })
 }
