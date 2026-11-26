@@ -1,6 +1,6 @@
 # Deploy Trade Shortcuts
 
-Release in this order: **VPS API instances → hosted web build → Even Hub package**. Build all three from the same verified commit. The 0.1.0 beta predates size and leverage selection. Use the next available version in `app/app.json` and check it in the portal before uploading.
+Use one verified commit for the release. When the server changes, release the VPS API before the hosted site and Even Hub package. Use the next available version in `app/app.json` and check the portal before uploading.
 
 ## Prepare the release
 
@@ -24,4 +24,4 @@ Take a SQLite backup before starting the new service. Opening the DB versions le
 1. Deploy the landing and sandbox output from `site/landing/`. The sandbox has its own in-memory exchange and does not need a token.
 2. If releasing the separate hosted phone demo, build the app with `VITE_TRADE_SHORTCUTS_BACKEND_ORIGIN` set to the hosted paper origin. `VITE_DEMO_TOKEN`, if set, becomes public JavaScript. Use only the dedicated fake-exchange token there. Test hosted Settings and a paper alert after deploying.
 3. From the same clean export, run `npm run pack -- "$DEMO_HTTPS_ORIGIN" "$TESTNET_HTTPS_ORIGIN" "trade-shortcuts-$BUILD_VERSION.ehpk"`. The first origin is the default. The packer clears `VITE_DEMO_TOKEN` for this build. Check version, allowed origins and the digest before handing it to the portal owner.
-4. In Beta, verify install, connection, Review, size and leverage selection, and a paper fill on G2. Until clients update, older beta clients still receive state but omit the new lens heartbeat.
+4. Promote the uploaded version to Beta and verify that testers are Active. Follow the [store and device checklist](store-listing.md) before submitting for public review.

@@ -33,7 +33,9 @@ Run the command below with the HTTPS origin where the configured backend is reac
 npm run pack -- https://your-backend.example
 ```
 
-This creates `trade-shortcuts.ehpk` and allowlists the given origin in the manifest. To allowlist additional backends, append their HTTPS origins. The first is the default. The packer clears the hosted-page demo credential for device builds. For a device test, upload the package and assign it to a Beta group in Even Hub. Once installed, enter the server access token under **Settings → Connection**. [Even Hub beta testing](https://hub.evenrealities.com/docs/test/beta-testing)
+This creates `trade-shortcuts.ehpk` and allowlists the given origin in the manifest. To allowlist additional backends, append their HTTPS origins. The first is the default. The packer clears the hosted-page demo credential for device builds.
+
+Upload the build to the existing app in Even Hub. Promote that version to **Beta**, then check that each tester who accepted the email invitation is **Active**. On the phone, open **Me → Beta tester**, install Trade Shortcuts, and enter the server access token under **Settings → Connection**. [G2 testing guide](judge-testing.md) · [Even Hub Beta Testing](https://hub.evenrealities.com/docs/test/beta-testing)
 
 ### Connect the Beta app to Bybit Testnet
 

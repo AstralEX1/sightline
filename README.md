@@ -120,3 +120,7 @@ npm test
 npm run build
 npm run build:site
 ```
+
+## License
+
+[MIT](LICENSE) · [Privacy policy](https://trade-shortcuts-pi.vercel.app/privacy.html) · [Even Hub store assets and QA](docs/store-listing.md)

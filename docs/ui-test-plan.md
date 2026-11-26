@@ -78,6 +78,7 @@ Shared server: several testers run at once. Prefix every shortcut you create wit
 - Fold a template category, reload, and expand it. Verify all 12 templates across four groups and that folding does not change an active rule.
 - Test a price-change rule from its initial price, then from the last alert price. Compare a 25% margin proposal on two isolated positions with different margins.
 - On an eligible fixed-terms voice alert, check no, yes followed by cancellation, and yes through the five-second countdown. Multi-option Open requires touch selection.
+- Hide the app or leave the lens page during the voice countdown. Verify there is no confirmation. Repeat while the first transcription reply is pending, reopen the app, then let the reply arrive. Verify the old reply cannot start a countdown. Use a paper account for both checks.
 - Delay the lens highlight update after a swipe. A tap before acknowledgement leaves the proposal pending. A tap after the highlight appears confirms the selected action.
 - With stale exchange data only Dismiss is available. For an ambiguous submission, show Unknown and reconcile from exchange state. Unknown Add Margin blocks another margin addition and still permits Close.
 - In Settings → Connection save a valid HTTPS address and test server token. Restart the app and verify the authenticated connection resumes. Switch Gesture tips off, restart, then on and restart again. Check that Main follows the saved preference and Exit remains visible.

@@ -35,4 +35,4 @@ Settings in the Even app can send a connection check to the lens in the same ses
 
 Verify ROI against the Bybit app in the supported margin modes. The implementation uses `100 × unrealisedPnl / positionIM`. Physical G2/R1 input, chart readability and transfer time, background/resume, voice cancellation and installation against the intended server need device evidence. The earlier testnet run covered the operations listed above.
 
-The [Even Hub privacy policy](privacy.html) describes the Beta backend and the data and permissions used by the app.
+The [Even Hub privacy policy](https://trade-shortcuts-pi.vercel.app/privacy.html) describes the Beta backends and the app permissions. [Store assets and reviewer walkthrough](store-listing.md)

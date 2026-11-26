@@ -2,6 +2,7 @@
 # source imports ../../../server and ../../../app, which are outside this folder.
 /*
 !index.html
+!privacy.html
 !css
 !css/**
 !img

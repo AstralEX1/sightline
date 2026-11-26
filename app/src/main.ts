@@ -97,6 +97,8 @@ let hide = ''
 let cursor = { key: '', at: 0 }
 let mic: 'off' | 'starting' | 'on' | 'stopping' | 'sending' = 'off'
 let micAttempt = 0
+let voiceInForeground = true
+const canUseVoice = () => voiceInForeground && !document.hidden && !quit
 let audio: Uint8Array[] = []
 let listenTimer: ReturnType<typeof setTimeout> | undefined
 let voiceNote = { text: '', until: 0 }
@@ -462,7 +464,7 @@ async function poll(force = false) {
 // ── voice: the mic opens when an alert arrives; yes starts a countdown, no dismisses ──
 
 async function startListening(ms: number, cardId: string) {
-  if (!bridge || mic !== 'off' || document.hidden || noVoice()) return
+  if (!bridge || mic !== 'off' || !canUseVoice() || noVoice()) return
   mic = 'starting'
   listenMs = ms
   listenFor = cardId
@@ -482,22 +484,27 @@ async function startListening(ms: number, cardId: string) {
 }
 
 async function stopListening(message = 'Recording interrupted · try again') {
-  if (mic !== 'starting' && mic !== 'on') return
   micAttempt++
-  mic = 'stopping'
-  clearTimeout(listenTimer)
+  if (mic === 'off' || mic === 'stopping') return
+  const closing = mic === 'sending' // sendVoice has already queued microphone shutdown
   audio = []
   note(message)
+  if (closing) { mic = 'off'; return }
+  mic = 'stopping'
+  clearTimeout(listenTimer)
   if (bridge) await call(() => bridge!.audioControl(false)).catch(() => {})
   mic = 'off'
 }
 
 async function sendVoice() {
   if (mic !== 'on') return
-  if (document.hidden) return stopListening()
+  if (!canUseVoice()) return interruptVoice()
+  const attempt = micAttempt
+  const cardId = listenFor
   mic = 'sending'
   clearTimeout(listenTimer)
   if (bridge) await call(() => bridge!.audioControl(false)).catch(() => {})
+  if (attempt !== micAttempt) return
   const pcm = new Uint8Array(audio.reduce((n, c) => n + c.length, 0))
   let at = 0
   for (const c of audio) { pcm.set(c, at); at += c.length }
@@ -506,15 +513,19 @@ async function sendVoice() {
   if (pcm.length >= MIN_AUDIO_BYTES) {
     if (!countdown) note('Thinking…', Infinity)
     await draw()
+    if (attempt !== micAttempt) return
+    if (!canUseVoice()) return interruptVoice()
     try {
       r = await api.voice(pcm)
+      if (attempt !== micAttempt) return
       note('', 0)
     } catch (e) {
+      if (attempt !== micAttempt) return
       note(`Voice: ${(e as Error).message}`)
     }
   }
   mic = 'off'
-  if (r) await onAnswer(listenFor, r)
+  if (r && canUseVoice()) await onAnswer(cardId, r)
   return poll()
 }
 
@@ -534,11 +545,12 @@ function startCountdown(card: Proposal) {
   clearInterval(countdownTimer)
   countdownTimer = setInterval(() => {
     if (!countdown) return
+    if (!canUseVoice()) return interruptVoice()
     if (current().card?.id !== card.id) return stopCountdown('') // expired, replaced or answered elsewhere: nothing goes out
-    if (Date.now() < countdown.ends || mic === 'on' || mic === 'sending') return void draw() // a "no" still on its way wins
+    if (Date.now() < countdown.ends || mic !== 'off') return void draw() // a "no" still on its way wins
     countdown = null
     clearInterval(countdownTimer)
-    void confirmCard(card)
+    void confirmCard(card, micAttempt)
   }, 250)
   void startListening(COUNTDOWN_LISTEN_MS, card.id)
   return draw()
@@ -550,6 +562,11 @@ function stopCountdown(message = 'Stopped · nothing sent') {
   void stopListening('')
   note(message, message ? 2000 : 0)
   return draw()
+}
+
+function interruptVoice() {
+  if (countdown) return stopCountdown()
+  return stopListening()
 }
 
 // CLICK_EVENT is 0 and protobuf drops zero fields, so a tap arrives with eventType undefined.
@@ -590,7 +607,7 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
   const is = (t: OsEventTypeList) => types.includes(t)
 
   if (is(OsEventTypeList.ABNORMAL_EXIT_EVENT)) {
-    void stopListening()
+    void interruptVoice()
     page = '-' // the host dropped the page: the next draw rebuilds it
     return
   }
@@ -601,16 +618,20 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
     exiting = next
     if (act === 'quit') {
       quit = true // polling and drawing stop: the page is gone
-      void stopListening()
+      void interruptVoice()
       return
     }
+    if (life === OsEventTypeList.FOREGROUND_ENTER_EVENT) voiceInForeground = true
     if (quit && life === OsEventTypeList.FOREGROUND_ENTER_EVENT) {
       quit = false // the host kept the WebView and opened the app again
       shown = {}
       page = '-'
       return poll()
     }
-    if (act === 'pass' && life === OsEventTypeList.FOREGROUND_EXIT_EVENT) void stopListening()
+    if (act === 'pass' && life === OsEventTypeList.FOREGROUND_EXIT_EVENT) {
+      voiceInForeground = false
+      void interruptVoice()
+    }
     if (act === 'ignore') return // the exit dialogue just appeared: a rebuild behind it only loses the images
     if (act === 'show' || act === 'resume') {
       if (act === 'show') {
@@ -622,7 +643,7 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
   }
   const gesture = [OsEventTypeList.CLICK_EVENT, OsEventTypeList.DOUBLE_CLICK_EVENT, OsEventTypeList.SCROLL_TOP_EVENT, OsEventTypeList.SCROLL_BOTTOM_EVENT].some(is)
   if (gesture && countdown) return stopCountdown() // any gesture stops a spoken yes, and does nothing else
-  if (gesture && (mic === 'starting' || mic === 'on')) void stopListening('') // the hand answers instead of the voice
+  if (gesture) void stopListening('') // the hand answers instead of the voice
   const swipe = is(OsEventTypeList.SCROLL_TOP_EVENT) ? 0 : is(OsEventTypeList.SCROLL_BOTTOM_EVENT) ? 1 : null
   const sc = current()
   if (sc.layout === 'main' || sc.layout === 'quiet') {
@@ -631,7 +652,6 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
       if (sc.layout === 'main' && api.quietModeOn()) { positionsOpen = false; return draw() }
       // A root-page double tap must open the host's exit dialogue (Even Hub review).
       if (exiting === 'asked') return // the dialogue is already on its way
-      void stopListening()
       exiting = 'asked'
       setTimeout(() => { if (exiting === 'asked') exiting = 'none' }, EXIT_WAIT_MS)
       if (bridge) call(() => bridge!.shutDownPageContainer(1)).then(ok => { if (!ok) exiting = 'none' }, () => { exiting = 'none' })
@@ -745,13 +765,18 @@ async function dismissCard(card: Proposal) {
   return poll()
 }
 
-async function confirmCard(card: Proposal) {
+async function confirmCard(card: Proposal, voiceAttempt?: number) {
   const o: Outcome = { card } // Sent, until the server answers
   outcome = o
   execId = ''
   doneAt = 0
   review = ''
   await draw()
+  if (voiceAttempt !== undefined && (voiceAttempt !== micAttempt || !canUseVoice())) {
+    if (outcome === o) outcome = null
+    note('Stopped · nothing sent')
+    return draw()
+  }
   try {
     // One key per card: a second tap after a lost reply gets the same execution back, never a second order.
     const r = await api.confirm(card.id, `lens:${card.id}`)
@@ -820,8 +845,8 @@ async function startGlasses() {
   })
 }
 
-document.addEventListener('visibilitychange', () => { if (document.hidden) void stopListening() })
-window.addEventListener('pagehide', () => void stopListening())
+document.addEventListener('visibilitychange', () => { if (document.hidden) void interruptVoice() })
+window.addEventListener('pagehide', () => void interruptVoice())
 startPhonePage({ root: $('phone'), settingsReady, onConnect: () => void poll(true) })
 void startGlasses()
 void poll()
