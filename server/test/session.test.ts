@@ -940,7 +940,7 @@ test('the menu closes one position or all of them, each as a card to confirm', a
   ex.prices.ETHUSDT = 3080
   store.seed([CLOSE_SEED], 'seeded:close')
   await ticks()
-  assert.deepEqual(await s.command('close', { symbol: 'ETHUSDT', positionIdx: 0 }), { ok: true, message: 'Heard "close all" · 1 proposal' })
+  assert.deepEqual(await s.command('close', { symbol: 'ETHUSDT', positionIdx: 0 }), { ok: true, message: 'Heard "close position" · 1 proposal' })
   assert.deepEqual(store.pendingProposals().map(p => p.question), ['Close 100% · 1 ETH?'])
   assert.deepEqual(await s.command('close'), { ok: true, message: 'Heard "close all" · 2 proposals' }) // ETH's card already up
   assert.deepEqual(store.pendingProposals().map(p => p.question).sort(), ['Close 100% · 0.05 BTC?', 'Close 100% · 1 ETH?'])

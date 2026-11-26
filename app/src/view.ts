@@ -73,8 +73,8 @@ export interface View {
   positionsOpen?: boolean
   /** The server answered 401, so the phone page still needs the token */
   needToken?: boolean
-  /** The optional tips on Main and Detail (tap: details, tap, hold: menu, swipe: next position). Double tap and the
-   * lines on alerts, reviews and results are always drawn: they say what a tap does, or the only way out. */
+  /** The optional tips on Main and Detail (tap: details, swipe: next position). Double tap always shows. So does the
+   * way to the menu when a position is listed, and `tap: close` on a position. Alerts, reviews and results always keep their line. */
   hints?: boolean
   /** Phone clock for the time in the top line; none in tests */
   now?: number
@@ -96,9 +96,13 @@ const TIP_LAUNCHES = 3
 export const tipsShown = (setting: string, launches: number) => (setting ? setting === 'on' : launches < TIP_LAUNCHES)
 /** "liq 5.9%" shows in the flag column below this distance. */
 const LIQ_FLAG_PCT = 10
+/** Coin quantity, right-aligned in the name box. Wide enough for 0.000012 and 123,456. */
+const SIZE_PX = 84
+/** Empty pixels after the size, so it does not touch the price. */
+const SIZE_GAP = 8
 /** Inner width of each box in main.ts LAYOUTS: its width minus 2 × 2 px padding. */
 export const INNER_PX: Record<string, number> = {
-  top: 540, name: 140, cur: 140, price: 124, loss: 100, gain: 100, flag: 164, hint: 540,
+  top: 540, name: 228, cur: 228, price: 124, loss: 100, gain: 100, flag: 76, hint: 540,
   who: 380, why: 380, queue: 68, ask: 452, terms: 452, opt1: 540, opt2: 540,
   table: 236, lev: 268, risk: 540,
 }
@@ -171,10 +175,46 @@ const grows = (c: Proposal) => c.terms.type === 'order' && !c.terms.reduceOnly
 const heldBy = (s: ServerState, c: Proposal) =>
   s.positions.find(p => p.symbol === c.terms.symbol && c.terms.type === 'order' && p.positionIdx === c.terms.positionIdx && p.size > 0)
 
-/** The position, plainly. A long ticker is cut, never the side. */
-function name(p: Position, markPx = 0): string {
+/** Grouped digits, trailing zeros cut: 0.0500 → 0.05, 81300000 → 81,300,000. */
+function plainQty(n: number, decimals: number): string {
+  const [i, f = ''] = Math.abs(n).toFixed(Math.max(0, decimals)).split('.')
+  const frac = f.replace(/0+$/, '')
+  const int = i.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return frac ? `${int}.${frac}` : int
+}
+
+/** Coin quantity for the column `px` wide. Full decimals while they fit, then 81.3k / 1.2M. Never "0" for a real size. */
+export function sizeText(n: number, px: number): string {
+  if (!(n > 0) || !Number.isFinite(n) || px <= 0) return ''
+  const maxDec = n >= 1000 ? 2 : n >= 1 ? 4 : 8
+  for (let d = maxDec; d >= 0; d--) {
+    const s = plainQty(n, d)
+    if (s !== '0' && getTextWidth(s) <= px) return s
+  }
+  for (const [div, suf] of [[1e9, 'B'], [1e6, 'M'], [1e3, 'k']] as const) {
+    if (n < div) continue
+    for (let d = 2; d >= 0; d--) {
+      const s = plainQty(n / div, d) + suf
+      if (getTextWidth(s) <= px) return s
+    }
+  }
+  return fit(plainQty(n, maxDec), px)
+}
+
+/** The position, plainly. A long ticker is cut, never the side. `reservePx` keeps the right of the box for the size. */
+function name(p: Position, markPx = 0, reservePx = 0): string {
   const side = sideWord(p.side)
-  return `${fit(coin(p.symbol), INNER_PX.name - markPx - getTextWidth(` ${side}`))} ${side}`
+  return `${fit(coin(p.symbol), INNER_PX.name - markPx - reservePx - getTextWidth(` ${side}`))} ${side}`
+}
+
+/** Size at the right of the name box, one gap short of the price column. */
+function withSize(label: string, sz: string): string {
+  if (!sz) return label
+  const end = INNER_PX.name - SIZE_GAP
+  let spaces = Math.max(1, Math.floor((end - getTextWidth(label) - getTextWidth(sz)) / SPACE_PX))
+  while (spaces > 1 && getTextWidth(label + ' '.repeat(spaces) + sz) > end) spaces--
+  const line = label + ' '.repeat(spaces) + sz
+  return getTextWidth(line) <= INNER_PX.name ? line : fit(line, INNER_PX.name)
 }
 
 /** ROI on the position's initial margin, ▲ / ▼ before it; none when Bybit gives no margin. */
@@ -185,14 +225,16 @@ function roi(p: Position): string {
   return `${r < 0 ? '▼' : '▲'} ${a >= 1000 ? Math.round(a).toLocaleString('en-US') : a.toFixed(1)}%`
 }
 
-/** name, price, loss, gain, flag: the flag only when the position is in trouble. */
+/** name (with the size at its right), price, loss, gain, flag: the flag only when the position is in trouble. */
 function row(p: Position, on: boolean): string[] {
   const dist = liqDistancePct(p)
   const r = roi(p)
   const cell = r && fit(r, INNER_PX.loss)
   const flag = dist < LIQ_FLAG_PCT ? `liq ${dist.toFixed(1)}%` : ''
   const mark = on ? ROW_MARK : ROW_UNMARKED
-  return [mark + name(p, getTextWidth(mark)), fit(price(p.markPrice), INNER_PX.price), r.startsWith('▼') ? cell : '', r.startsWith('▲') ? cell : '', flag && alignRight(flag, INNER_PX.flag)]
+  const reserve = SIZE_PX + SIZE_GAP + SPACE_PX
+  const label = mark + name(p, getTextWidth(mark), reserve)
+  return [withSize(label, sizeText(p.size, SIZE_PX)), fit(price(p.markPrice), INNER_PX.price), r.startsWith('▼') ? cell : '', r.startsWith('▲') ? cell : '', flag && alignRight(flag, INNER_PX.flag)]
 }
 
 /** The top line, with the time at its right edge. */
@@ -259,9 +301,14 @@ function main(s: ServerState | null, v: View): Screen {
     text.name = rows.map((r, i) => (i === sel ? '' : r[0])).join('\n').trimEnd()
     if (live.error) for (const box of ['name', 'cur', 'price', 'loss', 'gain', 'flag']) tone[box] = 2 // stale numbers step back; the top line says since when
   }
-  // Double tap is the only way out, offline too. No "swipe: choose": the `>` and the page counter already show it.
+  // Hold opens the menu. It does not close by itself, so the line says menu. It stays visible with a position
+  // listed, because Close position is the first item there. No "swipe: choose": ▶ already shows the move.
   const tips = v.hints && live
-  text.hint = fit([tips && n ? 'tap: details' : '', v.quiet ? 'double tap: back' : 'double tap: exit', tips ? 'tap, hold: menu' : ''].filter(Boolean).join(' · '), INNER_PX.hint)
+  text.hint = fit([
+    tips && n ? 'tap: details' : '',
+    (live && n) || (tips && !n) ? 'tap, hold: menu' : '',
+    v.quiet ? 'double tap: back' : 'double tap: exit',
+  ].filter(Boolean).join(' · '), INNER_PX.hint)
   return { layout: 'main', key: 'main', text, tone, icon: '', choices: [], at: 0, card: null, toastAlertId: override ? undefined : live?.toastAlertId }
 }
 
@@ -272,9 +319,22 @@ function away(level: number, mark: number, dp: number): string {
   return Number(t) === 0 ? '0%' : `${d < 0 ? '−' : '+'}${t}%`
 }
 
+/** Size and leverage under the coin: "0.05 BTC · 10×". A long ticker drops before the quantity does; the title already names the coin. */
+function levLine(p: Position): string {
+  const lev = `${p.leverage}×`
+  const full = sizeText(p.size, Infinity)
+  const withCoin = `${full} ${coin(p.symbol)} · ${lev}`
+  if (full && getTextWidth(withCoin) <= INNER_PX.lev) return withCoin
+  const bare = `${full} · ${lev}`
+  if (full && getTextWidth(bare) <= INNER_PX.lev) return bare
+  const tail = ` · ${lev}`
+  const sz = sizeText(p.size, INNER_PX.lev - getTextWidth(tail))
+  return sz ? fit(sz + tail, INNER_PX.lev) : fit(lev, INNER_PX.lev)
+}
+
 /**
- * Coin and side big top left and PnL as big top right (pictures: the font has one size), leverage under the coin, the
- * stop and liquidation distances under PnL; the last hour across the bottom (glasses-shortcuts §4).
+ * Coin and side big top left and PnL as big top right (pictures: the font has one size), size and leverage under the
+ * coin, the stop and liquidation distances under PnL; the last hour across the bottom (glasses-shortcuts §4).
  */
 function detail(p: Position, at: number, total: number, v: View): Screen {
   // Under 1% a tenth hides what matters; both distances then take two decimals, so the line reads evenly.
@@ -282,11 +342,13 @@ function detail(p: Position, at: number, total: number, v: View): Screen {
   const stop = p.stopLoss ? `stop ${away(p.stopLoss, p.markPrice, dp)}` : ''
   const liq = p.liqPrice > 0 ? `liq ${away(p.liqPrice, p.markPrice, dp)}` : ''
   const table = [stop, liq].filter(Boolean).join(' · ')
-  const hint = fit(total > 1 && v.hints ? 'swipe: next position · double tap: back' : 'double tap: back', INNER_PX.hint - 60)
-  const place = total > 1 ? `${at + 1}/${total}` : ''
+  const width = INNER_PX.hint - (total > 1 && !v.voice ? 60 : 0)
+  const gesture = [total > 1 && v.hints ? 'swipe: next position' : '', 'tap: close', 'double tap: back'].filter(Boolean).join(' · ')
+  const hint = fit(v.voice || gesture, width)
+  const place = total > 1 && !v.voice ? `${at + 1}/${total}` : ''
   return {
     layout: 'detail', key: 'detail', text: {
-      lev: fit(`${p.leverage}×`, INNER_PX.lev), table: fit(table, INNER_PX.table),
+      lev: levLine(p), table: fit(table, INNER_PX.table),
       hint: place ? hint + ' '.repeat(Math.floor((INNER_PX.hint - getTextWidth(hint) - getTextWidth(place)) / SPACE_PX)) + place : hint,
     }, tone: { ...TONE }, icon: '', choices: [], at: 0, card: null,
     title: `${coin(p.symbol)} ${sideWord(p.side)}`,

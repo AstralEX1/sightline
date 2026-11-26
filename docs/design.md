@@ -2,7 +2,7 @@
 
 ## Even G2
 
-The glasses show open positions and their ROI. A tap opens the selected position's details and one-hour chart. A rule that needs a decision opens a card with the position, the trigger, and the proposed action.
+The glasses show open positions and their ROI. A tap opens the selected position's details and one-hour chart. On that screen a tap asks to close the position. The list closes the row under ▶ from the menu (tap and hold, then Close position), or by voice after Speak. A rule that needs a decision opens a card with the position, the trigger, and the proposed action. Closing does too, and the card starts on Dismiss.
 
 | Screen | What matters at a glance |
 | --- | --- |

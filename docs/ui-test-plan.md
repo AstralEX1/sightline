@@ -60,6 +60,8 @@ Shared server: several testers run at once. Prefix every shortcut you create wit
 | L02 | Main | swipe down/up | `▶` moves, brightness swaps; no page rebuild flicker |
 | L03 | position selected on Main | tap | Detail shows coin and side, leverage, PnL, available stop/liquidation distances and the one-hour chart; double tap returns to Main |
 | L04 | Detail | swipe, double tap | next position; back to Main with cursor on the same position |
+| L04a | Detail | tap | close card for that position, `> Dismiss` first, then `Close 100%`; nothing is sent until confirm |
+| L04b | Main, position under ▶ | tap and hold, then Close position, or Speak and say “close” / “закрой” | the same card for that position. “close all” / “закрой все” raises one card per position |
 | L05 | | enable a Close 50% on near-liquidation shortcut | Alert frame, `BTC long`, `x% to liquidation`, `> Dismiss` selected, `Close 50% · 0.025 BTC` below |
 | L06 | new alert | tap within 1 s | ignored (`CARD_SETTLE_MS`) |
 | L07 | alert | swipe to action, tap | Sent (`waiting for Bybit · double tap: hide`, taps ignored) → Filled with `> OK`; History on phone matches |

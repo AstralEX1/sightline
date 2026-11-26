@@ -13,17 +13,18 @@ Enable **Quiet mode** under Settings → On your glasses to make the status and 
 | Screen | The one question | Answer on the lens | Next |
 |---|---|---|---|
 | Main | How are my positions? | header-less table: position, price, ROI, a flag only when in trouble | swipe, tap |
-| Detail | How is this position doing? | coin and side big, leverage under; PnL as big; stop and liquidation distance; the last hour with entry and stop named on it | swipe, double tap |
+| Detail | How is this position doing? | coin and side big, leverage under; PnL as big; stop and liquidation distance; the last hour with entry and stop named on it | swipe, tap, double tap |
 | Alert | What fired, and what will a tap do? | framed notification with an icon, choices below the frame | swipe, tap |
 | Review | What exactly am I opening? | qty, notional, leverage, margin, stop | swipe, tap |
 | Result | Did it happen? | the exchange's real status | nothing, or OK |
 
-The contextual menu offers Protect all, Lock profits and Pause/Resume cards. Main also offers Close all; Detail offers Close position. Each eligible target gets its own proposal. Speech answers the current alert when enabled.
+The contextual menu offers Protect all, Lock profits and Pause/Resume cards. Main and Detail offer Close position for the position in focus; Main also offers Close all. Speak is in that menu when voice is on: “close”, “закрой”, or “close btc” raises that position’s card, and “close all” raises one card per position. A tap on Detail does the same as Close position. Each close is a card to confirm, with Dismiss first. Speech still answers the current alert when enabled.
 
 ## 2. Flow
 
 ```text
 Main ──tap──▶ Detail ──swipe──▶ next position's Detail
+ ▲              ├─tap──▶ close card, Dismiss first, then the same path as an alert
  ▲              └─double tap──▶ Main, cursor on the same position
 Main ──rule fires──▶ Alert ──tap action──▶ Sent ──▶ Filled / Rejected / Unknown ──OK──▶ next Alert or Main
                       │  └─tap Dismiss / double tap──────────────────────────────────▶ next Alert or Main
@@ -47,12 +48,12 @@ Main ──rule fires──▶ Alert ──tap action──▶ Sent ──▶ Fi
 | Input | Main | Detail | Alert | Review | Result |
 |---|---|---|---|---|---|
 | Swipe (temple or R1) | move `▶`; past the 5th row, next page | next or previous position | move `>` | move `>` | nothing |
-| Tap | open Detail of the `▶` position | nothing | do the `>` item | do the `>` item | OK |
+| Tap | open Detail of the `▶` position | close this position | do the `>` item | do the `>` item | OK |
 | Double tap | host exit dialog | back to Main | Dismiss | back to Alert | OK |
 
 Open long and Open short carry the sizes (USDT) and leverages the user set on the phone. With more than one of either, `Review…` opens a size page, then a leverage page, in the Review frame: the two option rows show two values of the list, swipe scrolls `>` through all of them, the hint ends with the place (`2/5`), and the leverage page shows the margin of the value under `>`. The tap on the last page sends the pick; the server answers with a new proposal and the lens shows its Review. A voice yes does not answer an Open with choices.
 
-The hint is the last line, dim, lower case, and says what a tap does on the choice under `>`: `swipe: choose · tap: dismiss`, then `tap: confirm` (or `tap: review`) once `>` is on the action. `double tap: exit` on Main and `double tap: back` on Detail always show, offline too. The other tips (`tap: details`, `tap, hold: menu` on Main, `swipe: next position` on Detail) are optional: on for the first 3 launches, then off, unless the phone's Settings › Gesture tips switch says otherwise. Alerts, Review and results always keep their line. A `>` left on an action goes back to Dismiss after 8 s without a swipe (`CURSOR_IDLE_MS`). An alert that fires while Detail is open takes over the lens; after it, the lens goes back to Detail. Tap then hold opens the command menu. Swipes are gated to one per 700 ms (`SWIPE_GATE_MS`). Taps while sending are ignored.
+The hint is the last line, dim, lower case, and says what a tap does on the choice under `>`: `swipe: choose · tap: dismiss`, then `tap: confirm` (or `tap: review`) once `>` is on the action. `double tap: exit` on Main and `double tap: back` on Detail always show, offline too. With a position on the list the hint also keeps `tap, hold: menu` (Close position is the first item; the hold does not close by itself). On Detail it keeps `tap: close`. The other tips (`tap: details`, `tap, hold: menu` when the list is empty, `swipe: next position` on Detail) are optional: on for the first 3 launches, then off, unless the phone's Settings › Gesture tips switch says otherwise. Alerts, Review and results always keep their line. A `>` left on an action goes back to Dismiss after 8 s without a swipe (`CURSOR_IDLE_MS`). An alert that fires while Detail is open takes over the lens; after it, the lens goes back to Detail. Tap then hold opens the command menu. Swipes are gated to one per 700 ms (`SWIPE_GATE_MS`). Taps while sending are ignored.
 
 ## 4. Layouts
 
@@ -61,21 +62,21 @@ Absolute pixels on an 8 px grid, 16 px edge inset, 27 px a text line, 4 px paddi
 ```yaml
 main:            # text 8, image 0; no frames
   - {name: top,    type: text, x: 16,  y: 16,  w: 544, h: 32,  brightness: 3, capture: true}  # "Bybit Demo · 3 positions" … "14:05"; 4 when it carries a problem
-  - {name: cur,    type: text, x: 16,  y: 56,  w: 144, h: 144, brightness: 4}                 # only the selected row: "▶ BTC long"
-  - {name: name,   type: text, x: 16,  y: 56,  w: 144, h: 144, brightness: 3}                 # the other rows, indented under the cursor column
-  - {name: price,  type: text, x: 160, y: 56,  w: 128, h: 144, brightness: 3}                 # 61,240.5, right-aligned, no currency
-  - {name: loss,   type: text, x: 288, y: 56,  w: 104, h: 144, brightness: 4}                 # ▼ 4.2% ROI; losses brighter than gains
-  - {name: gain,   type: text, x: 288, y: 56,  w: 104, h: 144, brightness: 2}                 # ▲ 24.0%
-  - {name: flag,   type: text, x: 392, y: 56,  w: 168, h: 144, brightness: 4}                 # only trouble: "liq 5.9%" under 10%
+  - {name: cur,    type: text, x: 16,  y: 56,  w: 232, h: 144, brightness: 4}                 # selected row: "▶ BTC long" and the size at the right ("0.05")
+  - {name: name,   type: text, x: 16,  y: 56,  w: 232, h: 144, brightness: 3}                 # the other rows, indented under the cursor column, size included
+  - {name: price,  type: text, x: 248, y: 56,  w: 128, h: 144, brightness: 3}                 # 61,240.5, left-aligned, no currency
+  - {name: loss,   type: text, x: 376, y: 56,  w: 104, h: 144, brightness: 4}                 # ▼ 4.2% ROI; losses brighter than gains
+  - {name: gain,   type: text, x: 376, y: 56,  w: 104, h: 144, brightness: 2}                 # ▲ 24.0%
+  - {name: flag,   type: text, x: 480, y: 56,  w: 80,  h: 144, brightness: 4}                 # only trouble: "liq 5.9%" under 10%
   - {name: hint,   type: text, x: 16,  y: 248, w: 544, h: 32,  brightness: 2}
 detail:          # text 3, image 4 (the limit); after the ticker apps: one big line, plain numbers, a plain chart
   - {name: title,  type: image, x: 16,  y: 12,  w: 288, h: 44}                                 # "BTC long", bold, as big as fits (titlePng)
-  - {name: lev,    type: text, x: 16,  y: 56,  w: 272, h: 32,  brightness: 3}                 # 10×; takes the input
+  - {name: lev,    type: text, x: 16,  y: 56,  w: 272, h: 32,  brightness: 3}                 # 0.05 BTC · 10×; takes the input
   - {name: pnl,    type: image, x: 320, y: 12,  w: 240, h: 44}                                 # "PNL: −$26", same bold as the title
   - {name: table,  type: text, x: 320, y: 56,  w: 240, h: 32,  brightness: 3}                 # stop −1.9% · liq −4.0% (distance from the mark); nothing for a missing stop
   - {name: chart0, type: image, x: 16,  y: 96,  w: 272, h: 144}                                # the hour; entry dotted, stop dashed, each named with its price at the right by the last price; −1h and now (chartPng)
   - {name: chart1, type: image, x: 288, y: 96,  w: 272, h: 144}
-  - hint                                                                                          # double tap: back, and 2/3 at the right
+  - hint                                                                                          # tap: close · double tap: back, and 2/3 at the right
 alert:           # text 6, image 1
   - {name: frame,  type: text, x: 16,  y: 16,  w: 544, h: 96,  border: 2, radius: 4, brightness: 3}  # the notification
   - {name: icon,   type: image, x: 32, y: 40,  w: 48,  h: 48}                                 # what fired; text says it too
@@ -98,9 +99,9 @@ review:          # text 5, image 1
 - The only frame is the notification. Selection is `>` plus brightness 4; the other choice is one level dimmer (3). A swipe moves `>` with two text updates (content and `textColor`), no page rebuild.
 - Screens with one choice (Expired, results) keep it in `opt1`; Sent has none.
 - The icon is a 48 × 48 PNG (2 px stroke on the 24 grid, scaled ×2). It arrives after the text; a failed transfer leaves a complete alert.
-- Detail, after even-g2-crypto-ticker and g2-kit's Kpi: coin and side big top left, leverage under it; PnL as big top right (`PNL: +$50`), the stop and liquidation distances from the mark under it. A missing stop says nothing. Under them the last hour as a plain line. Entry (dim, dotted) and stop (dashed) are named with their prices at the right, next to the bright last price; liquidation joins only within 1% of the last price. A level stretches the scale by up to 1.5 hour-ranges (or 1% of the price, if wider); past that it is pinned: its label with ↑ or ↓ at the edge and no line, so a far stop never flattens the hour. All chart labels share one precision taken from the scale; crowded labels stay centred on their lines. Distances in the text line keep two decimals under 1%. `−1h` / `now` below. No grid, no price axis, no time ticks. Take profit, size, ROI, the shortcuts count and the balance stay on the phone. The chart is read at most once a minute and sent last; if it fails, the independently rendered PnL and distance fields can still display. The title and PnL are pictures: if one fails the lens shows leverage without the coin, or no PnL, until the next draw. PnL is resent whenever its rounded text changes.
+- Detail, after even-g2-crypto-ticker and g2-kit's Kpi: coin and side big top left, size and leverage under it (`0.05 BTC · 10×`); PnL as big top right (`PNL: +$50`), the stop and liquidation distances from the mark under it. A missing stop says nothing. Under them the last hour as a plain line. Entry (dim, dotted) and stop (dashed) are named with their prices at the right, next to the bright last price; liquidation joins only within 1% of the last price. A level stretches the scale by up to 1.5 hour-ranges (or 1% of the price, if wider); past that it is pinned: its label with ↑ or ↓ at the edge and no line, so a far stop never flattens the hour. All chart labels share one precision taken from the scale; crowded labels stay centred on their lines. Distances in the text line keep two decimals under 1%. `−1h` / `now` below. No grid, no price axis, no time ticks. Take profit, ROI, the shortcuts count and the balance stay on the phone. The chart is read at most once a minute and sent last; if it fails, the independently rendered PnL and distance fields can still display. The title and PnL are pictures: if one fails the lens shows size and leverage without the coin, or no PnL, until the next draw. PnL is resent whenever its rounded text changes.
 - Detail's PnL reads `PNL: +$…` for zero or gains and `PNL: −$…` for losses. Absolute values below 10 show tenths, values from 10 show whole units, and values from 10,000 use thousands (one decimal below 100k, whole thousands thereafter).
-- Main sorts rows by liquidation distance, closest first. The selection (`▶`, brightness 4) moves with two text updates (cur and name), no rebuild, and follows the position, not the row number, when the order changes. More than 5 positions: pages of 4 plus a `▼ 1–4 of 7` row, swiped. A swipe on Detail changes the position by text updates too. Cells cut with `…` (`1000PEPE sh…`).
+- Main sorts rows by liquidation distance, closest first. The selection (`▶`, brightness 4) moves with two text updates (cur and name), no rebuild, and follows the position, not the row number, when the order changes. The coin quantity sits at the right of the name (`0.05`, `81.3M` when the full number does not fit). More than 5 positions: pages of 4 plus a `▼ 1–4 of 7` row, swiped. A swipe on Detail changes the position by text updates too. Cells cut with `…` (`1000PEPE sh…`).
 
 ## 5. Alert examples
 

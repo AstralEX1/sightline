@@ -83,7 +83,7 @@ flowchart LR
 
 - **Read:** the server polls Bybit V5 for positions and evaluates your conditions. The G2 alert shows why the rule fired and the exact quantity or price proposed.
 - **Write:** the lens starts on **Dismiss**. Swipe to the proposed action and tap. The server checks the proposed terms again, deduplicates repeated taps and records the outcome in SQLite.
-- **Voice:** with transcription configured and voice answers enabled, a spoken “no” dismisses an alert. A spoken “yes” can confirm an eligible proposal after a five-second cancellation window.
+- **Voice:** with transcription configured and voice answers enabled, a spoken “no” dismisses an alert. A spoken “yes” can confirm an eligible proposal after a five-second cancellation window. On the position list or a position, Speak then “close” or “закрой” raises a close card for the position in focus. A tap on that position screen does the same. The card still starts on Dismiss.
 
 The Bybit adapter accepts **Demo Trading and Testnet only**. Exchange credentials stay on the server. Trade Shortcuts holds no user funds. Test alerts simulate the outcome without changing the account.
 

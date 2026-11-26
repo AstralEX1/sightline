@@ -87,7 +87,7 @@ export function buildSettings(el: HTMLElement) {
       h('div', { class: 'row row--switch' }, h('span', { id: 'set-voice' }, 'Answer alerts by voice'), voiceEl)),
     h('p', { class: 'footnote' }, 'Quiet mode shows the status and nearest liquidation risk. Tap on G2 to see the full position list.'),
     h('p', { class: 'footnote' }, 'Tips like “tap: details”. Alerts and trades always say what a tap does, and double tap always shows.'),
-    h('p', { class: 'footnote' }, 'When an alert arrives the mic listens for 5 s. Say yes or no in any language. After yes, a 5 s countdown runs before anything is sent; any tap, swipe or “no” stops it.'),
+    h('p', { class: 'footnote' }, 'When an alert arrives the mic listens for 5 s. Say yes or no in any language. After yes, a 5 s countdown runs before anything is sent; any tap, swipe or “no” stops it. On the position list or a position, tap and hold, then Speak, and say “close” or “закрой”. A tap on the position screen does the same. The card still has to be confirmed.'),
     h('h2', { class: 'group-label' }, 'Lens now'),
     h('div', { class: 'lens' }, h('span', { id: 'preview-icon', class: 'lens__icon' }), h('pre', { id: 'preview', class: 'lens__text' })),
     h('p', { class: 'footnote' }, 'What Even G2 shows right now. Every trade is confirmed there; the phone never confirms one.'))

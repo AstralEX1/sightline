@@ -36,12 +36,31 @@ const NO = [
 // Left out on purpose: Russian 'так' ("so…") and 'ha' (a laugh) start too many non-answers.
 // Unicode letters kept, so "Да." and "好的。" survive; diacritics too ("sí" is not "si" everywhere).
 const answerKey = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+const spoken = (s: string) => answerKey(s).replace(/ (please|пожалуйста|bitte|por favor|per favore|s il vous plaît|proszę)$/u, '')
 const YES_SET = new Set(YES.map(answerKey))
 const NO_SET = new Set(NO.map(answerKey))
 /** A spoken answer to the alert on the lens, in any of the languages above; null for anything else. */
 export function answerOf(text: string): 'yes' | 'no' | null {
-  const t = answerKey(text).replace(/ (please|пожалуйста|bitte|por favor|per favore|s il vous plaît|proszę)$/u, '')
+  const t = spoken(text)
   return NO_SET.has(t) ? 'no' : YES_SET.has(t) ? 'yes' : null // no wins: a word in both lists must never trade
+}
+
+// Whole phrase only, same as yes/no: "close the door" and "yes, close it" do not trade.
+const CLOSE_ONE = new Set([
+  'close', 'close it', 'close this', 'close position', 'close the position',
+  'закрой', 'закрыть', 'закрой позицию', 'закрыть позицию', 'закрой позу', 'закрыть позу', 'закрой эту', 'закрой эту позицию',
+])
+const CLOSE_ALL = new Set([
+  'close all', 'close everything', 'close all positions',
+  'закрой все', 'закрыть все', 'закрой все позиции', 'закрыть все позиции', 'закрой все позы',
+])
+/** A spoken close from the position list or a position. `coin` is the ticker in "close btc"; absent means the one in focus. */
+export function closeIntent(text: string): { all: boolean; coin?: string } | null {
+  const t = spoken(text)
+  if (CLOSE_ALL.has(t)) return { all: true }
+  if (CLOSE_ONE.has(t)) return { all: false }
+  const named = /^(?:close|закрой|закрыть) ([a-z0-9]{2,12})$/.exec(t)
+  return named ? { all: false, coin: named[1] } : null
 }
 
 /** The shortcut with the longest voice phrase that appears in the text as whole words. */
