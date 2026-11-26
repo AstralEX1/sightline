@@ -96,7 +96,7 @@ export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<un
   }
   banner.addEventListener('click', () => banner.classList.remove('is-on'))
 
-  // §7.5: polling also tells the server the app is open, so alerts reach it in-app instead of Telegram
+  // §7.5: polling also tells the server the app is open, so alerts reach it in-app
   let after: number | null = null
   const pollAlerts = async () => {
     if (document.visibilityState !== 'visible') return

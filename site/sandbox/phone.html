@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Trade Shortcuts</title>
+  <style>
+    @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+      .landing-phone .tile:has(.tile__body) { transition: transform .18s ease-out; }
+      .landing-phone .tile:has(.tile__body:hover, .tile__body:focus-visible) { transform: translateY(-3px); }
+    }
+  </style>
 </head>
 <body>
   <!-- The landing page's phone: app/index.html, with the Even app's bridge and the server in this same window. -->

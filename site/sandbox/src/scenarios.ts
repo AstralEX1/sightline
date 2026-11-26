@@ -1,49 +1,48 @@
-/**
- * The sandbox's tabs, one scenario each: two templates that are already on, and one the visitor adds from a template.
- * Their numbers are the templates' own (registry.ts), so the lens shows the alert the app would raise.
- */
-import { TEMPLATES, type Template } from '../../../server/src/registry.ts'
-import { liqOf, START_PRICE as P, type Market } from './market.ts'
+import { CLOSE_SEED, DEFAULT_DELIVERY, TEMPLATES, VOICE_SEEDS, type Draft } from '../../../server/src/registry.ts'
+import { liqOf, START_PRICE, SYMBOL, type Market } from './market.ts'
 
-const QTY = 0.05 // 4,800 USDT at 96,000; 480 USDT margin at 10×
-const LEV = 10
+const QTY = 0.05
+const LEVERAGE = 10
+const liquidationDraft = TEMPLATES.find(t => t.id === 'tpl_6')!.draft
+const profitDraft = TEMPLATES.find(t => t.id === 'tpl_1')!.draft
 
 export type Tab = {
-  /** The URL hash that opens it */
   id: string
   title: string
-  sub: string
-  template: Template
-  /** On from the start; otherwise the phone opens the template in the editor and the visitor adds it. */
-  on: boolean
-  /** The account before anything moves. */
-  before(m: Market): Promise<void>
-  /** Where Play moves the price so the shortcut fires. */
-  to: number
-  /** What to do, in order; the move step offers Play. */
-  steps: string[]
+  draft: Draft
+  /** A null target is the free sandbox, where visitors move the price themselves. */
+  target: number | null
+  stop?: number
 }
 
-function template(id: string): Template {
-  const t = TEMPLATES.find(x => x.id === id)
-  if (!t) throw new Error(`No template ${id}`)
-  return t
-}
-
-export const TABS: Tab[] = [
+export const TABS: readonly Tab[] = [
   {
-    id: 'liquidation', title: 'Liquidation alert', sub: 'Close half when BTC nears liquidation', template: template('tpl_6'), on: true,
-    before: m => m.open('Buy', QTY, LEV), to: liqOf('Buy', P, LEV) * 1.025,
-    steps: ['Drag the chart down', 'Answer on the glasses', 'Half the position is closed'],
+    id: 'btc',
+    title: 'BTC +10%',
+    target: Math.round(START_PRICE * 1.1),
+    draft: {
+      scope: { type: 'SYMBOL', symbol: SYMBOL },
+      conditions: { logic: 'ALL', items: [{ id: 'c1', type: 'PRICE_CHANGE', source: 'LAST', direction: 'UP', percent: '10' }] },
+      action: { type: 'NOTIFY' },
+      trigger: { mode: 'ON_ENTRY' },
+      delivery: { ...DEFAULT_DELIVERY },
+    },
   },
   {
-    id: 'profit', title: 'Lock in profit', sub: 'Stop to entry at +20% ROI', template: template('tpl_1'), on: true,
-    before: m => m.open('Buy', QTY, LEV, 0, P * 0.98), to: P * 1.024, // a stop to move
-    steps: ['Drag the chart up', 'Answer on the glasses', 'The stop moves to entry'],
+    id: 'liquidation', title: 'Liquidation', draft: liquidationDraft,
+    target: liqOf('Buy', START_PRICE, LEVERAGE) * 1.025,
   },
   {
-    id: 'build', title: 'Build your own', sub: 'Start from a template, change anything', template: template('tpl_2'), on: false,
-    before: m => m.open('Buy', QTY, LEV, 0, P * 0.98), to: P * 1.055, // ROI above 50% at 10×: +5%
-    steps: ['Tap Add, then switch it on', 'Drag the chart until it fires', 'Answer on the glasses'],
+    id: 'profit', title: 'Lock profit', draft: profitDraft, target: START_PRICE * 1.024,
+    stop: START_PRICE * .98,
   },
+  { id: 'sandbox', title: 'Free sandbox', draft: liquidationDraft, target: null },
 ]
+
+export function scenarioDrafts(tab: Tab): Draft[] {
+  return structuredClone(tab.target === null ? [tab.draft, ...VOICE_SEEDS, CLOSE_SEED] : [tab.draft])
+}
+
+export function openScenarioPosition(tab: Tab, market: Market) {
+  return market.open('Buy', QTY, LEVERAGE, 0, tab.stop)
+}

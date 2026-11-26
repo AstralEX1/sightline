@@ -8,6 +8,8 @@ Status: built in `app/src/view.ts` + `app/src/main.ts` (Main with `▶`, Detail 
 
 ## 1. What each screen answers
 
+Enable **Quiet mode** under Settings → On your glasses to make the status and nearest liquidation risk the root screen. Tap to open the position list. Double-tap from the list to return to Quiet mode, or from Quiet mode to open the host exit dialog. The quiet screen shows connection and freshness problems in place of the risk figure. Proposals and results appear above either root screen.
+
 | Screen | The one question | Answer on the lens | Next |
 |---|---|---|---|
 | Main | How are my positions? | header-less table: position, price, ROI, a flag only when in trouble | swipe, tap |
@@ -37,7 +39,8 @@ Main ──rule fires──▶ Alert ──tap action──▶ Sent ──▶ Fi
 - OR rules raise one alert; the second line shows the strongest reason (liquidation beats ROI).
 - A new alert ignores taps for 1 s (`CARD_SETTLE_MS`), so a tap meant for the previous one cannot answer it. `Dismiss` is first and selected anyway.
 - Proposal expiry uses the server’s timing settings (defaults 30 s for market trades and 60 s for protection). A spoken yes shows a separate five-second cancellation countdown; a gesture or recognized no stops it.
-- Alerts only reach the lens while the plugin is open. Otherwise delivery follows the phone and Telegram settings; an alert that expired meanwhile goes to History, never to the lens.
+- Alerts only reach the lens while the plugin is open. Otherwise delivery follows the in-app notification settings; an alert that expired meanwhile goes to History, never to the lens.
+- **Send test to G2** in phone Settings brings up a separate `TEST` card once trading cards are clear. Tap **OK** on the lens to acknowledge it. The connection check expires after 90 seconds.
 
 ## 3. Gestures
 

@@ -2,7 +2,7 @@
 // Writes the simulator's own PNGs (green, brightness in alpha, transparent background) to screens/.
 // Idea and simulator steps from market-glimpse's scripts/screenshots.mjs (github.com/adamtorgerson/market-glimpse).
 //
-// Everything runs on its own ports: the demo server never touches a running one or the Telegram bot, and the simulator
+// Everything runs on its own ports: the demo server never touches a running one, and the simulator
 // keeps settings per origin, so a server address saved for the dev server on :5173 does not apply here.
 import { spawn } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -41,7 +41,7 @@ const start = (cmd: string, args: string[], env: Record<string, string> = {}) =>
   spawn(cmd, args, { cwd: ROOT, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'inherit'], detached: true })
 const stop = (p: ReturnType<typeof start>) => { try { process.kill(-p.pid!, 'SIGTERM') } catch { /* already gone */ } }
 
-const server = start('node', ['server/src/main.ts'], { EXCHANGE: 'fake', PORT: String(SERVER_PORT), HOST: '127.0.0.1', TELEGRAM_BOT_TOKEN: '', OPENAI_API_KEY: '' })
+const server = start('node', ['server/src/main.ts'], { EXCHANGE: 'fake', PORT: String(SERVER_PORT), HOST: '127.0.0.1', OPENAI_API_KEY: '' })
 await new Promise<void>((ok, fail) => {
   server.stdout!.on('data', (d: Buffer) => { if (d.toString().includes('server on')) ok() })
   server.on('exit', code => fail(new Error(`demo server exited (${code})`)))

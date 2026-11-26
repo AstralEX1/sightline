@@ -53,6 +53,30 @@ const result = (o: Partial<Outcome>, c: Partial<Proposal> = {}) => screen(st({ c
 
 // ── Main ───────────────────────────────────────────────────
 
+test('quiet mode shows only the nearest risk and hides stale numbers', () => {
+  const eth = pos({ symbol: 'ETHUSDT', markPrice: 3000, liqPrice: 2940 })
+  const state = st({ positions: [pos(), eth] })
+  const sc = screen(state, { quiet: true })
+  assert.equal(sc.layout, 'quiet')
+  assert.match(previewText(sc), /Monitoring · Bybit Demo[\s\S]*ETH long · 2\.0% to liq/)
+  assert.equal(screen(state, { quiet: true, positionsOpen: true }).layout, 'main')
+  assert.equal(screen(st({ card: card() }), { quiet: true }).layout, 'alert')
+  assert.match(previewText(screen({ ...state, toast: 'BTC price reached' }, { quiet: true })), /BTC price reached/)
+  const stale = previewText(screen({ ...state, error: 'timeout' }, { quiet: true }))
+  assert.match(stale, /Bybit data stale since/)
+  assert.doesNotMatch(stale, /ETH long|Monitoring/)
+})
+
+test('connection check has its own OK and never displaces an actionable alert', () => {
+  const glassesTestId = 'connection-1'
+  const sc = screen(st({ glassesTestId }))
+  assert.match(previewText(sc), /Connection check\s+TEST/)
+  assert.deepEqual(sc.choices, ['ack-glasses-test'])
+  assert.equal(sc.card, null)
+  assert.equal(screen(st({ glassesTestId, card: card() })).card?.id, 'p1')
+  assert.equal(screen(st({ glassesTestId }), { offline: true }).layout, 'main')
+})
+
 test('main: header-less rows of position, price, ROI and a flag only near liquidation', () => {
   assert.deepEqual(rows(screen(st())), [['BTC long', '61,240', '▼ 4.2%', 'liq 5.9%']])
   const calm = pos({ symbol: 'ETHUSDT', side: 'Sell', markPrice: 3198.4, liqPrice: 4000, unrealisedPnl: 89.28, positionIM: 372 })

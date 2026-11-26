@@ -11,7 +11,7 @@ import { normalizeLegacyAction, validateShortcut, type Issue } from './validate.
 import type { TriggerState } from './engine.ts'
 import {
   DEFAULT_SETTINGS,
-  type AlertRecord, type Channel, type Execution, type ExecutionStatus, type OutboxRow, type Proposal, type Settings, type TelegramLink,
+  type AlertRecord, type Execution, type ExecutionStatus, type Proposal, type Settings,
 } from './types.ts'
 
 /** One process, one token, one account. The account_id columns stay so the tables move to PostgreSQL as they are. */
@@ -48,7 +48,7 @@ export function validateSettings(input: unknown): Settings {
   return {
     cooldownSec: sec(s.cooldownSec, 'Cooldown'),
     expiry: { marketSec: sec(e.marketSec, 'Market order expiry'), protectionSec: sec(e.protectionSec, 'Protection expiry') },
-    notifications: { glasses: flag(n.glasses, 'Alerts on glasses'), app: flag(n.app, 'In-app notifications'), telegram: flag(n.telegram, 'Telegram') },
+    notifications: { glasses: flag(n.glasses, 'Alerts on glasses'), app: flag(n.app, 'In-app notifications') },
   }
 }
 
@@ -86,6 +86,7 @@ export interface Store {
   alertsAfter(after: number, limit?: number): AlertRecord[]
   saveProposal(p: Proposal): void
   proposal(id: string): Proposal | null
+  latestProposalForAlert(alertId: string): Proposal | null
   /** Status PENDING, oldest first. */
   pendingProposals(): Proposal[]
   /** Upsert by id; a different execution with the same proposalId or idempotencyKey throws. */
@@ -98,22 +99,11 @@ export interface Store {
   /** DEFAULT_SETTINGS until saved. */
   settings(): Settings
   saveSettings(s: Settings): void
-  /** { offset: 0 } until saved. */
-  telegram(): TelegramLink
-  saveTelegram(t: TelegramLink): void
-  /** Write it in the same transaction as the alert; delivery is at-least-once. Returns the row id. */
-  enqueue(o: { alertId: string; channel: Channel; text: string }): string
-  /** Not sent, not failed, next attempt due. */
-  dueOutbox(now: number): OutboxRow[]
-  outboxSent(id: string, now: number): void
-  /** Backoff 5 s · 2^attempts up to 5 min; terminal failure after 8 attempts. */
-  outboxRetry(id: string, now: number, error: string): void
   audit(entity: string, entityId: string, event: string, detail?: string): void
   auditLog(entityId: string): { at: number; entity: string; event: string; detail: string }[]
 }
 
 const OPEN: ExecutionStatus[] = ['AUTHORIZED', 'VALIDATING', 'SUBMITTING', 'ACKNOWLEDGED', 'PARTIALLY_FILLED', 'UNKNOWN']
-const MAX_ATTEMPTS = 8
 const needsPriceReview = (r: ShortcutRule) => r.conditions.items.some(c => c.type === 'PRICE_CHANGE' && 'windowSec' in c)
 
 const SCHEMA = `
@@ -134,20 +124,16 @@ CREATE TABLE IF NOT EXISTS proposals (
   id TEXT PRIMARY KEY, account_id TEXT NOT NULL, shortcut_id TEXT NOT NULL, alert_id TEXT NOT NULL, status TEXT NOT NULL,
   created_at INTEGER NOT NULL, json TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS proposals_status ON proposals (account_id, status, shortcut_id);
+CREATE INDEX IF NOT EXISTS proposals_alert ON proposals (account_id, alert_id);
 CREATE TABLE IF NOT EXISTS executions (
   id TEXT PRIMARY KEY, account_id TEXT NOT NULL, proposal_id TEXT NOT NULL UNIQUE, idempotency_key TEXT NOT NULL,
   status TEXT NOT NULL, created_at INTEGER NOT NULL, json TEXT NOT NULL,
   UNIQUE (account_id, idempotency_key));
-CREATE TABLE IF NOT EXISTS outbox (
-  id TEXT PRIMARY KEY, account_id TEXT NOT NULL, alert_id TEXT NOT NULL, channel TEXT NOT NULL, text TEXT NOT NULL,
-  attempts INTEGER NOT NULL, next_at INTEGER NOT NULL, sent_at INTEGER, failed_at INTEGER, error TEXT, created_at INTEGER NOT NULL);
-CREATE INDEX IF NOT EXISTS outbox_due ON outbox (account_id, next_at) WHERE sent_at IS NULL AND failed_at IS NULL;
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT, account_id TEXT NOT NULL, at INTEGER NOT NULL,
   entity TEXT NOT NULL, entity_id TEXT NOT NULL, event TEXT NOT NULL, detail TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS audit_entity ON audit_log (entity_id);
 CREATE TABLE IF NOT EXISTS settings (account_id TEXT PRIMARY KEY, json TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS telegram (account_id TEXT PRIMARY KEY, json TEXT NOT NULL);
 `
 
 /** `':memory:'` in tests; a file path gets its directory created and WAL. */
@@ -313,6 +299,8 @@ export function createStore(path: string, clock: () => number = Date.now): Store
       if (prev?.status !== p.status) store.audit('proposal', p.id, p.status)
     }),
     proposal: pId => one<Proposal>('SELECT json FROM proposals WHERE account_id = ? AND id = ?', ACCOUNT, pId),
+    latestProposalForAlert: aId => one<Proposal>(
+      'SELECT json FROM proposals WHERE account_id = ? AND alert_id = ? ORDER BY rowid DESC LIMIT 1', ACCOUNT, aId),
     pendingProposals: () => many<Proposal>(`SELECT json FROM proposals WHERE account_id = ? AND status = 'PENDING' ORDER BY created_at, rowid`, ACCOUNT),
 
     saveExecution: e => store.transaction(() => {
@@ -331,30 +319,13 @@ export function createStore(path: string, clock: () => number = Date.now): Store
     openExecutions: () => many<Execution>(
       `SELECT json FROM executions WHERE account_id = ? AND status IN (${OPEN.map(() => '?').join(', ')}) ORDER BY created_at, rowid`, ACCOUNT, ...OPEN),
 
-    settings: () => one<Settings>('SELECT json FROM settings WHERE account_id = ?', ACCOUNT) ?? structuredClone(DEFAULT_SETTINGS),
+    settings: () => {
+      const saved = one<Settings>('SELECT json FROM settings WHERE account_id = ?', ACCOUNT)
+      if (!saved) return structuredClone(DEFAULT_SETTINGS)
+      const { glasses, app } = saved.notifications
+      return { ...saved, notifications: { glasses, app } }
+    },
     saveSettings: s => run('INSERT OR REPLACE INTO settings VALUES (?, ?)', ACCOUNT, JSON.stringify(s)),
-    telegram: () => one<TelegramLink>('SELECT json FROM telegram WHERE account_id = ?', ACCOUNT) ?? { offset: 0 },
-    saveTelegram: t => run('INSERT OR REPLACE INTO telegram VALUES (?, ?)', ACCOUNT, JSON.stringify(t)),
-
-    enqueue: o => {
-      const oId = id('ob_')
-      const now = clock()
-      run('INSERT INTO outbox VALUES (?, ?, ?, ?, ?, 0, ?, NULL, NULL, NULL, ?)', oId, ACCOUNT, o.alertId, o.channel, o.text, now, now)
-      return oId
-    },
-    dueOutbox: now => all(
-      `SELECT id, alert_id, channel, text, attempts FROM outbox
-        WHERE account_id = ? AND sent_at IS NULL AND failed_at IS NULL AND next_at <= ? ORDER BY next_at, rowid`, ACCOUNT, now,
-    ).map(r => ({ id: r.id as string, alertId: r.alert_id as string, channel: r.channel as Channel, text: r.text as string, attempts: r.attempts as number })),
-    outboxSent: (oId, now) => run('UPDATE outbox SET sent_at = ? WHERE account_id = ? AND id = ?', now, ACCOUNT, oId),
-    outboxRetry: (oId, now, error) => {
-      const row = get('SELECT attempts FROM outbox WHERE account_id = ? AND id = ? AND sent_at IS NULL AND failed_at IS NULL', ACCOUNT, oId)
-      if (!row) return
-      const attempts = (row.attempts as number) + 1
-      run('UPDATE outbox SET attempts = ?, error = ?, next_at = ?, failed_at = ? WHERE id = ?',
-        attempts, error, now + Math.min(5000 * 2 ** (attempts - 1), 300_000), attempts >= MAX_ATTEMPTS ? now : null, oId)
-    },
-
     audit: (entity, entityId, event, detail = '') =>
       run('INSERT INTO audit_log (account_id, at, entity, entity_id, event, detail) VALUES (?, ?, ?, ?, ?, ?)', ACCOUNT, clock(), entity, entityId, event, detail),
     auditLog: entityId => all('SELECT at, entity, event, detail FROM audit_log WHERE account_id = ? AND entity_id = ? ORDER BY id', ACCOUNT, entityId)

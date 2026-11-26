@@ -1,4 +1,4 @@
-// The store against docs/shortcuts-architecture.md §4, §9, §10, §12: versions, invalidation, uniqueness, outbox, recovery.
+// The store against docs/shortcuts-architecture.md §4, §9, §10, §12: versions, invalidation, uniqueness, recovery.
 import { test, type TestContext } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -305,30 +305,6 @@ test('history pages newest first; alertsAfter reads oldest first; saveAlert upse
   assert.equal(s.alert('nope'), null)
 })
 
-test('outbox: due, retry with backoff, terminal failure; sent rows are not due', () => {
-  let now = 1000
-  const s = createStore(':memory:', () => now)
-  const id = s.enqueue({ alertId: 'a1', channel: 'telegram', text: 'Close 50%' })
-  const sent = s.enqueue({ alertId: 'a2', channel: 'telegram', text: 'Notify' })
-  assert.deepEqual(s.dueOutbox(999), [])
-  assert.deepEqual(s.dueOutbox(1000), [
-    { id, alertId: 'a1', channel: 'telegram', text: 'Close 50%', attempts: 0 },
-    { id: sent, alertId: 'a2', channel: 'telegram', text: 'Notify', attempts: 0 },
-  ])
-  s.outboxSent(sent, 1000)
-  const due = (at: number) => s.dueOutbox(at).map(r => [r.id, r.attempts])
-  for (const [i, sec] of [5, 10, 20, 40, 80, 160, 300].entries()) {
-    s.outboxRetry(id, now, 'timeout')
-    assert.deepEqual(due(now + sec * 1000 - 1), [], `attempt ${i + 1}`)
-    assert.deepEqual(due(now + sec * 1000), [[id, i + 1]])
-    now += sec * 1000
-  }
-  s.outboxRetry(id, now, 'timeout')
-  assert.deepEqual(due(Number.MAX_SAFE_INTEGER), [], 'failed after 8 attempts, sent one never due')
-  s.outboxRetry(id, now, 'timeout') // a failed row stays failed
-  assert.deepEqual(due(Number.MAX_SAFE_INTEGER), [])
-})
-
 test('a throw rolls the whole transaction back, nested calls included', () => {
   const s = createStore(':memory:')
   assert.throws(() => s.transaction(() => {
@@ -369,9 +345,8 @@ test('everything survives close and reopen on a file', t => {
   s.saveAlert(alertRec('a1', a.id, 10))
   s.saveProposal(proposalRec('p1', 'a1', a.id, 'PENDING'))
   s.saveExecution(execRec('e1', 'p0', 'k0', 'UNKNOWN'))
-  s.saveSettings({ ...DEFAULT_SETTINGS, cooldownSec: 120 })
-  s.saveTelegram({ chatId: 42, name: 'alex', offset: 7 })
-  const ob = s.enqueue({ alertId: 'a1', channel: 'telegram', text: 'hi' })
+  const legacySettings = { ...DEFAULT_SETTINGS, cooldownSec: 120, notifications: { glasses: false, app: true, telegram: true } }
+  s.saveSettings(legacySettings)
   s.close()
 
   const r = createStore(path, () => 2000)
@@ -383,9 +358,7 @@ test('everything survives close and reopen on a file', t => {
   assert.deepEqual(r.history().map(x => x.id), ['a1'])
   assert.deepEqual(r.pendingProposals().map(x => x.id), ['p1'])
   assert.deepEqual(r.openExecutions().map(x => x.id), ['e1'])
-  assert.equal(r.settings().cooldownSec, 120)
-  assert.deepEqual(r.telegram(), { chatId: 42, name: 'alex', offset: 7 })
-  assert.deepEqual(r.dueOutbox(2000).map(x => x.id), [ob])
+  assert.deepEqual(r.settings(), { ...DEFAULT_SETTINGS, cooldownSec: 120, notifications: { glasses: false, app: true } })
   assert.deepEqual(r.auditLog(a.id).map(x => x.event), ['created', 'edited'])
 })
 
@@ -395,16 +368,15 @@ test('settings: defaults until saved; validateSettings bounds', () => {
   assert.deepEqual(d, DEFAULT_SETTINGS)
   d.expiry.marketSec = 11
   assert.equal(s.settings().expiry.marketSec, 30, 'callers get a copy of the defaults')
-  assert.deepEqual(s.telegram(), { offset: 0 })
 
   assert.deepEqual(validateSettings(DEFAULT_SETTINGS), DEFAULT_SETTINGS)
-  const edge = { cooldownSec: 10, expiry: { marketSec: 300, protectionSec: 10 }, notifications: { glasses: false, app: true, telegram: false } }
+  const edge = { cooldownSec: 10, expiry: { marketSec: 300, protectionSec: 10 }, notifications: { glasses: false, app: true } }
   assert.deepEqual(validateSettings({ ...edge, extra: 1, expiry: { ...edge.expiry, x: 2 } }), edge)
   const bad = (over: Record<string, unknown>, msg: RegExp) => assert.throws(() => validateSettings({ ...DEFAULT_SETTINGS, ...over }), msg)
   for (const v of [9, 301, 10.5, '60', null, undefined]) bad({ cooldownSec: v }, /Cooldown must be whole seconds from 10 to 300/)
   bad({ expiry: { marketSec: 5, protectionSec: 60 } }, /Market order expiry/)
   bad({ expiry: { marketSec: 30 } }, /Protection expiry/)
-  bad({ notifications: { glasses: true, app: 'yes', telegram: true } }, /In-app notifications must be on or off/)
+  bad({ notifications: { glasses: true, app: 'yes' } }, /In-app notifications must be on or off/)
   bad({ notifications: null }, /Notifications must be an object/)
   assert.throws(() => validateSettings([]), /Settings must be an object/)
 })

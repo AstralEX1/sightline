@@ -29,7 +29,6 @@ let source = 'Demo data' // shown on the phone page, so nobody mistakes the demo
 const mode = env.EXCHANGE === 'bybit' ? 'bybit' : 'fake'
 const publicDemo = env.PUBLIC_DEMO === '1'
 if (publicDemo && mode !== 'fake') fail('PUBLIC_DEMO requires EXCHANGE=fake.')
-const telegramToken = publicDemo ? undefined : env.TELEGRAM_BOT_TOKEN
 if (mode === 'bybit') {
   const base = env.BYBIT_BASE || 'https://api-testnet.bybit.com'
   try {
@@ -57,7 +56,7 @@ if (paperDemo) {
 }
 store.seed([...starterRules, ...VOICE_SEEDS])
 store.seed([CLOSE_SEED], 'seeded:close')
-const notifier = createNotifier({ store, token: telegramToken || undefined })
+const notifier = createNotifier({ store })
 const session = createSession(ex, store, Date.now, notifier.route)
 
 let busy = false
@@ -75,31 +74,9 @@ async function tick() {
 void tick()
 setInterval(tick, TICK_MS)
 
-// Telegram has its own loop: a slow or unreachable Telegram must never delay the poll, or crossings and liquidations wait with it.
-let flushing = false
-setInterval(() => {
-  if (flushing) return
-  flushing = true
-  notifier.flush().catch(e => console.error('telegram flush failed', (e as Error).message)).finally(() => { flushing = false })
-}, TICK_MS)
-
-// Telegram linking: /start <code> arrives by long polling, so no webhook and no public URL (§2).
-if (telegramToken) {
-  void (async () => {
-    for (;;) {
-      try {
-        await notifier.pollUpdates()
-      } catch (e) {
-        console.error((e as Error).message) // never the token: notify.ts keeps it out of its errors
-        await new Promise(r => setTimeout(r, 5000))
-      }
-    }
-  })()
-}
-
 const openaiKey = publicDemo ? undefined : env.OPENAI_API_KEY
 createServer({
   session, store, token, notifier, source,
   apiKeyInfo: () => ex.apiKeyInfo(),
   transcribe: openaiKey ? pcm => transcribe(pcm, openaiKey) : undefined,
-}).listen(port, host, () => console.log(`Trade Shortcuts server on http://${host}:${port} (exchange: ${mode}, voice: ${openaiKey ? 'on' : 'off'}, telegram: ${telegramToken ? 'on' : 'off'})`))
+}).listen(port, host, () => console.log(`Trade Shortcuts server on http://${host}:${port} (exchange: ${mode}, voice: ${openaiKey ? 'on' : 'off'})`))

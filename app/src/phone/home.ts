@@ -1,8 +1,7 @@
 /** Shortcuts, the home screen (spec §5.1): your shortcuts and the templates as 2-column tiles, status line, History and +. */
 import * as api from '../api.ts'
 import type { ApiError, TemplateTile, Tile } from '../api.ts'
-import { ACTION_ICON, WARN, icon, type Icon } from './icons.ts'
-import { targetTag } from './sentence.ts'
+import { ACTION_ICON, WARN, icon } from './icons.ts'
 import { app, h, isOffline, toast } from './ui.ts'
 
 let templates: TemplateTile[] | null = null
@@ -38,31 +37,21 @@ function unreachable(err: unknown, retry: () => void) {
 }
 
 /**
- * Half a tile: the label (icon, word, the one target's tag) over its value. When and Do are the tile's two grid rows.
- * The tag rides on Do: beside When and the switch it does not fit a 375 px phone.
+ * Logo (action glyph) + title. Color follows the action.
+ * Templates keep their catalog title; shortcuts without a custom name use the action title.
  */
-const half = (name: 'tile__when' | 'tile__do', glyph: Icon, word: string, value: string, tag?: string | null) =>
-  h('span', { class: name },
-    h('span', { class: 'tile__label' }, h('span', { class: 'tile__chip', html: icon(glyph) }), h('span', { class: 'tile__word' }, word),
-      tag ? h('span', { class: 'tile__tag' }, tag) : null),
-    h('span', { class: 'tile__value' }, value))
-
 function tile(t: Tile) {
-  const voice = !t.conditions.items.length
-  const tag = targetTag(t.scope)
+  const { icon: name, color } = ACTION_ICON[t.action.type]
+  const label = t.draft ? `${t.title}, draft` : t.title
   const sw = h('button', {
     class: 'tile__switch', type: 'button', role: 'switch', 'aria-checked': String(t.enabled), 'aria-label': `${t.title}, ${t.summary}`, // two tiles can share a title: the rule tells them apart
     'aria-disabled': offline || t.draft ? 'true' : undefined,
   }, h('span', { class: 'tile__track' }, h('span', { class: 'tile__knob' })))
   sw.addEventListener('click', () => void toggle(t, sw))
-  return h('div', { class: 'tile', 'data-state': t.draft ? 'draft' : t.enabled ? 'on' : 'off', style: `--c: ${ACTION_ICON[t.action.type].color}` },
-    h('a', {
-      class: 'tile__body', href: `#/shortcut/${encodeURIComponent(t.id)}`,
-      'aria-label': `${t.title}${t.draft ? ', draft' : ''}: ${voice ? 'say' : 'when'} ${t.summary}, do ${t.doSummary}${tag ? `, on ${tag}` : ''}. Edit`,
-    },
-    // a draft comes straight from a template, so it has no name; "When · Draft" would not fit beside the switch at 375 px
-    half('tile__when', voice ? 'mic' : 'when', t.draft ? 'Draft' : t.name ?? (voice ? 'Say' : 'When'), t.summary),
-    half('tile__do', 'do-empty', 'Do', t.doSummary, tag)),
+  return h('div', { class: 'tile', 'data-state': t.draft ? 'draft' : t.enabled ? 'on' : 'off', style: `--c: ${color}` },
+    h('a', { class: 'tile__body', href: `#/shortcut/${encodeURIComponent(t.id)}`, 'aria-label': `${label}. Edit` },
+      h('span', { class: 'tile__glyph', html: icon(name, 32, 2.6) }),
+      h('span', { class: 'tile__title' }, t.title)),
     sw)
 }
 
@@ -75,8 +64,10 @@ async function toggle(t: Tile, sw: HTMLButtonElement) {
   sw.setAttribute('aria-checked', String(on))
   try {
     Object.assign(t, await api.setEnabled(t.id, on, t.version))
-    // update in place: a new tile would cut the knob's slide; on or off changes no words
-    sw.closest<HTMLElement>('.tile')!.dataset.state = t.draft ? 'draft' : t.enabled ? 'on' : 'off'
+    // update in place: a new tile would cut the knob's slide
+    const el = sw.closest<HTMLElement>('.tile')!
+    el.dataset.state = t.draft ? 'draft' : t.enabled ? 'on' : 'off'
+    sw.setAttribute('aria-label', `${t.title}, ${t.summary}`)
     sw.setAttribute('aria-checked', String(t.enabled))
     delete sw.dataset.busy
   } catch (e) {
@@ -90,15 +81,15 @@ async function toggle(t: Tile, sw: HTMLButtonElement) {
 }
 
 function templateTile(t: TemplateTile) {
-  const tag = targetTag(t.draft.scope)
+  const { icon: name, color } = ACTION_ICON[t.draft.action.type]
   return h('button', {
-    class: 'tile tile--template', type: 'button', style: `--c: ${ACTION_ICON[t.draft.action.type].color}`,
-    'aria-label': `Template: when ${t.summary}, do ${t.doSummary}${tag ? `, on ${tag.toLowerCase()}` : ''}. Add`,
+    class: 'tile tile--template', type: 'button', style: `--c: ${color}`, 'aria-label': `Template: ${t.title}. Add`,
     'aria-disabled': offline ? 'true' : undefined, onclick: () => useTemplate(t),
   },
-  h('span', { class: 'tile__badge', 'aria-hidden': 'true', html: icon('plus', 12, 3.4) }),
-  half('tile__when', 'when', 'When', t.summary),
-  half('tile__do', 'do-empty', 'Do', t.doSummary, tag))
+  h('span', { class: 'tile__top' },
+    h('span', { class: 'tile__glyph', html: icon(name, 32, 2.6) }),
+    h('span', { class: 'tile__badge', 'aria-hidden': 'true', html: icon('plus', 12, 3.4) })),
+  h('span', { class: 'tile__title' }, t.title))
 }
 
 /**
@@ -138,7 +129,7 @@ export async function renderHome(el: HTMLElement, first: boolean) {
     h('a', { class: 'circle-btn circle-btn--history', href: '#/history', 'aria-label': app.unseen ? `History, ${app.unseen} new` : 'History', html: icon('clock', 22, 2) },
       app.unseen ? h('span', { class: 'badge', 'aria-hidden': 'true' }, String(app.unseen)) : null),
     h('a', {
-      class: 'circle-btn circle-btn--accent', href: '#/shortcut/new', html: icon('plus', 20, 2.4),
+      class: 'circle-btn circle-btn--glass', href: '#/shortcut/new', html: icon('plus', 20, 2.4),
       'aria-label': offline ? 'New shortcut, unavailable while the server is offline' : 'New shortcut',
       'aria-disabled': offline ? 'true' : undefined, onclick: (e: Event) => { if (offline) e.preventDefault() },
     }))

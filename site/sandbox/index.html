@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Trade Shortcuts Sandbox</title>
-  <meta name="description" content="The real Trade Shortcuts app in your browser: a shortcut on the phone, the BTC price on a simulated exchange, the answer on the glasses." />
+  <meta name="description" content="Try Trade Shortcuts on a simulated market and see the alerts on Even G2." />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -13,44 +13,67 @@
 <body>
   <header class="top">
     <a href="../" class="brand"><img src="lockup.svg" alt="Trade Shortcuts" width="214" height="20" /></a>
-    <span class="pill">Sandbox</span>
-    <p class="lede">The real app and rule engine on a paper exchange. No glasses, account or money needed.</p>
     <a href="../" class="back">Back to site</a>
   </header>
 
-  <nav id="tabs" class="tabs" role="tablist" aria-label="Scenarios"></nav>
-
-  <main id="panel" class="panel" role="tabpanel">
-    <section class="device phone-col" aria-label="Phone">
-      <p class="label">Phone · Trade Shortcuts</p>
-      <div class="phone"><iframe id="phone" title="Trade Shortcuts on the phone"></iframe></div>
-    </section>
-
-    <section class="device glasses" aria-label="Glasses">
-      <p class="label">Glasses · Even G2</p>
-      <div class="sim">
-        <div class="sim-title"><span class="sim-dots" aria-hidden="true"><i></i><i></i><i></i></span>Glasses Display</div>
-        <canvas id="lens" width="576" height="288" role="img" aria-label="What the glasses show. Click to tap."></canvas>
-        <div class="sim-bar" role="group" aria-label="Ring and temple">
-          <button type="button" data-gesture="up">Up</button>
-          <button type="button" data-gesture="down">Down</button>
-          <button type="button" data-gesture="tap">Click</button>
-          <button type="button" data-gesture="double">Double Click</button>
-          <button type="button" data-gesture="long">Long Press</button>
-          <button type="button" data-gesture="menu">Menu</button>
-        </div>
+  <div id="workspace" class="workspace sl-component" data-kind="navigation-overflow-tabs-v11">
+    <div class="workspace-head">
+      <div class="nv-heading">
+        <h1>Sandbox</h1>
+        <span class="paper"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 10h18M7 5V3h6v2M7 14h4m-4 3h8"/></svg>Paper market</span>
       </div>
-      <p class="keys">Keys: ↑ ↓ · Enter click · Esc double click · M menu</p>
-      <p id="note" class="sim-note" role="status" aria-live="polite"></p>
-      <ol id="steps" class="steps" aria-live="polite"></ol>
-      <button type="button" id="restart" class="restart">↺ Start over</button>
-    </section>
+      <div class="transport">
+        <button type="button" id="restart" class="icon-button" aria-label="Replay scenario" hidden>↻</button>
+        <div id="progress" class="progress" role="progressbar" aria-label="Scenario progress" aria-valuemin="1" aria-valuemax="3" aria-valuenow="1" aria-valuetext="Phone">
+          <span data-reached></span><span></span><span></span>
+        </div>
+        <span id="scene-status" class="sr-only" aria-live="polite"></span>
+      </div>
+    </div>
+    <nav id="tabs" class="nv-tabstrip" role="tablist" aria-label="Scenarios"></nav>
 
-    <section class="device exchange-col" aria-label="Exchange">
-      <p class="label">Exchange · simulated</p>
-      <div class="phone phone--dark"><div id="exchange" class="screen"></div></div>
-    </section>
-  </main>
+    <main>
+      <section id="panel" class="panel nv-detail" role="tabpanel" tabindex="0" aria-labelledby="tab-btc" data-scene="phone">
+        <div class="stage">
+          <section class="device glasses" aria-label="Even G2" hidden>
+            <div class="sim">
+              <canvas id="lens" width="576" height="288" role="img" aria-label="Even G2 display"></canvas>
+              <div class="sim-bar" role="group" aria-label="Ring and temple">
+                <button type="button" data-gesture="up">Up</button>
+                <button type="button" data-gesture="down">Down</button>
+                <button type="button" data-gesture="tap">Click</button>
+                <button type="button" data-gesture="double" data-free-control>Double Click</button>
+                <button type="button" data-gesture="long" data-free-control>Long Press</button>
+                <button type="button" data-gesture="menu" data-free-control>Menu</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="device phone-col" aria-label="Phone">
+            <div class="phone-frame"><div class="phone-screen"><iframe id="phone" title="Trade Shortcuts on the phone"></iframe></div></div>
+            <button type="button" id="play" class="icon-button" aria-label="Play scenario" disabled>▶</button>
+          </section>
+
+          <section class="device chart-col" aria-label="Simulated BTC chart" hidden>
+            <div class="chart-heading"><strong>BTCUSDT</strong><span id="price-change"></span></div>
+            <p id="chart-price" class="chart-price"></p>
+            <svg class="plot" viewBox="0 0 480 205" role="img" aria-label="BTC price during the scenario">
+              <defs><clipPath id="plot-reveal"><rect id="plot-clip" width="0" height="184"/></clipPath></defs>
+              <path class="plot-grid" d="M2 20H478 M2 96H478 M2 172H478" fill="none" />
+              <polyline id="price-line" clip-path="url(#plot-reveal)" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+              <text x="3" y="195" id="price-start"></text>
+              <text x="477" y="195" id="price-end" text-anchor="end"></text>
+            </svg>
+            <p id="chart-status" class="chart-status" role="status" hidden>No G2 alert</p>
+          </section>
+
+          <section class="device exchange-col" aria-label="Simulated exchange" hidden>
+            <div id="exchange" class="screen"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
 
   <script type="module" src="./src/page.ts"></script>
 </body>

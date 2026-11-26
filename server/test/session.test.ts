@@ -793,6 +793,39 @@ test('a close gets its size receipt only once it is filled, and none for a rejec
   assert.equal(last(other.store).status, 'Rejected · Reduce-only order would not reduce the position (Bybit 110017)')
 })
 
+test('History reads back partial fills and replaces the receipt when the rest fills', async () => {
+  const { s, store, ex, ticks, now } = setup([btc()], [tpl(6)])
+  await ticks()
+  const r = await s.confirm(s.state().card!.id, 'tap')
+  const id = r.execution!.id
+  const fill = ex.fills[0]
+  Object.assign(fill, { qty: 0.015, leavesQty: 0.01 })
+  Object.assign(ex.list[0], { size: 0.035, openedAt: now() }) // Bybit supplies its position update time here
+  await ticks(2)
+  assert.equal(store.execution(id)!.status, 'PARTIALLY_FILLED')
+  assert.equal(store.execution(id)!.receipt, '0.05 → 0.035 BTC')
+  ex.fills.push({ ...fill, id: 'remaining', qty: 0.01, leavesQty: 0, time: now() })
+  Object.assign(ex.list[0], { size: 0.025, openedAt: now() })
+  await ticks()
+  assert.equal(store.execution(id)!.status, 'FILLED')
+  assert.equal(store.execution(id)!.receipt, undefined)
+  await ticks()
+  assert.equal(store.execution(id)!.receipt, '0.05 → 0.025 BTC')
+})
+
+test('a partial fill has no position readback after its slot is reused by another position', async () => {
+  const { s, store, ex, ticks } = setup([btc()], [tpl(6)])
+  await ticks()
+  const r = await s.confirm(s.state().card!.id, 'tap')
+  const id = r.execution!.id
+  Object.assign(ex.fills[0], { qty: 0.015, leavesQty: 0.01 })
+  ex.list[0] = btc({ side: 'Sell', size: 0.09, liqPrice: 62500 })
+  await ticks(2)
+  assert.equal(store.execution(id)!.status, 'PARTIALLY_FILLED')
+  assert.equal(store.execution(id)!.filledQty, 0.015)
+  assert.equal(store.execution(id)!.receipt, undefined)
+})
+
 test('receipt lines: stops and take profits as Bybit shows them, an open from flat, a full close', () => {
   const p = btc({ stopLoss: 0 })
   assert.equal(receiptLine({ type: 'setStop', symbol: 'BTCUSDT', positionIdx: 0, price: 60760 }, p, { ...p, stopLoss: 60760 }), 'stop none → 60,760')

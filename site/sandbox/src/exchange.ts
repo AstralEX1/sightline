@@ -1,6 +1,6 @@
 /**
  * The exchange panel, laid out like a futures exchange's phone app: Charts (drag the chart to move the price, the
- * position, Buy and Sell) and Trade (order form, positions, orders). Renders into a 300 × 672 phone screen.
+ * position, Buy and Sell) and Trade (order form, positions, orders).
  */
 import './exchange.css'
 import { SYMBOL, type Market } from './market.ts'
@@ -52,7 +52,6 @@ export function mountExchange(root: HTMLElement, m: Market) {
   // ── Charts ──
   const last = el('strong', { class: 'ex-last' })
   const canvas = el('canvas', { class: 'ex-canvas', tabindex: '0', 'aria-label': 'BTC chart. Drag up or down, or use the arrow keys, to move the price.' })
-  const hint = el('div', { class: 'ex-drag' }, '⇕ Drag the price')
   const slot = el('div', { class: 'ex-slot' })
   const ctas = (['Buy', 'Sell'] as const).map(s => {
     const b = el('button', { type: 'button', class: `ex-btn ex-btn-${s.toLowerCase()}` }, s)
@@ -62,7 +61,7 @@ export function mountExchange(root: HTMLElement, m: Market) {
   const charts = el('div', { class: 'ex-view ex-charts' },
     last,
     el('div', { class: 'ex-tf' }, el('b', {}, '1m')),
-    el('div', { class: 'ex-plot' }, canvas, hint),
+    el('div', { class: 'ex-plot' }, canvas),
     slot,
     el('div', { class: 'ex-cta' }, ...ctas))
 
@@ -313,8 +312,7 @@ export function mountExchange(root: HTMLElement, m: Market) {
   const g = canvas.getContext('2d')!
   let size = { w: 0, h: 0 }
   let frozen: { lo: number; hi: number } | null = null
-  let drag: { y: number; price: number; perPx: number } | null = null
-  let dragged = false
+  let drag: { pointerId: number; y: number; price: number; perPx: number } | null = null
 
   new ResizeObserver(() => {
     const r = canvas.getBoundingClientRect()
@@ -425,14 +423,8 @@ export function mountExchange(root: HTMLElement, m: Market) {
     tag(`00:${String(60 - (Math.floor(Date.now() / 1000) % 60)).padStart(2, '0')}`, plotW + 1, at + 17, '#26272a', '#a1a4a5', 'left', AXIS_W - 2)
   }
 
-  /** A grip on the price line: the price is what you grab. It breathes until the first drag. */
+  /** A grip on the price line: the price is what you grab. */
   function handle(x: number, at: number, color: string) {
-    if (!dragged && Math.floor(Date.now() / 1000) % 2) {
-      g.fillStyle = color + '40'
-      g.beginPath()
-      g.arc(x, at, 16, 0, Math.PI * 2)
-      g.fill()
-    }
     g.fillStyle = color
     g.beginPath()
     g.arc(x, at, 11, 0, Math.PI * 2)
@@ -469,23 +461,31 @@ export function mountExchange(root: HTMLElement, m: Market) {
   // a mouse drag must not focus the chart: the arrow keys and Enter then still reach the glasses (Tab still focuses it)
   canvas.addEventListener('mousedown', e => e.preventDefault())
   canvas.addEventListener('pointerdown', e => {
+    if (!e.isPrimary || e.button !== 0) return
     let { lo, hi } = range(visible())
     if (hi - lo > m.price * 0.08) { lo = m.price * 0.96; hi = m.price * 1.04 } // a wide view would make the hand too fast
     frozen = { lo, hi } // the scale holds still under the hand
-    drag = { y: e.clientY, price: m.price, perPx: (hi - lo) / (size.h - TIME_H) }
+    drag = { pointerId: e.pointerId, y: e.clientY, price: m.price, perPx: (hi - lo) / (size.h - TIME_H) }
     canvas.setPointerCapture(e.pointerId)
     canvas.classList.add('is-grabbing')
-    hint.hidden = true
-    dragged = true
   })
-  canvas.addEventListener('pointermove', e => { if (drag) m.setPrice(drag.price + (drag.y - e.clientY) * drag.perPx) })
-  const release = () => { drag = null; frozen = null; canvas.classList.remove('is-grabbing'); paint() }
-  canvas.addEventListener('pointerup', release)
-  canvas.addEventListener('pointercancel', release)
+  canvas.addEventListener('pointermove', e => {
+    if (drag?.pointerId === e.pointerId) m.setPrice(drag.price + (drag.y - e.clientY) * drag.perPx)
+  })
+  const release = (pointerId: number) => {
+    if (drag?.pointerId !== pointerId) return
+    drag = null
+    frozen = null
+    if (canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId)
+    canvas.classList.remove('is-grabbing')
+    paint()
+  }
+  for (const event of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
+    canvas.addEventListener(event, e => release(e.pointerId))
+  }
   canvas.addEventListener('keydown', e => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
     e.preventDefault()
-    hint.hidden = true
     m.setPrice(m.price * (e.key === 'ArrowUp' ? 1.002 : 0.998))
   })
   setInterval(paint, 1000) // the candle countdown
@@ -519,6 +519,7 @@ export function mountExchange(root: HTMLElement, m: Market) {
   return {
     /** A tab's fresh start: the chart, and what the tab's setup changed is not lit as news. */
     start() {
+      if (drag) release(drag.pointerId)
       show('Charts')
       seen = null
       changedAt.clear()

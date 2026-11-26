@@ -1,12 +1,12 @@
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { timingSafeEqual } from 'node:crypto'
-import type { ApiKeyInfo } from './types.ts'
+import type { AlertDetails, ApiKeyInfo } from './types.ts'
 import { PHRASE, type Command, type Session } from './session.ts'
 import { StoreError, validateSettings, type Store } from './store.ts'
 import type { createNotifier } from './notify.ts'
 import { ACTION_TITLE, TEMPLATES, catalog, type Draft } from './registry.ts'
 import { validateShortcut } from './validate.ts'
-import { actionSummary, conditionSummary } from './proposals.ts'
+import { actionSummary, conditionSummary, executionLine } from './proposals.ts'
 import { answerOf } from './rules.ts'
 import { loud } from './stt.ts'
 
@@ -15,6 +15,8 @@ const MAX_BODY = 64 * 1024
 const MAX_VOICE = 320 * 1024
 const MIN_VOICE = 9600 // 0.3 s
 const API_KEY_TTL_MS = 60_000
+const GLASSES_TEST_MS = 90_000
+const GLASSES_TEST_RESULT_MS = 30_000
 
 class HttpError extends Error {
   status: number
@@ -75,6 +77,7 @@ export function createServer(d: {
 }): Server {
   const { session, store } = d
   let apiKey: { at: number; value: ApiKeyInfo | null; error?: string } | null = null
+  const glassesTests = new Map<string, { id: string; expiresAt: number; acknowledged: boolean }>()
   /** A tile's two lines, When and Do: worded here once, for shortcuts and templates. */
   const lines = (r: Draft) => ({ summary: conditionSummary(r), doSummary: actionSummary(r.action) })
   const tile = (r: ReturnType<Store['listShortcuts']>[number]) => ({ ...r, title: r.name ?? ACTION_TITLE[r.action.type], ...lines(r) })
@@ -102,8 +105,32 @@ export function createServer(d: {
 
       // Lens
       if (route === 'GET /api/state') {
-        if (url.searchParams.get('client') === 'lens') d.notifier?.seen('lens')
-        return send(res, 200, { ...session.state(), voice: !!d.transcribe, source: d.source ?? '' })
+        const lens = url.searchParams.get('client') === 'lens'
+        if (lens) d.notifier?.seen('lens')
+        const test = lens ? glassesTests.get(url.searchParams.get('device') ?? '') : undefined
+        const glassesTestId = test && !test.acknowledged && test.expiresAt > Date.now() ? test.id : undefined
+        return send(res, 200, { ...session.state(), voice: !!d.transcribe, source: d.source ?? '', glassesTestId })
+      }
+      const testPath = path.match(/^\/api\/glasses-test\/([0-9a-f]{32})(?:\/([\w-]+))?$/)
+      if (testPath) {
+        const [, device, testId] = testPath
+        const now = Date.now()
+        let test = glassesTests.get(device)
+        if (req.method === 'POST' && !testId) {
+          for (const [key, entry] of glassesTests) if (entry.expiresAt + GLASSES_TEST_RESULT_MS <= now) glassesTests.delete(key)
+          if (!test || test.acknowledged || test.expiresAt <= now) {
+            if (glassesTests.size >= 128 && !glassesTests.has(device)) throw new HttpError(429, 'Too many connection tests')
+            test = { id: crypto.randomUUID(), expiresAt: now + GLASSES_TEST_MS, acknowledged: false }
+            glassesTests.set(device, test)
+          }
+          return send(res, 201, { id: test.id, remainingMs: test.expiresAt - now })
+        }
+        if (testId && (req.method === 'GET' || req.method === 'POST')) {
+          if (!test || test.id !== testId || test.expiresAt + GLASSES_TEST_RESULT_MS <= now ||
+            (req.method === 'POST' && !test.acknowledged && test.expiresAt <= now)) throw new HttpError(404, 'Connection test expired')
+          if (req.method === 'POST') test.acknowledged = true
+          return send(res, 200, { acknowledged: test.acknowledged })
+        }
       }
       const proposal = path.match(/^\/api\/proposals\/([\w-]+)\/(confirm|dismiss|pick)$/)
       if (proposal && req.method === 'POST') {
@@ -199,6 +226,19 @@ export function createServer(d: {
         const limit = num('limit') ?? 50
         return send(res, 200, store.history(num('before'), Number.isInteger(limit) ? Math.max(1, Math.min(limit, 200)) : 50))
       }
+      const history = path.match(/^\/api\/history\/([\w-]+)$/)
+      if (history && req.method === 'GET') {
+        const alert = store.alert(history[1])
+        if (!alert) throw new HttpError(404, 'Not found')
+        const p = store.latestProposalForAlert(alert.id)
+        const e = p && store.executionByProposal(p.id)
+        const details: AlertDetails = {
+          proposed: p?.picks ? 'Quantity and leverage awaiting selection' : p?.question.replace(/\?$/, ''),
+          outcome: e ? executionLine(e) : alert.status,
+          receipt: e?.receipt,
+        }
+        return send(res, 200, details)
+      }
       if (route === 'GET /api/notifications') {
         d.notifier?.seen('app')
         const on = store.settings().notifications.app
@@ -218,7 +258,6 @@ export function createServer(d: {
             apiKeyError: apiKey?.error,
             liveTrading: false, // a server switch, never on: assertTestnet refuses live hosts
           },
-          telegram: d.notifier?.status() ?? { configured: false, linked: false },
         })
       }
       if (route === 'PUT /api/settings') {
@@ -231,18 +270,6 @@ export function createServer(d: {
         }
         store.saveSettings(s)
         return send(res, 200, s)
-      }
-      if (route === 'POST /api/settings/telegram') {
-        if (!d.notifier) throw new HttpError(503, 'Telegram is off: set TELEGRAM_BOT_TOKEN')
-        try {
-          return send(res, 200, await d.notifier.link())
-        } catch (e) {
-          throw new HttpError(503, (e as Error).message)
-        }
-      }
-      if (route === 'DELETE /api/settings/telegram') {
-        d.notifier?.unlink()
-        return send(res, 204)
       }
       send(res, 404, { error: 'Not found' })
     } catch (e) {

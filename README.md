@@ -31,7 +31,7 @@ The video shows four stages of one paper trade captured in the Even Hub Simulato
 
 ## Try it in your browser
 
-Open the [paper sandbox](https://trade-shortcuts-pi.vercel.app/sandbox/) and choose **Liquidation alert**. Move the BTC chart down until the alert appears. On the simulated lens, select **Close 50%** and tap to confirm. The paper exchange records the fill and reduces the position.
+Open the [paper sandbox](https://trade-shortcuts-pi.vercel.app/sandbox/), choose **BTC +10%**, **Liquidation**, or **Lock profit**, and press ▶ beside the phone. In **Liquidation**, select **Close 50%** on the simulated lens and tap to confirm. In **Free sandbox**, you can move the BTC price and use all three screens together.
 
 Both demos use simulated positions. You only need a browser for the sandbox.
 
@@ -58,7 +58,7 @@ To start over with the original 0.050 BTC position, stop with Ctrl+C and run `np
 - **Phone:** choose a scope, set the **When** conditions, and pick one **Do** action. Start with one of 12 templates or write a rule from scratch.
 - **Glasses:** read open positions and ROI at a glance. An alert shows what triggered the rule and the proposed quantity or price. Swipe from **Dismiss** to the action, then tap to confirm.
 - **Backend:** a TypeScript server polls Bybit V5, evaluates rules, and records proposals and their execution in SQLite. Confirmation rechecks the terms and deduplicates repeated taps. The lens and History show the resulting status.
-- **Optional:** Telegram can deliver alerts. With voice answers enabled, a spoken “no” dismisses an alert and a spoken “yes” can confirm an eligible proposal after a five-second cancellation window.
+- **Optional:** With voice answers enabled, a spoken “no” dismisses an alert and a spoken “yes” can confirm an eligible proposal after a five-second cancellation window.
 
 The Bybit adapter accepts **Demo Trading and Testnet only**. Exchange credentials stay on the server. Trade Shortcuts holds no user funds. Test alerts run entirely in simulation. Physical G2 and R1 verification is pending. [Technical architecture](docs/shortcuts-architecture.md) · [G2 design](docs/design.md) · [Test coverage and device status](docs/handoff.md)
 
@@ -66,7 +66,7 @@ The Bybit adapter accepts **Demo Trading and Testnet only**. Exchange credential
 
 No Trade Shortcuts application code existed before kickoff. The [first project commit](https://github.com/AstralEX1/trade-shortcuts/commit/5aee0bd) is dated November 24. The phone editor, rule engine, paper exchange, Bybit V5 integration, trade confirmation flow, and G2 screens were built during the hackathon.
 
-The project uses the existing Even Hub SDK, simulator, and CLI, plus Pretext, Bybit V5, TypeScript, Vite, Node.js, SQLite, and sql.js. Optional integrations use the Telegram Bot API and OpenAI transcription. The PNG and wear-state helpers are adapted from [Market Glimpse](https://github.com/adamtorgerson/market-glimpse) with the author's permission. The simulator capture workflow also draws on that project. The phone UI uses [Inter](app/public/licenses/Inter.txt) and [Phosphor Icons](app/public/licenses/Phosphor.txt).
+The project uses the existing Even Hub SDK, simulator, and CLI, plus Pretext, Bybit V5, TypeScript, Vite, Node.js, SQLite, and sql.js. Voice answers use OpenAI transcription. The PNG and wear-state helpers are adapted from [Market Glimpse](https://github.com/adamtorgerson/market-glimpse) with the author's permission. The simulator capture workflow also draws on that project. Its repository does not list a project license. The phone UI uses [Inter](app/public/licenses/Inter.txt) and [Phosphor Icons](app/public/licenses/Phosphor.txt).
 
 ## API feature requests
 

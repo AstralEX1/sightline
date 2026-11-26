@@ -119,6 +119,8 @@ export interface ServerState extends SessionState {
   voice?: boolean
   /** Which account is behind the numbers, e.g. "Bybit testnet" or "Demo data" */
   source?: string
+  /** Pending, short-lived acknowledgement requested from the lens by Settings. */
+  glassesTestId?: string
 }
 
 /** Bybit V5, USDT linear perpetuals only (docs/shortcuts-architecture.md §11). Writes throw ExchangeRejected on a clear no. */
@@ -153,7 +155,7 @@ export interface OrderState { orderId: string; status: string; cumExecQty: numbe
 
 // ── Shortcut runtime records (§9, §10) ─────────────────────
 
-export type Channel = 'glasses' | 'app' | 'telegram'
+export type Channel = 'glasses' | 'app'
 
 /** The exact exchange command a tap authorizes, resolved when the proposal is built. Never taken from a client. */
 export type Terms =
@@ -194,6 +196,12 @@ export interface AlertRecord {
   /** Set when the action's guards fail for this target: no proposal then */
   skip?: { code: string; reason: string }
   createdAt: number
+}
+
+export interface AlertDetails {
+  proposed?: string
+  outcome?: string
+  receipt?: string
 }
 
 export type ProposalStatus = 'PENDING' | 'DISMISSED' | 'EXPIRED' | 'SUPERSEDED' | 'AUTHORIZED'
@@ -253,17 +261,11 @@ export interface Settings {
   cooldownSec: number
   /** Proposal lifetime: market orders, and protection / margin / cancel; 10–300 s */
   expiry: { marketSec: number; protectionSec: number }
-  notifications: { glasses: boolean; app: boolean; telegram: boolean }
+  notifications: { glasses: boolean; app: boolean }
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   cooldownSec: 60,
   expiry: { marketSec: 30, protectionSec: 60 },
-  notifications: { glasses: true, app: true, telegram: true },
+  notifications: { glasses: true, app: true },
 }
-
-/** The Telegram chat alerts go to. `code` is the one-time /start code while linking. */
-export interface TelegramLink { chatId?: number; name?: string; code?: string; codeAt?: number; offset: number }
-
-/** A pending delivery, written in the same transaction as its alert (§10 outbox). */
-export interface OutboxRow { id: string; alertId: string; channel: Channel; text: string; attempts: number }

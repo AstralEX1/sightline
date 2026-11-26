@@ -39,10 +39,11 @@ export function createHost(lens: Lens, onExit: () => void = () => {}) {
 
   return {
     /** Before the app's scripts run in that window. */
-    attach(w: Window) {
+    attach(w: Window, current: () => boolean = () => true) {
       app = w as AppWindow
       app.flutter_inappwebview = {
         callHandler: async (_name, message) => {
+          if (!current()) return null
           const m = JSON.parse(message) as { method: string; data?: Record<string, unknown> }
           return methods[m.method]?.(m.data ?? {}) ?? null
         },

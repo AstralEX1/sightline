@@ -44,7 +44,7 @@ export type Session = {
 }
 
 /** Where alerts go; without a notifier the lens is the only channel. */
-export type Route = (alert: AlertRecord, proposal?: Proposal) => Channel[]
+export type Route = (alert: AlertRecord) => Channel[]
 
 const SLOW_POLL_MS = 10_000
 const TOAST_MS = 5_000
@@ -120,7 +120,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
   const charts = new Map<string, { at: number; candles: Candle[] }>()
   const epochs = new Map(Object.entries(store.epochs()))
   // shortcut: in memory, so a restart between the tap and the fill leaves that one without a receipt; store `before` on the execution if that matters
-  const receipts = new Map<string, { before?: Position; at: number }>()
+  const receipts = new Map<string, { before?: Position; epoch?: string; at: number }>()
   let toasts: string[] = []
   let headSince = 0
   let error: string | null = null
@@ -238,12 +238,11 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
   function alertStatus(a: AlertRecord, p?: Proposal): string {
     if (a.skip) return `Skipped · ${a.skip.reason}`
     if (a.simulated) return 'Simulation · nothing sent to Bybit'
-    if (a.channels.includes('telegram')) return 'Sent to Telegram · glasses disconnected'
     if (p) return 'Waiting for a tap on Even G2'
     return a.channels.includes('glasses') ? 'Shown on Even G2' : a.channels.includes('app') ? 'Shown in the app' : 'Logged'
   }
 
-  /** One alert, and for a trade one resolved proposal or the reason it was skipped. Persisted in one transaction with its outbox row. */
+  /** One alert, and for a trade one resolved proposal or the reason it was skipped. Persisted in one transaction with its proposal. */
   async function raise(rule: ShortcutRule, t: TargetRef, why: Why, c: Ctx) {
     const now = clock()
     const a = rule.action
@@ -285,7 +284,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
         proposal.supersedes = old.id
         closeProposal(store, old, 'SUPERSEDED', 'Replaced by a newer alert')
       }
-      alert.channels = alert.skip ? [] : routeOf(alert, proposal)
+      alert.channels = alert.skip ? [] : routeOf(alert)
       alert.status = alertStatus(alert, proposal)
       store.saveAlert(alert)
       if (proposal) store.saveProposal(proposal)
@@ -444,14 +443,20 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
 
     await executor.reconcile(recentFills, positions)
 
-    // Receipts: a done write against positions read after it was done, so the after side is Bybit's, not a guess.
+    // Receipts use positions read on a poll after the execution update, including after a partial fill.
     for (const [id, r] of receipts) {
       const e = store.execution(id)
       if (!e || e.status === 'REJECTED' || e.status === 'SIMULATED' || now - r.at > RECEIPT_TTL_MS) { receipts.delete(id); continue }
-      if ((e.status !== 'FILLED' && e.status !== 'APPLIED') || e.updatedAt >= now) continue
-      receipts.delete(id)
+      const partial = e.status === 'PARTIALLY_FILLED'
+      if ((partial ? !!e.receipt : e.status !== 'FILLED' && e.status !== 'APPLIED') || e.updatedAt >= now) continue
+      if (!partial) receipts.delete(id)
       const t = e.terms
       const after = t.type === 'cancel' ? undefined : positions.find(p => p.symbol === t.symbol && p.positionIdx === t.positionIdx)
+      // Bybit updates its position timestamp on every fill, so compare the tracked lifecycle instead.
+      if (after && r.before && r.epoch !== epochOf(after)) {
+        receipts.delete(id)
+        continue
+      }
       const receipt = receiptLine(t, r.before, after)
       if (!receipt) continue
       store.transaction(() => {
@@ -571,8 +576,9 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       const first = !store.executionByKey(idempotencyKey) && !store.executionByProposal(proposalId)
       // the last poll is what the alert showed: the before side of the receipt
       const before = t && t.type !== 'cancel' ? positions.find(p => p.symbol === t.symbol && p.positionIdx === t.positionIdx) : undefined
+      const epoch = before && epochOf(before)
       const r = await executor.confirm(proposalId, idempotencyKey)
-      if (first && r.execution && t?.type !== 'cancel') receipts.set(r.execution.id, { before, at: clock() })
+      if (first && r.execution && t?.type !== 'cancel') receipts.set(r.execution.id, { before, epoch, at: clock() })
       // A failed fresh check did not consume the rule. A later valid sample may raise a new proposal.
       if (first && p && r.execution?.status === 'REJECTED') {
         const reason = r.execution.message

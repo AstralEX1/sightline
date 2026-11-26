@@ -31,7 +31,7 @@ Overlays (not routes): token menu, bottom sheets (numeric, close amount, target,
 
 ### 3.1 Color
 
-Light mode uses Paper `#F4F4F4`, white cards and Ink `#232323`. Dark mode uses Ink, `#2E2E2E` cards and Paper text. Primary controls use Bybit orange `#FFB11A` with Ink text. Action-specific fills distinguish the When/Do tiles in both themes. The [stylesheet](../app/src/phone/phone.css) defines all semantic colors, contrast preferences and reduced-transparency overrides.
+Light mode uses Paper `#F4F4F4`, white cards and Ink `#232323`. Dark mode uses Ink, `#2E2E2E` cards and Paper text. Primary controls use the theme’s neutral colors. The New shortcut button uses a glass surface. Action-specific fills distinguish the When/Do tiles in both themes. The [stylesheet](../app/src/phone/phone.css) defines all semantic colors, contrast preferences and reduced-transparency overrides.
 
 ### 3.2 Typography, controls and motion
 
@@ -96,11 +96,11 @@ The phone opens a template in a new editor. Leaving it untouched creates nothing
 
 ### 5.11 History
 
-Rows are grouped by local day and show the action, time, target, reason and most recent status from the server. History loads 50 rows by default and fetches the next page as the end comes into view. The banner and History badge lead here. The empty state reads **No alerts yet**.
+Rows are grouped by local day and show the action, time, target, reason and most recent status from the server. Open a row for the trigger, proposed terms, execution outcome and exchange readback when recorded. History loads 50 rows by default and fetches the next page as the end comes into view. The banner and History badge lead here. The empty state reads **No alerts yet**.
 
 ### 5.12 Settings
 
-Bybit status, environment and permissions are read-only. Notifications controls glasses, in-app and linked Telegram delivery. Timing controls the repeat cooldown (default 60 s), trade expiry (30 s) and other proposal expiry (60 s); each accepts 10–300 seconds. Under Connection, enter the server address and token. **On your glasses** contains Gesture tips and Answer alerts by voice. Device storage keeps those preferences and the connection. **Lens now** previews the current lens text.
+Bybit status, environment and permissions are read-only. Notifications controls delivery on the glasses and in the phone app. Timing controls the repeat cooldown (default 60 s), trade expiry (30 s) and other proposal expiry (60 s); each accepts 10–300 seconds. Under Connection, enter the server address and token. Under **Even G2**, **Send test to G2** waits for the user to tap **OK** on the lens. **On your glasses** contains Quiet mode, Gesture tips and Answer alerts by voice. Device storage keeps those preferences and the connection. **Lens now** previews the current lens text.
 
 ## 6. Text rules
 

@@ -14,10 +14,11 @@ import {
   type EvenAppBridge,
 } from '@evenrealities/even_hub_sdk'
 import type { Candle, ExecutionStatus, Proposal, ServerState } from '../../server/src/types.ts'
-import { previewText, screen, rankPositions, clampFocus, type Layout, type Outcome, type Screen } from './view.ts'
+import { CARD_SETTLE_MS, previewText, screen, rankPositions, clampFocus, type Layout, type Outcome, type Screen } from './view.ts'
 import * as api from './api.ts'
 import { png, svg, chartPng, titlePng, type IconName } from './icons.ts'
 import { startPhonePage } from './phone/index.ts'
+import { enableGlassesTest } from './phone/settings.ts'
 import { LIFECYCLE, createDedupe, exitStep, type Exit } from './lifecycle.ts'
 import { WearTracker } from './wear.ts'
 
@@ -30,8 +31,6 @@ const COUNTDOWN_MS = 5000 // after a spoken yes, before the confirm goes out: an
 const COUNTDOWN_LISTEN_MS = 3500 // the mic closes early so a "no" is transcribed before the countdown ends
 const MIN_AUDIO_BYTES = 9600 // 0.3 s of 16 kHz s16le
 const NOTE_MS = 5000
-// shortcut: a fixed guess, measure how long the lens takes to redraw on real glasses and tune it
-const CARD_SETTLE_MS = 1000
 const PAUSE_MS = 15 * 60_000
 const BLINK_MS = 400 // one on/off step of the new-alert blink (matic-even H1 used 400 ms)
 const SWIPE_GATE_MS = 700 // one long swipe arrives as several scroll events (matic-even H12)
@@ -63,6 +62,7 @@ let focus = 0
 /** The focused position as symbol:positionIdx: the list is re-sorted every poll, so an index alone drifts to another coin. */
 let focusKey = ''
 let detailOpen = false
+let positionsOpen = false
 let lastSwipe = 0
 let blinked = ''
 let listenEnds = 0
@@ -131,6 +131,11 @@ type Box = { name: string; x: number; y: number; w: number; h: number; capture?:
 // a 32 px box with 4 px padding is shorter than a line, and the simulator draws a scroll bar on it. Widths match view.ts INNER_PX.
 const HINT: Box = { name: 'hint', x: 16, y: 248, w: 544, h: 32 }
 const LAYOUTS: Record<Layout, Box[]> = {
+  quiet: [
+    { name: 'top', x: 16, y: 16, w: 544, h: 32, capture: true },
+    { name: 'risk', x: 16, y: 210, w: 544, h: 32 },
+    HINT,
+  ],
   // A header-less table, one box per column so rows line up; losses and gains are separate boxes, so a loss can be brighter.
   main: [
     { name: 'top', x: 16, y: 16, w: 544, h: 32, capture: true },
@@ -215,6 +220,7 @@ function focusIndex(): number {
 const current = () => screen(state, {
   offline, voice: voiceText(), pausedMin: pausedMin(), focus: focusIndex(), detail: detailOpen, needToken, hints: api.hintsOn(), now: Date.now(),
   outcome: outcome ?? undefined, review, pick, hide, cursor,
+  quiet: api.quietModeOn(), positionsOpen,
 })
 /** A new key needs a rebuild: another layout or card, and a rebuild is the only way to set the menu. */
 const pageKey = (sc: Screen) => `${sc.layout}:${sc.key}:${pausedMin() > 0 ? 'paused' : ''}${noVoice() ? ':novoice' : ''}`
@@ -400,6 +406,7 @@ let trackingExecution = false
 async function poll(force = false) {
   await settingsReady
   if (polling || quit || (!force && !wear.inUse)) return // off or in the case: nobody sees the lens
+  if (!api.quietModeOn()) positionsOpen = false
   if (cursor.at && Date.now() - lastSwipe > CURSOR_IDLE_MS) cursor = { key: '', at: 0 }
   polling = true
   const was = current().card // the alert on the lens before this state
@@ -606,9 +613,11 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
   if (gesture && (mic === 'starting' || mic === 'on')) void stopListening('') // the hand answers instead of the voice
   const swipe = is(OsEventTypeList.SCROLL_TOP_EVENT) ? 0 : is(OsEventTypeList.SCROLL_BOTTOM_EVENT) ? 1 : null
   const sc = current()
-  if (sc.layout === 'main') {
+  if (sc.layout === 'main' || sc.layout === 'quiet') {
+    if (api.quietModeOn() && page !== pageKey(sc)) return
     if (is(OsEventTypeList.DOUBLE_CLICK_EVENT)) {
-      // Exit is for Main: a root-page double tap must open the host's exit dialogue (Even Hub review).
+      if (sc.layout === 'main' && api.quietModeOn()) { positionsOpen = false; return draw() }
+      // A root-page double tap must open the host's exit dialogue (Even Hub review).
       if (exiting === 'asked') return // the dialogue is already on its way
       void stopListening()
       exiting = 'asked'
@@ -617,6 +626,10 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
       return
     }
     if (offline || needToken) return // only the problem line is on screen: a tap or swipe must not move the hidden table
+    if (sc.layout === 'quiet') {
+      if (state?.updatedAt && !state.error && is(OsEventTypeList.CLICK_EVENT)) { positionsOpen = true; return draw() }
+      return
+    }
     if (is(OsEventTypeList.CLICK_EVENT)) {
       const n = state?.positions.length ?? 0
       if (!n) return // nothing to open; Speak is on the menu
@@ -641,6 +654,7 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
     return draw()
   }
   if (is(OsEventTypeList.DOUBLE_CLICK_EVENT)) {
+    if (sc.choices[0] === 'ack-glasses-test') return // only an intentional single tap on OK acknowledges the test
     // The leverage page goes back to the size page, the rest back to the alert, on Dismiss like every rebuilt page
     if (sc.layout === 'review' && sc.card) {
       if (sc.key.endsWith(':leverage') && pick?.id === sc.card.id) pick = undefined
@@ -663,6 +677,9 @@ function act(sc: Screen, i: number) {
   const choice = sc.choices[i]
   const card = sc.card
   if (choice === 'close') return closeOutcome()
+  if (choice === 'ack-glasses-test' && state?.glassesTestId) {
+    return api.acknowledgeGlassesTest(state.glassesTestId).catch(() => undefined).then(() => poll(true))
+  }
   if (!card) return
   if (choice === 'dismiss') return dismissCard(card)
   if (choice === 'review') { review = card.id; return draw() }
@@ -782,6 +799,7 @@ async function startGlasses() {
   $('glasses').textContent = result === 0 ? 'Glasses connected' : result === null ? 'Glasses not answering' : `Glasses not connected (code ${result})` // a plain browser lands here too
   api.countLaunch() // after the start-up page and its images: a storage write next to them can drop the link
   bridge.onEvenHubEvent(e => void onEvent(e))
+  enableGlassesTest()
   const status = (await call(() => b.getDeviceInfo()).catch(() => null))?.status
   if (status) wear.update(status)
   bridge.onDeviceStatusChanged(s => {

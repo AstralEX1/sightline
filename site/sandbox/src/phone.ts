@@ -27,4 +27,34 @@ window.fetch = (input, init) => {
   const url = new URL(input instanceof Request ? input.url : String(input), location.href)
   return url.pathname.startsWith('/api/') ? backend.fetch(input, init) : own(input, init)
 }
+if (lens && 'IntersectionObserver' in window) {
+  document.documentElement.classList.add('landing-phone')
+  const motion = matchMedia('(prefers-reduced-motion: no-preference)')
+  if (motion.matches) {
+    const root = document.getElementById('phone')!
+    let bounce: Animation[] = []
+    const rendered = new MutationObserver(() => {
+      const tiles = [...root.querySelectorAll<HTMLElement>('.tile:has(.tile__body)')].slice(0, 3)
+      if (!tiles.length) return
+      rendered.disconnect()
+      const visible = new IntersectionObserver(([entry]) => {
+        if (entry.intersectionRatio < .65) return
+        visible.disconnect()
+        if (!motion.matches) return
+        bounce = tiles.map((tile, i) => tile.animate([
+          { transform: 'translateY(0)' },
+          { transform: 'translateY(-7px)', offset: .36 },
+          { transform: 'translateY(0)' },
+        ], { duration: 540, delay: i * 110, easing: 'cubic-bezier(.22,.61,.36,1)' }))
+      }, { threshold: .65 })
+      visible.observe(tiles[0])
+      root.addEventListener('pointerdown', () => {
+        visible.disconnect()
+        bounce.forEach(animation => animation.cancel())
+      }, { once: true })
+    })
+    rendered.observe(root, { childList: true, subtree: true })
+  }
+}
+
 await import('../../../app/src/main.ts')

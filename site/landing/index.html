@@ -13,9 +13,10 @@
 <link rel="stylesheet" href="css/base.css">
 <link rel="stylesheet" href="css/home.css">
 <style>
-[data-theme=light]{--accent-orange:#0b7a3b;--accent-orange-deep:#0a6b34;--accent-soft:#c9f2d6}
+[data-theme=light]{--navigaze-green:#72ff96;--accent-orange:#0b6534;--accent-orange-deep:#0a592f;--accent-soft:#c9f2d6}
 body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
-.sl{--accent:#0b7a3b;--orange:#13a24f;--orange-soft:#c9f2d6;--app-blue:#13a24f}
+.sl{--accent:#0b6534}
+.sl :is(h1,h2) em{color:var(--ink);background:linear-gradient(transparent 63%,var(--navigaze-green) 63%,var(--navigaze-green) 88%,transparent 88%);box-decoration-break:clone;-webkit-box-decoration-break:clone}
 /* hero: copy left; lens screens right, laid out like an Even Hub catalogue gallery (lens over a blurred street, arrows, thumbnails) */
 .sl .i-assist{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:56px;align-items:center;height:auto;padding-block:64px}
 .sl .hcopy{max-width:none;margin:0}
@@ -54,8 +55,15 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
 .sl .qa-p{height:var(--accordion-panel-height);overflow:hidden;transition:height .25s var(--ease)}
 .sl .qa-p[data-starting-style],.sl .qa-p[data-ending-style]{height:0}
 @media (max-width:760px){.sl .qa-t{font-size:16px;min-height:56px}}
+.sl #setup-on-g2,.sl #shortcut-builder{scroll-margin-top:88px}
+.sl #setup-on-g2 ol{list-style:decimal}
 /* alert cards are lens screens: black, stacked on desktop; crop the empty photo under the text (lowest text: detail.jpg, y 463 of 576) */
 .sl .cards img{background:#000;border-color:rgba(0,0,0,.25);aspect-ratio:1152/490;object-fit:cover;object-position:top}
+.sl .position-screens img{aspect-ratio:2/1;object-fit:contain}
+.sl .alert-shots{display:grid;gap:20px;min-width:0}
+.sl .alert-history{width:min(100%,393px);justify-self:end}
+.sl .alert-history figcaption{margin-bottom:8px;color:var(--ink-2);font-size:14px;font-weight:700}
+.sl .alert-history img{display:block;width:100%;border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh-2)}
 @media (min-width:761px){.sl .cards:not(.one){grid-template-columns:minmax(0,1fr);gap:18px}.sl .cards .c1{width:84%}.sl .cards .c2{width:84%;justify-self:end;margin:0}}
 /* copy starts level with the first card or shot, the way otomato's feed reads: kick 22px below its top */
 @media (min-width:761px){.sl .fam .wrap,.sl .chan .wrap{align-items:start}.sl .fam .wrap>div:first-child,.sl .chan .wrap>div:first-child{padding-top:22px}}
@@ -96,7 +104,9 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
 .sl .proof .build-demo{grid-template-areas:"copy phone" "lens phone";row-gap:28px}
 .sl .build-copy{grid-area:copy;align-self:end}
 .sl .build-phone{grid-area:phone;display:grid;justify-items:center;gap:18px}
+.sl .build-phone-hint{display:flex;align-items:center;gap:8px;margin:0;padding:8px 14px;border-radius:99px;background:var(--navigaze-green);color:#151515;font-size:14px;font-weight:800}
 .sl .build-phone .phone{width:340px;--s:.82015}
+.sl .build-phone .phone::before{content:"";position:absolute;inset:-9px;border:2px solid var(--navigaze-green);border-radius:60px;box-shadow:0 0 28px rgb(114 255 150/.35);pointer-events:none}
 .sl .build-phone iframe{display:block;width:393px;height:877px;border:0;transform:scale(var(--s));transform-origin:0 0}
 .sl .build-result{grid-area:lens;align-self:start;width:100%;max-width:576px}
 .sl .build-result figcaption{margin-bottom:8px;font-size:14px;font-weight:600;color:var(--ink-2)}
@@ -114,7 +124,7 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
 <body data-theme="light" class="antialiased bg-bg text-ink">
 <div class="contents">
 
-<header class="fixed inset-x-0 top-0 z-50 border-b bg-[rgba(243,244,246,0.88)] backdrop-blur-[14px] backdrop-saturate-[1.3] transition-colors duration-300 border-[rgba(26,22,18,0.08)]"><div class="mx-auto flex h-14 w-[calc(100%-32px)] items-center gap-7 min-[761px]:w-[min(1320px,calc(100%-40px))] min-[981px]:h-16"><a href="#top" aria-label="Trade Shortcuts home" class="flex min-h-[44px] items-center gap-[9px] text-[17px] font-extrabold tracking-[-0.02em] text-ink"><img src="img/lockup.svg" alt="Trade Shortcuts" width="214" height="20" class="h-5 w-auto"></a><nav aria-label="Main" class="ml-3 hidden items-center gap-[26px] min-[981px]:flex"><a href="sandbox/" class="text-[14.5px] font-semibold text-ink-muted transition-colors hover:text-ink">Sandbox</a><a href="https://trade-shortcuts-app.vercel.app" class="text-[14.5px] font-semibold text-ink-muted transition-colors hover:text-ink">Phone app</a><a href="https://github.com/AstralEX1/trade-shortcuts" class="text-[14.5px] font-semibold text-ink-muted transition-colors hover:text-ink">GitHub</a></nav><a href="sandbox/" class="group ml-auto hidden md:flex items-center gap-2.5 whitespace-nowrap rounded-full bg-[#151515] px-5 py-3 text-sm font-bold leading-[1.2] text-white transition-colors hover:bg-[#2c2724]">Try the demo <span class="transition-transform duration-300 group-hover:translate-x-[3px]">→</span></a><a href="https://github.com/AstralEX1/trade-shortcuts#run-the-demo" class="group ml-auto md:hidden inline-flex items-center gap-2.5 whitespace-nowrap rounded-full bg-[#151515] px-5 py-3 text-sm font-bold leading-[1.2] text-white transition-colors hover:bg-[#2c2724]">Set up on G2 <span class="transition-transform duration-300 group-hover:translate-x-[3px]">→</span></a></div></header>
+<header class="fixed inset-x-0 top-0 z-50 border-b bg-[rgba(243,244,246,0.88)] backdrop-blur-[14px] backdrop-saturate-[1.3] transition-colors duration-300 border-[rgba(26,22,18,0.08)]"><div class="mx-auto flex h-14 w-[calc(100%-32px)] items-center gap-7 min-[761px]:w-[min(1320px,calc(100%-40px))] min-[981px]:h-16"><a href="#top" aria-label="Trade Shortcuts home" class="flex min-h-[44px] items-center gap-[9px] text-[17px] font-extrabold tracking-[-0.02em] text-ink"><img src="img/lockup.svg" alt="Trade Shortcuts" width="214" height="20" class="h-5 w-auto"></a><nav aria-label="Main" class="ml-3 hidden items-center gap-[26px] min-[981px]:flex"><a href="sandbox/" class="text-[14.5px] font-semibold text-ink-muted transition-colors hover:text-ink">Sandbox</a><a href="https://trade-shortcuts-app.vercel.app" class="text-[14.5px] font-semibold text-ink-muted transition-colors hover:text-ink">Phone app</a><a href="https://github.com/AstralEX1/trade-shortcuts" class="text-[14.5px] font-semibold text-ink-muted transition-colors hover:text-ink">GitHub</a></nav><a href="sandbox/" class="group ml-auto hidden md:flex items-center gap-2.5 whitespace-nowrap rounded-full bg-[#151515] px-5 py-3 text-sm font-bold leading-[1.2] text-white transition-colors hover:bg-[#2c2724]">Try in browser <span class="transition-transform duration-300 group-hover:translate-x-[3px]">→</span></a><a href="#setup-on-g2" class="group ml-auto md:hidden inline-flex items-center gap-2.5 whitespace-nowrap rounded-full bg-[#151515] px-5 py-3 text-sm font-bold leading-[1.2] text-white transition-colors hover:bg-[#2c2724]">Set up on G2 <span class="transition-transform duration-300 group-hover:translate-x-[3px]">→</span></a></div></header>
 <div aria-hidden="true" class="h-14 min-[981px]:h-16"></div>
 
 <div class="sl">
@@ -127,12 +137,14 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
       <div class="ihead"><span class="lg"><img src="img/symbol-on-dark.svg" alt=""></span><span class="pn">Trading assistant for Even G2</span></div>
       <h1>Your positions, <em>watched.</em></h1>
       <p class="isub">Trading rules you build on your phone, answered on your glasses. Set and forget: one rule covers every Bybit position you open, today’s and tomorrow’s, and puts the exact trade on the lens for your tap.</p>
-      <div class="cta-slot" data-cta="hero"><div class="max-w-[500px]"><div class="flex flex-wrap gap-2.5"><div class="min-w-0 flex-1 md:min-w-[235px]"><div class="w-full"><a href="https://github.com/AstralEX1/trade-shortcuts#run-the-demo" class="flex h-12 w-full items-center justify-center gap-2.5 rounded-full px-4 text-[15px] font-semibold transition-colors duration-500 md:h-[52px] md:px-6 bg-ink text-white shadow-soft"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 14h4M3 14l1.5-6M21 14l-1.5-6"/></svg>Set up on G2</a></div></div><a href="sandbox/" class="flex h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-full border border-ink/10 bg-white px-4 text-[15px] font-semibold text-ink-muted transition-colors hover:text-ink md:h-[52px] md:min-w-[235px] md:gap-2.5 md:px-5 md:text-[15px]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>Try the demo</a></div></div></div>
+      <div class="cta-slot" data-cta="hero"><div class="max-w-[500px]"><div class="flex flex-wrap gap-2.5"><div class="min-w-0 flex-1 md:min-w-[235px]"><div class="w-full"><a href="#setup-on-g2" class="flex h-12 w-full items-center justify-center gap-2.5 rounded-full px-4 text-[15px] font-semibold transition-colors duration-500 md:h-[52px] md:px-6 bg-ink text-white shadow-soft"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 14h4M3 14l1.5-6M21 14l-1.5-6"/></svg>Set up on G2</a></div></div><a href="sandbox/" class="flex h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-full border border-ink/10 bg-white px-4 text-[15px] font-semibold text-ink-muted transition-colors hover:text-ink md:h-[52px] md:min-w-[235px] md:gap-2.5 md:px-5 md:text-[15px]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>Try in browser</a></div></div></div>
     </div>
     <div class="gal" role="region" aria-roledescription="carousel" aria-label="Screens through the G2 lens">
       <div class="gal-view">
         <div class="gal-track" tabindex="0">
-          <figure><img src="img/hud/liq.png" alt="Liquidation alert: BTC long 3.2% from liquidation, Close 50% ready to confirm" width="1152" height="576"></figure>
+          <figure data-caption="Open positions · G2 lens"><img src="img/hud/positions.png" alt="Main menu showing open BTC, ETH and SOL positions" width="576" height="288"></figure>
+          <figure data-caption="Position detail · G2 lens"><img src="img/hud/position-detail.png" alt="BTC position detail showing PnL, leverage, liquidation distance and a price chart" width="576" height="288"></figure>
+          <figure><img src="img/hud/liq.png" alt="Liquidation alert: BTC long 3.2% from liquidation, Close 50% ready to confirm" width="1152" height="576" loading="lazy"></figure>
           <figure><img src="img/hud/loss.png" alt="Loss alert" width="1152" height="576" loading="lazy"></figure>
           <figure><img src="img/hud/nearstop.png" alt="Stop loss alert" width="1152" height="576" loading="lazy"></figure>
           <figure><img src="img/hud/profit.png" alt="Profit alert" width="1152" height="576" loading="lazy"></figure>
@@ -142,7 +154,7 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
         </div>
         <button type="button" class="gal-a prev" aria-label="Previous screen"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
         <button type="button" class="gal-a next" aria-label="Next screen"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
-        <span class="g2note">Through the G2 lens</span>
+        <span class="g2note">Open positions · G2 lens</span>
       </div>
       <div class="gal-th"></div>
     </div>
@@ -153,14 +165,14 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
 <section class="pos" id="shortcuts">
   <div class="wrap sc">
     <div class="duo">
-      <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/home.jpg" alt="Eight shortcut tiles, each a When trigger over a Do action: close 50% within 3% of liquidation, “protect all” and “close all” by voice, add 25% margin and a BTC price alert; three are switched off"></div></div>
-      <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/templates.jpg" alt="Shortcut templates under Protect, Take profit and Market, as When and Do tiles with a plus button, such as Liq ≤ 3%, Close 50%"></div></div>
+      <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/home.jpg" alt="Shortcuts for liquidation risk, taking profit and voice commands, with on and off switches" width="786" height="1704" loading="lazy"></div></div>
+      <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/templates.jpg" alt="Shortcut templates under Protect, Take profit and Market, shown as When and Do tiles" width="786" height="1704" loading="lazy"></div></div>
     </div>
     <div>
       <span class="kick">Your shortcuts</span>
       <h2>Every rule you trade by, <em>one switch away.</em></h2>
       <p class="plede">Get an alert when volume spikes or funding is high. For actions like adding a stop or closing half a position, your glasses show the trade for you to confirm. Tap any tile on your phone to edit it.</p>
-      <div class="pf-foot"><a href="#alerts">See the alerts they send <span>↓</span></a></div>
+      <div class="pf-foot"><a href="#shortcut-builder">Try the phone demo <span>↓</span></a></div>
     </div>
   </div>
 </section>
@@ -180,7 +192,7 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
         <p>Main shows open positions, mark price, ROI and a warning near liquidation. Tap a position for its leverage, PnL, stop and liquidation distances, and the past hour of prices.</p>
         <div class="plist"><span><img src="img/ic/btc.svg" alt="">BTC long</span><span><img src="img/ic/eth.svg" alt="">ETH short</span><span><img src="img/ic/sol.svg" alt="">SOL long</span></div>
       </div>
-      <div class="cards"><img class="c1" src="img/cards/main.jpg" alt="Lens Main: Bybit Demo, 3 positions. BTC long 61,640, down 5.8%, liq 3.5%. ETH short 3,080, up 6.5%, no stop. SOL long 145.00, up 35.7%" draggable="false"><img class="c2" src="img/cards/detail.jpg" alt="Lens position: BTC long 10x, 0.05 BTC, liquidation 59,500 is 3.1% away, no stop. PnL minus 30 USDT, ROI minus 9.7%" draggable="false"></div>
+      <div class="cards position-screens"><img class="c1" src="img/hud/positions.png" alt="Main menu showing open BTC, ETH and SOL positions, their prices and returns" width="576" height="288" loading="lazy" draggable="false"><img class="c2" src="img/hud/position-detail.png" alt="BTC position detail showing PnL, leverage, liquidation distance and a price chart" width="576" height="288" loading="lazy" draggable="false"></div>
     </div>
   </section>
   <section class="fam">
@@ -191,18 +203,23 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
         <p>Leveraged positions close to liquidation, while there is still time to add margin or close half.</p>
         <div class="tpls" data-tpl="6"></div>
       </div>
-      <div class="cards" style="--t2:120px;--pb:60px"><img class="c1" src="img/cards/liq.jpg" alt="Lens alert: BTC long, 3.2% to liquidation. Close 50%, 0.025 BTC" draggable="false"><img class="c2" src="img/cards/loss.jpg" alt="Lens alert: BTC long, ROI minus 18.2%. Add 100 USDT margin" draggable="false"></div>
+      <div class="alert-shots">
+        <div class="cards"><img class="c1" src="img/cards/liq.jpg" alt="Lens alert: BTC long, 3.2% to liquidation. Close 50%, 0.025 BTC" draggable="false"><img class="c2" src="img/cards/loss.jpg" alt="Lens alert: BTC long, ROI minus 18.2%. Add 100 USDT margin" draggable="false"></div>
+        <figure class="alert-history"><figcaption>On your phone · History</figcaption><img src="img/app/history-risk.webp" width="786" height="546" alt="In-app history with a liquidation distance alert and a loss alert" loading="lazy"></figure>
+      </div>
     </div>
   </section>
   <section class="fam">
     <div class="wrap">
       <div>
-        <span class="kick">Stops and take profits</span>
-        <h2>Your price nears the stop. <em>You know before it hits.</em></h2>
+        <h2>Stops and <em>take profits.</em></h2>
         <p>Close to the stop, closed by stop, take profit or liquidation: every step of your exit plan.</p>
         <div class="tpls" data-tpl="27,17"></div>
       </div>
-      <div class="cards one"><img class="c1" src="img/cards/nearstop.jpg" alt="Lens alert: XRP long, 0.9% to stop" draggable="false"></div>
+      <div class="alert-shots">
+        <div class="cards one"><img class="c1" src="img/cards/nearstop.jpg" alt="Lens alert: XRP long, 0.9% to stop" draggable="false"></div>
+        <figure class="alert-history"><figcaption>On your phone · History</figcaption><img src="img/app/history-stops.webp" width="786" height="718" alt="In-app history with near-stop and near-take-profit alerts and a position closed by its stop" loading="lazy"></figure>
+      </div>
     </div>
   </section>
   <section class="fam">
@@ -213,29 +230,37 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
         <p>Limit orders, take-profit and stop-loss on Bybit perps, partial fills and orders open too long included.</p>
         <div class="tpls" data-tpl="14,24"></div>
       </div>
-      <div class="cards"><img class="c1" src="img/cards/filled.jpg" alt="Lens alert: SOL long order filled at 182.40. Set take profit at 191.52" draggable="false"><img class="c2" src="img/cards/partial.jpg" alt="Lens alert: BTC buy order 0.010 of 0.025 filled. Cancel the rest" draggable="false"></div>
+      <div class="alert-shots">
+        <div class="cards"><img class="c1" src="img/cards/filled.jpg" alt="Lens alert: SOL long order filled at 182.40. Set take profit at 191.52" draggable="false"><img class="c2" src="img/cards/partial.jpg" alt="Lens alert: BTC buy order 0.010 of 0.025 filled. Cancel the rest" draggable="false"></div>
+        <figure class="alert-history"><figcaption>On your phone · History</figcaption><img src="img/app/history-orders.webp" width="786" height="718" alt="In-app history with order filled, partly filled and open over an hour alerts" loading="lazy"></figure>
+      </div>
     </div>
   </section>
   <section class="fam">
     <div class="wrap">
       <div>
-        <span class="kick">Price and funding</span>
-        <h2>Holding it got expensive. <em>Now you know.</em></h2>
-        <p>Price crossing your level, a big move either way, funding running hot: what your position costs and where it is heading.</p>
+        <h2>Price, volume <em>and funding.</em></h2>
+        <p>See when price crosses your level, moves by your chosen percentage, volume spikes or a funding payment is coming up.</p>
         <div class="tpls" data-tpl="10,26,11,20"></div>
       </div>
-      <div class="cards"><img class="c1" src="img/cards/pchange.jpg" alt="Lens alert: ETH long up 5.1% in 15 minutes. Review add, 200 USDT" draggable="false"><img class="c2" src="img/cards/plevel.jpg" alt="Lens alert: BTC crossed above 90,000. Review long, 500 USDT" draggable="false"></div>
+      <div class="alert-shots">
+        <div class="cards"><img class="c1" src="img/cards/pchange.jpg" alt="Lens alert: ETH long up 5.1% in 15 minutes. Review add, 200 USDT" draggable="false"><img class="c2" src="img/cards/plevel.jpg" alt="Lens alert: BTC crossed above 90,000. Review long, 500 USDT" draggable="false"></div>
+        <figure class="alert-history"><figcaption>On your phone · History</figcaption><img src="img/app/history-market.webp" width="786" height="930" alt="In-app history with price crossing, price change, volume spike and funding alerts" loading="lazy"></figure>
+      </div>
     </div>
   </section>
   <section class="fam">
     <div class="wrap">
       <div>
         <span class="kick">Profit</span>
-        <h2>Your trade works. <em>You lock it in at once.</em></h2>
+        <h2>Your trade works. <em>Secure profits.</em></h2>
         <p>ROI above your line: move the stop to entry or take half off the table before the move gives it back.</p>
         <div class="tpls" data-tpl="1,2"></div>
       </div>
-      <div class="cards"><img class="c1" src="img/cards/profit.jpg" alt="Lens alert: ETH short ROI plus 31.4%. Move stop to entry" draggable="false"><img class="c2" src="img/cards/tp.jpg" alt="Lens alert: ETH short 0.8% to take profit. Close 50%" draggable="false"></div>
+      <div class="alert-shots">
+        <div class="cards"><img class="c1" src="img/cards/profit.jpg" alt="Lens alert: ETH short ROI plus 31.4%. Move stop to entry" draggable="false"><img class="c2" src="img/cards/tp.jpg" alt="Lens alert: ETH short 0.8% to take profit. Close 50%" draggable="false"></div>
+        <figure class="alert-history"><figcaption>On your phone · History</figcaption><img src="img/app/history-profit.webp" width="786" height="546" alt="In-app history with profit alerts to move a stop to entry or take half off" loading="lazy"></figure>
+      </div>
     </div>
   </section>
   <section class="fam">
@@ -281,7 +306,8 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
         </div>
       </figure>
       <div class="build-phone">
-        <div class="phone"><i class="hw" aria-hidden="true"></i><div class="scr shot"><iframe src="sandbox/phone.html" title="Trade Shortcuts phone app" loading="lazy"></iframe></div></div>
+        <p class="build-phone-hint" id="demo-phone-hint"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 13 4 4 4-4M12 17V5"/></svg>Tap a shortcut to edit it</p>
+        <div class="phone"><i class="hw" aria-hidden="true"></i><div class="scr shot"><iframe src="sandbox/phone.html" title="Trade Shortcuts phone app" aria-describedby="demo-phone-hint" loading="lazy"></iframe></div></div>
       </div>
     </div>
     <div class="nums">
@@ -301,15 +327,27 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
   <div class="wrap">
     <div>
       <span class="kick">Where you read it</span>
-      <h2>One feed. <em>Three places to read it.</em></h2>
+      <h2>One feed. <em>On your glasses and phone.</em></h2>
       <div class="clist">
         <div><b>The G2 lens</b><small>Positions, alerts and trade confirmations.</small></div>
         <div><b>The phone, in the Even app</b><small>Your shortcuts, notifications while the phone app is open, and the history of every alert.</small></div>
-        <div><b>Telegram</b><small>The same alerts, in the chat you already keep open. Telegram can never confirm a trade.</small></div>
       </div>
-      <div class="cta-slot" data-cta="channels"><div class="max-w-[500px]"><div class="flex flex-wrap gap-2.5"><div class="min-w-0 flex-1 md:min-w-[235px]"><div class="w-full"><a href="https://github.com/AstralEX1/trade-shortcuts#run-the-demo" class="flex h-12 w-full items-center justify-center gap-2.5 rounded-full px-4 text-[15px] font-semibold transition-colors duration-500 md:h-[52px] md:px-6 bg-ink text-white shadow-soft"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 14h4M3 14l1.5-6M21 14l-1.5-6"/></svg>Set up on G2</a></div></div><a href="sandbox/" class="hidden h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-full border border-ink/10 bg-white px-3 text-[13px] font-semibold text-ink-muted transition-colors hover:text-ink md:flex md:h-[52px] md:min-w-[235px] md:gap-2.5 md:px-5 md:text-[15px]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>Try the demo</a></div><div class="mt-3 flex justify-center md:justify-start"><a href="https://github.com/AstralEX1/trade-shortcuts#run-the-demo" class="inline-flex items-center gap-1.5 text-sm font-medium text-accent-orange transition-opacity hover:opacity-80"><svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="M6.5 11.8l10-4.1-1.7 9.2-3.4-2.6-1.7 1.7v-2.6l4.3-4-5.5 3.4z" fill="#fff"/></svg>Telegram setup</a></div></div></div>
+      <div class="cta-slot" data-cta="channels"><div class="max-w-[500px]"><div class="flex flex-wrap gap-2.5"><div class="min-w-0 flex-1 md:min-w-[235px]"><div class="w-full"><a href="#setup-on-g2" class="flex h-12 w-full items-center justify-center gap-2.5 rounded-full px-4 text-[15px] font-semibold transition-colors duration-500 md:h-[52px] md:px-6 bg-ink text-white shadow-soft"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 14h4M3 14l1.5-6M21 14l-1.5-6"/></svg>Set up on G2</a></div></div><a href="sandbox/" class="hidden h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-full border border-ink/10 bg-white px-3 text-[13px] font-semibold text-ink-muted transition-colors hover:text-ink md:flex md:h-[52px] md:min-w-[235px] md:gap-2.5 md:px-5 md:text-[15px]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>Try in browser</a></div></div></div>
     </div>
     <img class="g2shot" src="img/lens-positions.jpg" alt="Through the G2: three demo positions, BTC long 0.3% from liquidation">
+  </div>
+</section>
+
+<section class="faq" id="setup-on-g2">
+  <div class="wrap">
+    <h2>Set up on G2</h2>
+    <ol class="space-y-3 pl-6">
+      <li>Pair your G2 with the Even Realities app and accept your Trade Shortcuts beta invitation.</li>
+      <li>In the Even Realities app, open <strong>Me → Beta tester</strong> and install <strong>Trade Shortcuts</strong>.</li>
+      <li>In Trade Shortcuts, open <strong>Settings → Connection</strong> and connect to the server provided for your beta.</li>
+      <li>Choose <strong>Send test to G2</strong> in Settings, then tap <strong>OK</strong> on the TEST card on your glasses.</li>
+    </ol>
+    <p class="mt-5"><a class="underline" href="https://github.com/AstralEX1/trade-shortcuts#run-the-demo">Run the desktop simulator</a> · <a class="underline" href="sandbox/">Try in browser</a></p>
   </div>
 </section>
 
@@ -325,7 +363,7 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
       <details><summary>Which exchanges does Trade Shortcuts support?</summary><p>Bybit demo and testnet. The server refuses any other host at startup. A built-in demo exchange runs without any keys.</p></details>
       <details><summary>What types of alerts can I receive?</summary><p>Liquidation distance, profit and loss, stop and take-profit distance, closed by stop, take profit or liquidation, price levels and price changes, volume spikes, funding, and orders filled, partly filled or open too long.</p></details>
       <details><summary>What do I need?</summary><p>Even Realities G2 glasses, the Even app on your phone, and a Trade Shortcuts server you run yourself. Voice needs an OpenAI key on that server.</p></details>
-      <details><summary>How do I receive alerts?</summary><p>On the G2 lens and in the open phone app, according to your notification settings. A linked Telegram chat can receive alerts when the glasses are off or no other channel takes the alert.</p></details>
+      <details><summary>How do I receive alerts?</summary><p>On the G2 lens and in the open phone app, according to your notification settings.</p></details>
     </div>
   </div>
 </section>
@@ -336,7 +374,7 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
     <img class="ic" src="img/app-icon.svg" alt="">
     <h2>Switch on your first shortcut. <em>It takes a minute.</em></h2>
     <p>Pick a template, tap Add, then switch it on. Confirm each proposed trade on your glasses.</p>
-    <div class="cta-slot" data-cta="end"><div class="inline-flex flex-col gap-3 mx-auto"><a href="https://github.com/AstralEX1/trade-shortcuts#run-the-demo" class="btn-shine group inline-flex items-center gap-3 rounded-full bg-ink px-7 py-3.5 text-base font-semibold text-white shadow-soft transition-all hover:bg-[#000000] hover:shadow-strong active:scale-[0.98]"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 14h4M3 14l1.5-6M21 14l-1.5-6"/></svg>Set up on G2</a><a href="https://github.com/AstralEX1/trade-shortcuts#run-the-demo" class="self-center inline-flex items-center gap-1.5 text-sm font-medium text-accent-orange transition-opacity hover:opacity-80"><svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="M6.5 11.8l10-4.1-1.7 9.2-3.4-2.6-1.7 1.7v-2.6l4.3-4-5.5 3.4z" fill="#fff"/></svg>Telegram setup</a></div></div>
+    <div class="cta-slot" data-cta="end"><div class="inline-flex flex-col gap-3 mx-auto"><a href="#setup-on-g2" class="btn-shine group inline-flex items-center gap-3 rounded-full bg-ink px-7 py-3.5 text-base font-semibold text-white shadow-soft transition-all hover:bg-[#000000] hover:shadow-strong active:scale-[0.98]"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 14h4M3 14l1.5-6M21 14l-1.5-6"/></svg>Set up on G2</a></div></div>
   </div>
 </section>
 </main>
@@ -376,7 +414,7 @@ var RM=matchMedia("(prefers-reduced-motion: reduce)").matches, $=function(s){ret
 // hero gallery: swipe or scroll the lens screens; arrows step one screen (wrapping), thumbnails jump to one
 (function(){
   var t=$(".gal-track");if(!t)return;
-  var g=t.closest(".gal"),row=g.querySelector(".gal-th"),n=t.children.length,cur=-1;
+  var g=t.closest(".gal"),row=g.querySelector(".gal-th"),caption=g.querySelector(".g2note"),n=t.children.length,cur=-1;
   var th=[].map.call(t.children,function(f,i){
     var b=document.createElement("button"),im=f.querySelector("img");
     b.type="button";b.setAttribute("aria-label",im.alt);
@@ -385,9 +423,11 @@ var RM=matchMedia("(prefers-reduced-motion: reduce)").matches, $=function(s){ret
   });
   function go(i){t.scrollTo({left:((i+n)%n)*t.clientWidth})}
   function sync(){
-    var i=Math.min(n-1,Math.round(t.scrollLeft/t.clientWidth));if(i===cur)return;
+    if(!t.clientWidth)return;
+    var i=Math.max(0,Math.min(n-1,Math.round(t.scrollLeft/t.clientWidth)));if(i===cur)return;
     if(cur>=0)th[cur].removeAttribute("aria-current");
     cur=i;th[i].setAttribute("aria-current","true");
+    caption.textContent=t.children[i].dataset.caption||"Through the G2 lens";
     row.scrollTo({left:th[i].offsetLeft-(row.clientWidth-th[i].offsetWidth)/2});
   }
   g.querySelector(".prev").onclick=function(){go(cur-1)};

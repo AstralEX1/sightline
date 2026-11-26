@@ -1,6 +1,6 @@
 /**
  * Alert and proposal service, the pure half: what a fired shortcut asks for on one target, resolved to one exact
- * exchange command and guarded (§6, §7), plus the words the lens, History and Telegram print. No I/O.
+ * exchange command and guarded (§6, §7), plus the words the lens and History print. No I/O.
  */
 import { ACTION_TITLE, type Action, type Condition, type Dec, type Target } from './registry.ts'
 import type { Balance, Execution, Instrument, Order, Position, Proposal, Side, Slot, Terms, Ticker } from './types.ts'

@@ -177,6 +177,7 @@ const menuStep = (a: string, b: string) => {
 
 export class Lens {
   page: Page = {}
+  showHints = true
   menu: { items: MenuItem[]; at: number } | null = null
   #images = new Map<string, Uint8Array>()
   #g: CanvasRenderingContext2D
@@ -184,8 +185,11 @@ export class Lens {
   #frame: ImageData
   #font: Font | null = null
   #queued = false
+  #onDraw: () => void
+  #pagePaintedAt = 0
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, onDraw: () => void = () => {}) {
+    this.#onDraw = onDraw
     canvas.width = W
     canvas.height = H
     canvas.style.imageRendering = 'pixelated' // the lens's own pixels, scaled up
@@ -195,9 +199,12 @@ export class Lens {
     ;(font ??= loadFont()).then(f => { this.#font = f; this.draw() }, e => console.error('Lens font did not load', e))
   }
 
+  get pagePaintedAt() { return this.#pagePaintedAt }
+
   /** createStartUpPageContainer and rebuildPageContainer: a rebuild drops the images, as on the glasses. */
   setPage(page: Page) {
     this.page = structuredClone(page)
+    this.#pagePaintedAt = 0
     this.#images.clear()
     this.menu = null
     this.draw()
@@ -214,14 +221,17 @@ export class Lens {
 
   /** A PNG from the app becomes 16 greys, as the simulator converts it; a different size covers the box, centred. */
   async setImage(name: string, png: number[]): Promise<boolean> {
-    const box = this.page.imageObject?.find(i => i.containerName === name)
+    const page = this.page
+    const box = page.imageObject?.find(i => i.containerName === name)
     if (!box) return false
     try {
       const bitmap = await createImageBitmap(new Blob([Uint8Array.from(png)], { type: 'image/png' }))
+      if (page !== this.page) { bitmap.close(); return false }
       const { width: w, height: h } = box
       const g = new OffscreenCanvas(w, h).getContext('2d')!
       const k = Math.max(w / bitmap.width, h / bitmap.height)
       g.drawImage(bitmap, (w - bitmap.width * k) / 2, (h - bitmap.height * k) / 2, bitmap.width * k, bitmap.height * k)
+      bitmap.close()
       const px = g.getImageData(0, 0, w, h).data
       const gray = new Uint8Array(w * h)
       for (let i = 0; i < gray.length; i++) {
@@ -247,7 +257,12 @@ export class Lens {
   draw() {
     if (this.#queued) return
     this.#queued = true
-    requestAnimationFrame(() => { this.#queued = false; this.#paint() })
+    requestAnimationFrame(() => {
+      this.#queued = false
+      this.#paint()
+      if (this.#font && !this.#pagePaintedAt) this.#pagePaintedAt = performance.now()
+      this.#onDraw()
+    })
   }
 
   #paint() {
@@ -255,7 +270,7 @@ export class Lens {
     gray.fill(0)
     if (this.menu) this.#paintMenu()
     else {
-      for (const box of this.page.textObject ?? []) this.#paintText(box)
+      for (const box of this.page.textObject ?? []) if (this.showHints || box.containerName !== 'hint') this.#paintText(box)
       for (const box of this.page.imageObject ?? []) {
         const img = this.#images.get(box.containerName)
         if (!img) continue

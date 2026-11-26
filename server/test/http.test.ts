@@ -15,12 +15,12 @@ const btc: Position = {
   stopLoss: 60000, takeProfit: 0, positionIM: 310, leverage: 10, isolated: true, positionIdx: 0, openedAt: 0,
 }
 
-async function serve(o: { transcribe?: Transcribe; source?: string; telegram?: boolean } = {}) {
+async function serve(o: { transcribe?: Transcribe; source?: string; trackClients?: boolean } = {}) {
   const ex = new FakeExchange()
   ex.list = [structuredClone(btc)]
   const store = createStore(':memory:')
   store.seed()
-  const notifier = o.telegram ? createNotifier({ store, token: 'test-bot' }) : undefined
+  const notifier = o.trackClients ? createNotifier({ store }) : undefined
   const session = createSession(ex, store, Date.now, notifier?.route)
   const server = createServer({ session, store, notifier, token: 'secret', apiKeyInfo: () => ex.apiKeyInfo(), ...o })
   await new Promise<void>(r => server.listen(0, '127.0.0.1', r))
@@ -62,9 +62,52 @@ test('state tells the lens what only the server knows: voice and which account',
   assert.equal(body.card, null)
 })
 
-test('phone state reads allow Telegram fallback; a lens heartbeat marks glasses active', async () => {
-  const { store, session, call } = await serve({ telegram: true })
-  store.saveTelegram({ offset: 0, chatId: 42 })
+test('the G2 connection check only reaches its requesting client and waits for its acknowledgement', async t => {
+  t.mock.timers.enable({ apis: ['Date'] })
+  const { call, store } = await serve()
+  const client = 'a'.repeat(32)
+  const other = 'b'.repeat(32)
+  const started = await call('POST', `/glasses-test/${client}`)
+  assert.equal(started.status, 201)
+  const path = `/glasses-test/${client}/${started.body.id}`
+  assert.deepEqual((await call('GET', path)).body, { acknowledged: false })
+  assert.equal((await call('GET', `/state?client=lens&device=${client}`)).body.glassesTestId, started.body.id)
+  assert.equal((await call('GET', `/state?client=lens&device=${other}`)).body.glassesTestId, undefined)
+  const otherTest = await call('POST', `/glasses-test/${other}`)
+  assert.notEqual(otherTest.body.id, started.body.id)
+  assert.equal((await call('POST', `/glasses-test/${other}/${started.body.id}`)).status, 404)
+  assert.equal((await call('POST', `${path}-wrong`)).status, 404)
+  assert.equal((await call('POST', path, undefined, {})).status, 401)
+  t.mock.timers.tick(89_500)
+  assert.deepEqual((await call('POST', path)).body, { acknowledged: true })
+  assert.deepEqual((await call('POST', path)).body, { acknowledged: true })
+  t.mock.timers.tick(1000)
+  assert.deepEqual((await call('GET', path)).body, { acknowledged: true })
+  assert.equal((await call('GET', `/state?client=lens&device=${client}`)).body.glassesTestId, undefined)
+  assert.equal((await call('POST', `/glasses-test/${other}/${otherTest.body.id}`)).status, 404)
+  assert.deepEqual(store.pendingProposals(), [])
+  assert.deepEqual(store.history(), [])
+})
+
+test('History retrieves proposed terms and recorded partial execution for an existing alert', async () => {
+  const { call, session, store } = await serve()
+  await session.tick()
+  const made = store.createShortcut(draft(6))
+  assert.ok(made.ok)
+  const r = await session.test(made.shortcut.id)
+  const p = store.proposal(r.proposalId!)!
+  const path = `/history/${r.alertId}`
+  assert.equal((await call('GET', path)).body.proposed, 'Close 50% · 0.025 BTC')
+  store.saveExecution({ id: 'partial', proposalId: p.id, idempotencyKey: 'partial', terms: p.terms, status: 'PARTIALLY_FILLED',
+    message: '', filledQty: 0.015, avgPrice: 61000, receipt: '0.05 → 0.035 BTC', createdAt: 1, updatedAt: 2 })
+  assert.deepEqual((await call('GET', path)).body, {
+    proposed: 'Close 50% · 0.025 BTC', outcome: 'Partly filled · 0.015 of 0.025 BTC', receipt: '0.05 → 0.035 BTC',
+  })
+  assert.equal((await call('GET', '/history/unknown')).status, 404)
+})
+
+test('only an authenticated lens heartbeat marks glasses active', async () => {
+  const { store, session, call } = await serve({ trackClients: true })
   const made = store.createShortcut({ ...draft(6), action: { type: 'NOTIFY' } })
   assert.ok(made.ok)
   await session.tick()
@@ -72,13 +115,11 @@ test('phone state reads allow Telegram fallback; a lens heartbeat marks glasses 
   await call('GET', '/state')
   assert.equal((await call('GET', '/state?client=lens', undefined, {})).status, 401)
   await session.test(made.shortcut.id)
-  assert.deepEqual(store.history()[0].channels, ['telegram'])
-  assert.equal(store.dueOutbox(Date.now()).length, 1)
+  assert.deepEqual(store.history()[0].channels, [])
 
   await call('GET', '/state?client=lens')
   const result = await session.test(made.shortcut.id)
   assert.deepEqual(store.alert(result.alertId!)?.channels, ['glasses'])
-  assert.equal(store.dueOutbox(Date.now()).length, 1)
 })
 
 test('shortcuts: create, list as tiles, edit with the version, pause, enable, delete', async () => {
@@ -215,16 +256,17 @@ test('pickers list positions with their epoch and open plain orders', async () =
   assert.deepEqual((await call('GET', '/orders/open')).body.map((o: { orderId: string }) => o.orderId), ['o1'])
 })
 
-test('settings: Bybit status and key rights, validated save, Telegram off without a bot token', async () => {
+test('settings: Bybit status and key rights, validated save', async () => {
   const { call } = await serve({ source: 'Bybit demo' })
   const s = (await call('GET', '/settings')).body
   assert.deepEqual(s.bybit.apiKey, { readOnly: false, trade: true, withdraw: false })
   assert.equal(s.bybit.liveTrading, false)
-  assert.deepEqual(s.telegram, { configured: false, linked: false })
+  assert.deepEqual(s.settings.notifications, { glasses: true, app: true })
   assert.equal((await call('PUT', '/settings', { ...s.settings, cooldownSec: 5 })).status, 400)
   assert.equal((await call('PUT', '/settings', { ...s.settings, cooldownSec: 90 })).body.cooldownSec, 90)
   assert.equal((await call('GET', '/settings')).body.settings.cooldownSec, 90)
-  assert.equal((await call('POST', '/settings/telegram', {})).status, 503)
+  assert.equal((await call('POST', '/settings/telegram', {})).status, 404)
+  assert.equal((await call('DELETE', '/settings/telegram')).status, 404)
 })
 
 test('notifications lists new alerts for the phone app', async () => {

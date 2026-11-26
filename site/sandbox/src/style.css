@@ -1,111 +1,150 @@
 :root {
   --bg: #f3f4f6;
   --ink: #151515;
-  --mute: #6b6f76;
-  --line: rgba(21, 21, 21, .1);
+  --mute: #555b65;
+  --line: #dce0e5;
   --card: #fff;
-  --accent: #ffb11a;
-  --up: #20b26c;
-  --radius: 18px;
-  --wide: min(1432px, calc(100% - 48px));
+  --wide: min(1200px, calc(100% - 48px));
+  --press: cubic-bezier(.23, 1, .32, 1);
   color-scheme: light;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 Manrope, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 Manrope, system-ui, sans-serif; }
 button { font: inherit; color: inherit; cursor: pointer; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+button:disabled { cursor: default; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-/* ── header ── */
-.top { display: flex; align-items: center; gap: 12px; width: var(--wide); margin: 0 auto; padding: 14px 0 12px; }
-.brand { display: flex; min-height: 44px; align-items: center; }
-.brand img { height: 20px; width: auto; }
-.pill { border: 1px solid var(--line); border-radius: 99px; padding: 3px 10px; font-size: 13px; font-weight: 700; background: var(--card); }
-.lede { margin: 0; color: var(--mute); font-size: 14px; }
-.back { margin-left: auto; color: var(--ink); font-weight: 600; font-size: 14.5px; text-decoration: none; min-height: 44px; display: flex; align-items: center; white-space: nowrap; }
-.back:hover { text-decoration: underline; }
-
-/* ── scenario tabs, like a browser's, and the page they open ── */
-.tabs { display: flex; gap: 6px; width: var(--wide); margin: 0 auto; }
-.tab {
-  flex: 1 1 0; max-width: 420px; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 18px;
-  border: 0; border-radius: 16px 16px 0 0; background: #e3e5e9; color: var(--mute); text-align: left; transition: background-color .15s, color .15s;
+.top {
+  width: var(--wide); margin: 0 auto; min-height: 60px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }
-.tab:hover { background: #ebedf0; color: var(--ink); }
-.tab[aria-selected="true"] { background: var(--card); color: var(--ink); }
-.tab-n { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(21, 21, 21, .08); font-weight: 700; font-size: 13px; }
-.tab[aria-selected="true"] .tab-n { background: var(--ink); color: #fff; }
-.tab-t { display: grid; min-width: 0; }
-.tab-t b { font-size: 15.5px; letter-spacing: -.01em; }
-.tab-t small { font-size: 13px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand, .back { min-height: 44px; display: flex; align-items: center; }
+.brand img { display: block; height: 20px; width: auto; max-width: 100%; }
+.back { color: var(--mute); font-size: 14px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.back:hover { color: var(--ink); text-decoration: underline; }
 
-.panel {
-  width: var(--wide); margin: 0 auto 40px; padding: 22px 24px 28px; border-radius: 0 22px 22px 22px; background: var(--card);
-  display: grid; gap: 24px; grid-template-columns: 320px minmax(0, 1fr) 320px; grid-template-areas: "phone glasses exchange"; align-items: start;
+.workspace { width: var(--wide); margin: 0 auto 36px; min-width: 0; }
+.workspace-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.nv-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; }
+.workspace h1 { margin: 0; font-size: clamp(1.65rem, 2.8vw, 2.2rem); line-height: 1.1; letter-spacing: -.04em; }
+.paper { display: inline-flex; align-items: center; gap: 6px; color: var(--mute); font-size: 12px; font-weight: 700; }
+.paper svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.transport, .progress { display: flex; align-items: center; gap: 8px; }
+.progress { gap: 4px; }
+.progress span { width: 13px; height: 3px; border-radius: 3px; background: #cdd1d7; }
+.progress span[data-reached] { background: var(--ink); }
+.icon-button {
+  width: 44px; height: 44px; padding: 0; border: 0; border-radius: 11px;
+  background: var(--ink); color: var(--card); font-size: 17px; font-weight: 800;
 }
+.icon-button:disabled { opacity: .55; }
+
+/* Scenario navigation adapted from SL UI Library Project section tabs. */
+.workspace .nv-tabstrip {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); position: relative; isolation: isolate;
+  gap: 4px; margin-bottom: 12px; padding: 4px; border: 1px solid var(--line); border-radius: 13px; background: #edf0f2;
+}
+.workspace .nv-button {
+  min-width: 0; min-height: 44px; padding: 6px 4px; border: 0; border-radius: 8px; background: transparent;
+  color: var(--mute); font-size: .875rem; font-weight: 750; line-height: 1.15;
+}
+.workspace .nv-button:hover { background: var(--card); color: var(--ink); }
+.workspace .nv-button[aria-selected=true] { background: var(--ink); color: var(--card); }
+.workspace .nv-tab-indicator {
+  position: absolute; top: 0; left: 0; height: 1px; z-index: 1; border-radius: 1px;
+  background: #ffffff69; pointer-events: none;
+  transition: transform 260ms cubic-bezier(.22, .61, .36, 1), width 260ms cubic-bezier(.22, .61, .36, 1);
+}
+
+.panel { padding: 16px; border: 1px solid var(--line); border-radius: 18px; background: #eceff1; }
+.stage { display: grid; place-items: center; min-height: 550px; }
 .device { min-width: 0; }
-.phone-col { grid-area: phone; }
-.glasses { grid-area: glasses; }
-.exchange-col { grid-area: exchange; }
-.label { margin: 0 0 10px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--mute); }
-
-/* ── phones: the app at phone width scaled into the frame; the exchange at its own size ── */
-.phone { position: relative; width: 320px; height: 692px; border-radius: 46px; padding: 10px; background: #111; box-shadow: 0 18px 50px -24px rgba(0, 0, 0, .55), inset 0 0 0 2px #2a2a2a; }
-.phone iframe { display: block; width: 390px; height: 874px; border: 0; border-radius: 47px; background: #f3f3f3; transform: scale(.76923); transform-origin: 0 0; }
-.screen { width: 300px; height: 672px; border-radius: 36px; overflow: hidden; background: #0b0e11; }
-
-/* ── the lens in a copy of the Even Hub simulator's "Glasses Display" window ── */
-.sim { width: 576px; max-width: 100%; margin: 0 auto; border-radius: 12px; overflow: hidden; background: #1e1e1e; box-shadow: 0 0 0 1px rgba(255, 255, 255, .08) inset, 0 22px 60px -22px rgba(0, 0, 0, .6); }
-.sim-title { display: flex; align-items: center; gap: 14px; height: 30px; padding: 0 12px; background: #2a2a2a; color: #b3b3b3; font: 600 13px/1 -apple-system, system-ui, sans-serif; border-bottom: 1px solid #111; }
-.sim-dots { display: flex; gap: 8px; }
-.sim-dots i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
-.sim-dots i:nth-child(2) { background: #febc2e; }
-.sim-dots i:nth-child(3) { background: #4d4d4d; }
-#lens { display: block; width: 576px; max-width: 100%; height: auto; aspect-ratio: 2 / 1; background: #000; cursor: pointer; }
-.sim-bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 9px 10px 10px; background: #1e1e1e; border-top: 1px solid #111; }
-.sim-bar button { min-height: 34px; padding: 0 12px; border-radius: 7px; border: 1px solid #3c3c3c; background: #2b2b2b; color: #dcdcdc; font: 500 14px/1 -apple-system, system-ui, sans-serif; transition: background-color .12s, box-shadow .2s, border-color .2s; }
-.sim-bar button:hover { background: #333; }
-.sim-bar button:active, .sim-bar button.pressed { background: #3d3d3d; }
-.sim-bar button.hint { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255, 177, 26, .45); animation: pulse 1.4s ease-in-out infinite; }
-@keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(255, 177, 26, .15); } }
-.keys { margin: 8px 0 0; text-align: center; color: var(--mute); font-size: 12.5px; }
-.sim-note { min-height: 20px; margin: 4px 0 0; text-align: center; color: var(--ink); font-size: 13px; font-weight: 600; }
-.step-note { flex-basis: 100%; font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, .7); }
-.steps li.missed .step-n { background: #ef454a; color: #fff; }
-
-/* ── what to do next ── */
-.steps { list-style: none; margin: 22px 0 0; padding: 0; display: grid; gap: 8px; }
-.steps li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 54px; padding: 9px 14px; border-radius: 14px; background: var(--bg); color: var(--mute); font-weight: 600; transition: background-color .25s, color .25s; }
-.steps li.now { background: var(--ink); color: #fff; }
-.steps li.done { color: var(--ink); }
-.step-n { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(21, 21, 21, .08); font-size: 13px; font-weight: 700; }
-.steps li.now .step-n { background: var(--accent); color: #151515; }
-.steps li.done .step-n { background: var(--up); color: #fff; }
-.or { color: rgba(255, 255, 255, .6); font-weight: 500; }
-.steps kbd { font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 8px; background: rgba(255, 255, 255, .14); }
-.play { min-height: 38px; padding: 0 18px; border: 0; border-radius: 99px; background: var(--accent); color: #151515; font-weight: 700; transition: transform .12s ease, filter .15s; }
-.play:hover { filter: brightness(1.05); }
-.play:active { transform: scale(.96); }
-.play:disabled { opacity: .5; cursor: default; }
-.restart { margin-top: 10px; min-height: 44px; padding: 0 10px; border: 0; background: none; color: var(--mute); font-weight: 600; }
-.restart:hover { color: var(--ink); }
-
-@media (prefers-reduced-motion: reduce) { .sim-bar button.hint { animation: none; } }
-
-/* ── narrower screens: the glasses stay first ── */
-@media (max-width: 1240px) {
-  .lede { display: none; }
-  .panel { grid-template-columns: 320px 320px; justify-content: center; grid-template-areas: "glasses glasses" "phone exchange"; }
+.phone-col {
+  display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: center; gap: 12px;
+  width: min(100%, 298px);
 }
-@media (max-width: 760px) {
-  /* below its native 576 px, nearest-neighbour drops 1 px strokes: let the browser smooth the downscale */
-  #lens { image-rendering: auto !important; }
+.phone-frame {
+  position: relative; width: 100%; padding: 6px; overflow: hidden; border-radius: 31px;
+  background: #23252a; box-shadow: inset 0 0 0 1px #50535b, 0 10px 22px #1c26331f;
+}
+.phone-frame::after {
+  content: ""; position: absolute; top: 12px; left: 50%; width: 56px; height: 12px;
+  border-radius: 12px; transform: translateX(-50%); background: #121316; pointer-events: none;
+}
+.phone-screen { position: relative; overflow: hidden; border-radius: 25px; aspect-ratio: 390 / 874; background: #f4f4f4; }
+.phone-screen iframe {
+  position: absolute; inset: 0; display: block; width: 390px; height: 874px; border: 0;
+  transform: scale(var(--phone-scale, .59)); transform-origin: 0 0;
+}
+
+.chart-col {
+  width: min(100%, 570px); padding: 16px; border: 1px solid var(--line); border-radius: 15px;
+  background: var(--card); font-variant-numeric: tabular-nums;
+}
+.chart-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 13px; }
+#price-change { color: #286f4b; font-weight: 750; }
+#price-change[data-falling] { color: #a83449; }
+.chart-price { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -.035em; }
+.chart-status { margin: 8px 0 0; color: var(--mute); font-size: 13px; }
+.plot { display: block; width: 100%; margin-top: 6px; }
+.plot-grid { stroke: var(--line); }
+.plot text { fill: var(--mute); font-size: 12px; }
+#price-line { stroke: #2e8257; stroke-width: 3; }
+#price-line[data-falling] { stroke: #ae3d52; }
+
+.glasses { width: min(100%, 578px); }
+.sim { container-type: inline-size; overflow: hidden; border: 1px solid #262829; border-radius: 14px; background: #161819; }
+#lens { display: block; width: 100%; height: auto; aspect-ratio: 2 / 1; background: #000; cursor: pointer; }
+.sim-bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 8px; border-top: 1px solid #303233; }
+.sim-bar button {
+  min-height: 44px; min-width: 44px; padding: 0 10px; border: 1px solid #414446; border-radius: 8px;
+  background: #252729; color: #f2f3f3; font: 600 .8125rem/1 system-ui, sans-serif;
+}
+.sim-bar button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.sim-bar button.pressed { box-shadow: inset 0 0 0 2px #777; }
+
+.panel[data-scene=free] .stage {
+  min-height: 0; gap: 16px; align-items: start; justify-items: stretch;
+  grid-template-columns: minmax(0, 1fr) minmax(225px, 290px) minmax(230px, 270px);
+  grid-template-areas: "glasses phone exchange";
+}
+.panel[data-scene=free] .phone-col { grid-area: phone; grid-template-columns: minmax(0, 1fr); width: 100%; }
+.panel[data-scene=free] .glasses { grid-area: glasses; width: 100%; }
+.exchange-col { grid-area: exchange; width: min(100%, 294px); }
+.stage .screen { height: 502px; border: 1px solid #262829; border-radius: 14px; }
+
+@media (hover: hover) and (pointer: fine) {
+  .icon-button, .sim-bar button { transition: transform 120ms var(--press), background-color 120ms; }
+  .icon-button:hover:not(:disabled) { background: #343434; }
+  .sim-bar button:hover { background: #353739; }
+  .icon-button:active:not(:disabled), .sim-bar button:active { transform: scale(.97); }
+}
+@media (max-width: 1020px) {
+  .panel[data-scene=free] .stage {
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 290px);
+    grid-template-areas: "glasses phone" "exchange phone";
+  }
+}
+@media (max-width: 640px) {
   :root { --wide: calc(100% - 24px); }
-  .brand img { height: 15px; }
-  .tab { gap: 8px; padding: 8px 10px; min-height: 56px; }
-  .tab-t small { display: none; }
-  .tab-t b { font-size: 13.5px; }
-  .keys { display: none; }
-  .panel { padding: 16px 12px 24px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "glasses" "phone" "exchange"; justify-items: center; }
-  .glasses { width: 100%; }
+  .top { min-height: 52px; }
+  .brand img { height: 16px; }
+  .workspace .nv-button { font-size: .75rem; }
+  .panel { padding: 12px; border-radius: 15px; }
+  .stage { min-height: 495px; }
+  .phone-col { width: min(100%, 268px); gap: 8px; }
+  .panel[data-scene=free] .stage {
+    grid-template-columns: minmax(0, 1fr); grid-template-areas: "glasses" "phone" "exchange";
+  }
+  .panel[data-scene=free] .phone-col { width: min(100%, 290px); }
+  .chart-col { padding: 12px; }
+}
+@container (max-width: 575px) {
+  #lens { image-rendering: auto !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace .nv-tab-indicator, .icon-button, .sim-bar button { transition: none; }
+  .icon-button:active:not(:disabled), .sim-bar button:active { transform: none; }
 }

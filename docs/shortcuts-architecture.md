@@ -26,7 +26,7 @@ flowchart TD
     S --> E[Rule Engine]
     C[Shortcut Registry and Validator] --> E
     E --> P[Alert and Proposal Service]
-    P --> D[(SQLite: alerts, proposals, outbox)]
+    P --> D[(SQLite: alerts, proposals)]
     D --> N[Notification Dispatcher]
     N --> X[Authorized Clients]
     X --> A[Confirmation API]
@@ -47,19 +47,18 @@ Reference-driven decisions:
 | Coinrule [9] | Condition/action separation and reusable rule definitions | Automatic trade execution |
 | json-rules-engine / JsonLogic [10–11] | Declarative `all/any` conditions and evaluation over facts | Arbitrary scripts or generic rule engine as a trading safety layer |
 | Azure event-driven architecture [12] | Event producers, consumers, independent responsibilities, idempotency | Separate deployable service per module |
-| AWS transactional outbox [13] | Atomic persistence of alerts and delivery intent, at-least-once delivery | Kafka, external broker and complex event sourcing in the MVP |
 
 Stack: the existing one. TypeScript run directly by Node ≥ 22.18, no HTTP framework (`server/src/http.ts`), the signed REST client in `server/src/bybit.ts`, REST polling every 2 s (`server/src/main.ts`). One process, one account. Deploy on a persistent host; a request-only serverless function must not own the polling loop or exchange WebSockets. Do not require Redis, Kafka, Kubernetes, PostgreSQL or an LLM.
 
 | Need | MVP choice | Upgrade when |
 |---|---|---|
-| Durable alerts, proposals, outbox | built-in `node:sqlite` (no flag on Node 22.13+, prints an ExperimentalWarning), one file, transactions | several workers or accounts: PostgreSQL with the same tables |
+| Durable alerts, proposals | built-in `node:sqlite` (no flag on Node 22.13+, prints an ExperimentalWarning), one file, transactions | several workers or accounts: PostgreSQL with the same tables |
 | Mutation serialization | in-process promise chain per account/symbol/positionIdx | several workers: row or advisory locks |
 | Private state | REST polling 2 s, fills deduped by `execId` (already done) | fills or crossings arrive too late: private WS via `bybit-api` (`sieblyio/bybit-api`, MIT) `WebsocketClient` only, which handles auth, heartbeats, the 24 h disconnect and resubscribe; keep our REST client |
 | Public prices | `/v5/market/tickers` per watched symbol in the same poll | many symbols: public `tickers.{symbol}` WS (Node 22 has a global `WebSocket`) |
 | Runtime schemas | shared rule validation in `server/src/validate.ts` | the tagged unions get unwieldy: Zod |
 | Money arithmetic | numbers for comparisons; exchange steps kept as strings and quantized by `toStep` (already done); persisted thresholds are decimal strings | a rounding bug shows: decimal.js |
-| Alerts on the phone | in-app notifications in the phone app while it is open (it already polls the server); Telegram Bot API `sendMessage` for everything else. Text only, never a confirm button or link. The bot reads `/start <code>` with `getUpdates` long polling, so no webhook and no public URL. Even Hub SDK 0.0.16 has no push to the phone (only bridge events), so a closed app gets nothing else | the phone app becomes native: OS push |
+| Alerts on the phone | in-app notifications in the phone app while it is open (it already polls the server) | the phone app becomes native: OS push |
 | Speech to text | `server/src/stt.ts` and `POST /api/voice` as today (OpenAI, only when its key is set) | — |
 
 Not reused on purpose: json-rules-engine, JsonLogic, GoRules (no UNKNOWN / NOT_APPLICABLE; the evaluator is a few dozen lines).
@@ -234,7 +233,7 @@ A match records the shortcut version, target, reason, matched conditions, priori
 `PENDING` proposals can become `DISMISSED`, `EXPIRED`, `SUPERSEDED` or `AUTHORIZED`. Execution separately tracks validation, submission, acknowledgement, fills, applied changes, rejection and unknown outcomes. [Record types](../server/src/types.ts)
 
 What the screens need from these records:
-- **History** shows one line per alert: action label, time, target and reason ("BTCUSDT long · liquidation distance 3.2%", or "Voice: protect all"), and its last status: `Submitted · waiting for fill`, `Filled · 0.025 BTC at 88,412.0`, `Dismissed on Even G2`, `Sent to Telegram · glasses disconnected`, `Expired · not confirmed within 30 s`, `Skipped · partial stop orders on this position`, `Simulation · nothing sent to Bybit`. So an alert records each delivery channel it reached (`glasses`, `app`, `telegram`), a dismissal records where it came from (`glasses` or `app`), and a skip stores its reason code.
+- **History** shows one line per alert: action label, time, target and reason ("BTCUSDT long · liquidation distance 3.2%", or "Voice: protect all"), and its last status: `Submitted · waiting for fill`, `Filled · 0.025 BTC at 88,412.0`, `Dismissed on Even G2`, `Expired · not confirmed within 30 s`, `Skipped · partial stop orders on this position`, `Simulation · nothing sent to Bybit`. So an alert records each delivery channel it reached (`glasses`, `app`), a dismissal records where it came from (`glasses` or `app`), and a skip stores its reason code.
 - **Lens alert** shows the target, the strongest matching reason (§5 rank) with its observed value, the proposal's resolved terms (§6) and the place in the queue (`1/2`). Queue order: Close, Set/Move stop, Add margin, Cancel (critical first within the group), then Set take profit, then Notify, then Open and Increase; oldest first within a group.
 - **Refreshed** (`NEW` on the lens): when step 3 below replaces a proposal, the new one carries `supersedes: <old id>`; a tap that saw the old terms does nothing.
 - **Test alert** (`TEST` on the lens, `Simulation` in History): `simulated: true` on the alert and its proposal; confirming it ends in "Test only · nothing was sent", and the execution path stops before the exchange adapter. A test that the adapter can reach is a bug: cover it with a test.
@@ -251,19 +250,18 @@ Simultaneous matches retain separate proposals. Each needs its own confirmation.
 3. If resolved authorization terms changed, invalidate and generate a fresh proposal requiring confirmation. Never silently adjust quantity, target price, margin or leverage. Revalidation cannot remove all exchange races; rely on reduce-only and exchange-side constraints too.
 4. Persist intent before sending. Submit one supported exchange command with a stable unique `orderLinkId` where supported. For commands without exchange idempotency, retain local intent and reconcile state before any retry. No blind retries after an ambiguous network outcome. `server/src/bybit.ts` already splits outcomes this way: a non-zero `retCode` is a clear rejection (`ExchangeRejected`), while 10000, 10016, a timeout or a 5xx is UNKNOWN; a rate limit is retried with the same body and `orderLinkId`. Reuse it.
 5. REST acknowledgement is not proof of success. The MVP polls REST executions, deduplicates fills by execId and matches orders by orderLinkId. Once 30 s have elapsed, an unresolved order can be looked up directly. Repeated successful lookups that find an unknown order absent can resolve it as rejected. A failed lookup leaves it pending reconciliation. For an unknown SL/TP change compare the position level. For an unknown cancel read the order status. Margin follows the separate rule below. A partial fill is not a full close.
-6. Persist final result and outbox event; revalidate related proposals. Unknown outcomes block conflicting actions until reconciled. An unknown add margin has no id to reconcile by: it blocks only another add margin and settles when the position closes; a reduce-only Close is never blocked by it.
+6. Persist the final result; revalidate related proposals. Unknown outcomes block conflicting actions until reconciled. An unknown add margin has no id to reconcile by: it blocks only another add margin and settles when the position closes; a reduce-only Close is never blocked by it.
 
 ## 10. Persistence, transport and API contracts
 
 Tables (one SQLite file via `node:sqlite` in the MVP; the same tables move to PostgreSQL when §2 says so):
-- `exchange_accounts` holds account metadata. Credentials come from the server environment. `settings`, `telegram` and `meta` hold preferences, linking state and seed markers.
+- `exchange_accounts` holds account metadata. Credentials come from the server environment. `settings` and `meta` hold preferences and seed markers.
 - `shortcuts` / `shortcut_versions` — current pointer, immutable rule config.
 - `target_state` / `trigger_state` — durable identities, watermarks, last definite verdict, cooldown/once latch.
 - `alerts` / `proposals` / `executions` — evidence, authorization, result; unique dedupe and idempotency keys.
-- `outbox` — pending delivery events written in the same transaction as domain records; retry with backoff, terminal failure and replay.
 - `audit_log` — append-only lifecycle transitions and sanitized error codes.
 
-Hot quote snapshots/rolling history can remain in memory. Persist what is needed for correct deduplication/recovery. One process owns ingestion, evaluation and execution, so a process-local lock per account/symbol/positionIdx is correct; a second worker needs row/advisory locks or leases first. Outbox consumers must tolerate duplicates; do not claim exactly-once exchange execution.
+Hot quote snapshots/rolling history can remain in memory. Persist what is needed for correct deduplication/recovery. One process owns ingestion, evaluation and execution, so a process-local lock per account/symbol/positionIdx is correct; a second worker needs row/advisory locks or leases first. Exchange execution is not guaranteed exactly once.
 
 Endpoints, by the screen that calls them. All under `/api`, behind the existing bearer token (`server/src/http.ts`); every query is scoped to the token's account. Edits carry the version they were made against and fail on a newer one.
 
@@ -277,8 +275,7 @@ Endpoints, by the screen that calls them. All under `/api`, behind the existing 
 | Editor · Apply to | `GET /positions`, `GET /orders/open`, `GET /symbols` | pickers for One position, One order, One symbol and Positions by coin (several coins and a side) (every USDT perpetual the exchange trades, sorted) |
 | Editor · title menu | `POST /shortcuts/:id/test` | a simulated alert and proposal (§9) |
 | History | `GET /history?before=` | alert lines with their last status (§9), newest first |
-| Settings | `GET /settings`, `PUT /settings` | Bybit status, environment, API access and withdrawals (from `/v5/user/query-api`), live trading (read-only: a server switch, off); Notifications: alerts on glasses, in-app notifications, Telegram; cooldown and expiry |
-| Settings · Telegram | `POST /settings/telegram` | a one-time code and the bot link `t.me/<bot>?start=<code>`; the bot stores the chat when it receives that `/start`; `DELETE` unlinks |
+| Settings | `GET /settings`, `PUT /settings` | Bybit status, environment, API access and withdrawals (from `/v5/user/query-api`), live trading (read-only: a server switch, off); Notifications: alerts on glasses, in-app notifications; cooldown and expiry |
 | Phone app, any screen | `GET /notifications?after=` | new alerts for the in-app banner and badge, polled while the app is open |
 | Lens · voice | `POST /voice` | PCM audio returns `{heard, answer}`. The client handles dismissal or cancellable confirmation. |
 | Lens · menu | `POST /command` | `stop`, `lock` or `close` raises guarded proposals. Close can target one position. |
@@ -288,7 +285,7 @@ Endpoints, by the screen that calls them. All under `/api`, behind the existing 
 | Lens | `POST /proposals/:id/confirm`, `/dismiss` | `confirm(proposalId, idempotencyKey)` only; dismiss records the channel |
 | Lens | `GET /executions/:id`, `GET /proposals/:id/execution` | Sent → Filled / Partly filled / Rejected / Unknown. The proposal lookup recovers the execution if the confirmation reply was lost. |
 
-The phone page and the lens poll, as Trade Shortcuts does now; push to them (WS or SSE) is not needed for the MVP. Delivery per alert, within `delivery` and the Settings toggles: the lens if the plugin is open (it polled `/state?client=lens` in the last 10 s); an in-app notification if the phone app is open (it polled `/notifications` in the last 10 s); Telegram when linked and enabled for phone delivery, if the lens is inactive or neither other channel takes the alert, which is the Settings row "Phone when glasses are off". The Telegram text names the shortcut, target, reason and what the lens offers ("Close 50% · 0.025 BTC · confirm on Even G2 within 30 s"); nothing in Telegram can confirm. The bot token is a server env value (`TELEGRAM_BOT_TOKEN`), like the Bybit keys. Clients forward user intent and never hold exchange secrets. Rules keep monitoring whether or not any client is open.
+The phone page and the lens poll, as Trade Shortcuts does now; push to them (WS or SSE) is not needed for the MVP. Delivery per alert, within `delivery` and the Settings toggles: the lens if the plugin is open (it polled `/state?client=lens` in the last 10 s); an in-app notification if the phone app is open (it polled `/notifications` in the last 10 s). Clients forward user intent and never hold exchange secrets. Rules keep monitoring whether or not any client is open.
 
 ## 11. Bybit integration map
 
@@ -302,7 +299,7 @@ The Bybit client uses authenticated REST and accepts the HTTPS demo and testnet 
 | Key permissions | `/v5/user/query-api` |
 | Order and position changes | `/v5/order/create`, `/v5/order/cancel`, `/v5/position/trading-stop`, `/v5/position/add-margin`, `/v5/position/set-leverage` |
 
-For a hosted paper-only server, `PUBLIC_DEMO=1` requires the fake adapter and disables transcription and Telegram. The phone’s normal state poll does not mark a lens as present. A connected client with the lens in use sends `GET /state?client=lens`.
+For a hosted paper-only server, `PUBLIC_DEMO=1` requires the fake adapter and disables transcription. The phone’s normal state poll does not mark a lens as present. A connected client with the lens in use sends `GET /state?client=lens`.
 
 The symbol picker pages through tradable USDT perpetuals. The account open-order snapshot currently reads the first page. [Adapter](../server/src/bybit.ts)
 
@@ -351,7 +348,6 @@ Official/primary references consulted for this architecture. Product restriction
 10. json-rules-engine rule structure: https://github.com/CacheControl/json-rules-engine/blob/master/docs/rules.md
 11. JsonLogic supported operations: https://jsonlogic.com/operations.html
 12. Azure event-driven architecture: https://learn.microsoft.com/en-us/azure/architecture/guide/architecture-styles/event-driven
-13. AWS transactional outbox: https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html
 14. Bybit position snapshot: https://bybit-exchange.github.io/docs/v5/position
 15. Bybit trading stop: https://bybit-exchange.github.io/docs/v5/position/trading-stop
 16. Bybit manual add margin: https://bybit-exchange.github.io/docs/v5/position/manual-add-margin
@@ -363,9 +359,8 @@ Official/primary references consulted for this architecture. Product restriction
 22. Bybit kline: https://bybit-exchange.github.io/docs/v5/market/kline
 23. Bybit API key information: https://bybit-exchange.github.io/docs/v5/user/apikey-info
 24. bybit-api (Node SDK, MIT): https://github.com/sieblyio/bybit-api
-25. Telegram Bot API (`sendMessage`, `getUpdates`, deep linking with `/start`): https://core.telegram.org/bots/api
 26. Node built-in SQLite: https://nodejs.org/api/sqlite.html
 
 ## 15. Product decisions
 
-The exchange adapter accepts Bybit Demo and Testnet. Every trading action needs a proposal confirmation. The app supports adding isolated margin and tightening stops. It offers no fund transfers, daily loss limit or per-action spending cap. The phone and Telegram deliver notifications. Only the lens UI offers trade confirmation. Touch and voice flows are documented in the [lens specification](glasses-shortcuts.md).
+The exchange adapter accepts Bybit Demo and Testnet. Every trading action needs a proposal confirmation. The app supports adding isolated margin and tightening stops. It offers no fund transfers, daily loss limit or per-action spending cap. The open phone app and G2 display notifications. Only the lens UI offers trade confirmation. Touch and voice flows are documented in the [lens specification](glasses-shortcuts.md).

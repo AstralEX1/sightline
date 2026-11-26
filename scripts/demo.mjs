@@ -40,7 +40,7 @@ process.on('SIGTERM', () => stop())
 
 start(process.execPath, ['server/src/main.ts'], {
   APP_TOKEN: token, EXCHANGE: 'fake', PAPER_DEMO: '1', HOST: '127.0.0.1', PORT: String(port),
-  TELEGRAM_BOT_TOKEN: '', OPENAI_API_KEY: '', BYBIT_API_KEY: '', BYBIT_API_SECRET: '',
+  OPENAI_API_KEY: '', BYBIT_API_KEY: '', BYBIT_API_SECRET: '',
 })
 await waitFor(port, 'server')
 start('npm', ['run', 'dev', '--', '--mode', 'paper', '--strictPort'], { APP_TOKEN: token, PORT: String(port) })

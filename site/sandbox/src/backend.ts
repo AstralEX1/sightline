@@ -29,14 +29,29 @@ export function createBackend(ex: Exchange, shortcuts: Draft[]): Backend {
   const { handler } = createServer({ session, store, token: TOKEN, source: 'Sandbox' }) as unknown as { handler: Handler }
 
   let running: Promise<void> | null = null
-  const tick = () => (running ??= session.tick().catch(e => console.error('tick failed', e)).finally(() => { running = null }))
+  let stopped = false
+  const requests = new Set<Promise<Response>>()
+  const tick = () => stopped ? Promise.resolve()
+    : (running ??= session.tick().catch(e => console.error('tick failed', e)).finally(() => { running = null }))
   void tick()
   const timer = setInterval(tick, TICK_MS)
 
   return {
     tick,
-    stop: () => { clearInterval(timer); store.close() },
-    fetch: (input, init) => call(handler, input, init),
+    stop: () => {
+      if (stopped) return
+      stopped = true
+      clearInterval(timer)
+      void Promise.allSettled([running, ...requests]).then(() => store.close())
+    },
+    fetch: (input, init) => {
+      if (stopped) return Promise.resolve(new Response(null, { status: 409 }))
+      const request = call(handler, input, init)
+      requests.add(request)
+      const settled = () => requests.delete(request)
+      void request.then(settled, settled)
+      return request
+    },
   }
 }
 

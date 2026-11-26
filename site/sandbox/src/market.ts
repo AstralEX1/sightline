@@ -110,9 +110,11 @@ export class Market {
 
   /** Market order: opens or adds, with the stop and take profit Bybit attaches to it. */
   async open(side: Side, qty: number, leverage: number, tp = 0, sl = 0) {
+    const exchange = this.ex
     if (!this.positions.some(p => p.side === side)) this.ex.leverage[SYMBOL] = leverage
     const order: OrderRequest = { symbol: SYMBOL, side, qty: String(qty), orderLinkId: crypto.randomUUID(), positionIdx: 0, reduceOnly: false, stopLoss: sl || undefined, takeProfit: tp || undefined }
-    await this.ex.placeOrder(order)
+    await exchange.placeOrder(order)
+    if (exchange !== this.ex) return
     const p = this.positions.find(x => x.side === side)
     if (p) { if (tp) p.takeProfit = tp; if (sl) p.stopLoss = sl }
     this.#emit()
@@ -160,6 +162,7 @@ export class Market {
       const cut = p && p.side !== o.side ? Math.min(Number(o.qty), p.size) : 0
       const before = p && { entry: p.entryPrice, long: p.side === 'Buy' }
       const result = await place(o)
+      if (ex !== this.ex) return result
       if (cut && before) this.#realized += (this.price - before.entry) * cut * (before.long ? 1 : -1)
       this.#settle()
       return result
@@ -167,6 +170,7 @@ export class Market {
     const add = ex.addMargin.bind(ex)
     ex.addMargin = async (symbol: string, positionIdx: number, usd: number) => {
       await add(symbol, positionIdx, usd)
+      if (ex !== this.ex) return
       const p = ex.list.find(x => x.symbol === symbol && x.positionIdx === positionIdx)
       if (p) this.#extra.set(p.side, (this.#extra.get(p.side) ?? 0) + usd)
       this.#settle()

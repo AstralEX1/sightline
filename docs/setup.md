@@ -15,9 +15,8 @@ The standalone server stores the account and History in `server/data/`. Set `PAP
 | --- | --- |
 | Bybit Demo or Testnet | Set `EXCHANGE=bybit` and provide the API key and secret for the chosen environment. Set `BYBIT_BASE` to `https://api-demo.bybit.com` or `https://api-testnet.bybit.com`, respectively. |
 | Voice answers | Set `OPENAI_API_KEY` on the server and enable voice answers in Settings. When a trade alert opens the G2 microphone, the server passes captured audio to OpenAI for transcription. |
-| Telegram alerts | Set `TELEGRAM_BOT_TOKEN` on the server, then use **Settings → Telegram → Connect** to link the bot. |
 
-For a hosted paper-only backend, set `PUBLIC_DEMO=1` with `EXCHANGE=fake`. This mode disables transcription and Telegram. The browser sandbox uses its own in-memory backend.
+For a hosted paper-only backend, set `PUBLIC_DEMO=1` with `EXCHANGE=fake`. This mode disables transcription. The browser sandbox uses its own in-memory backend.
 
 ## Preview on Even G2
 
