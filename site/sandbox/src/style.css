@@ -4,7 +4,7 @@
   --mute: #6b6f76;
   --line: rgba(21, 21, 21, .1);
   --card: #fff;
-  --accent: #ffb11a;
+  --accent: #202124;
   --up: #20b26c;
   --radius: 18px;
   --wide: min(1432px, calc(100% - 48px));
@@ -34,6 +34,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .tab[aria-selected="true"] { background: var(--card); color: var(--ink); }
 .tab-n { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(21, 21, 21, .08); font-weight: 700; font-size: 13px; }
 .tab[aria-selected="true"] .tab-n { background: var(--ink); color: #fff; }
+/* The first visit is one story. The other scenarios appear once Replay does. */
+.tabs:not(.is-open) .tab:not(:first-child) { display: none; }
 .tab-t { display: grid; min-width: 0; }
 .tab-t b { font-size: 15.5px; letter-spacing: -.01em; }
 .tab-t small { font-size: 13px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -56,17 +58,16 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .sim { width: 576px; max-width: 100%; margin: 0 auto; border-radius: 12px; overflow: hidden; background: #1e1e1e; box-shadow: 0 0 0 1px rgba(255, 255, 255, .08) inset, 0 22px 60px -22px rgba(0, 0, 0, .6); }
 .sim-title { display: flex; align-items: center; gap: 14px; height: 30px; padding: 0 12px; background: #2a2a2a; color: #b3b3b3; font: 600 13px/1 -apple-system, system-ui, sans-serif; border-bottom: 1px solid #111; }
 .sim-dots { display: flex; gap: 8px; }
-.sim-dots i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
-.sim-dots i:nth-child(2) { background: #febc2e; }
+.sim-dots i { width: 12px; height: 12px; border-radius: 50%; background: #b8b8b8; }
+.sim-dots i:nth-child(2) { background: #858585; }
 .sim-dots i:nth-child(3) { background: #4d4d4d; }
 #lens { display: block; width: 576px; max-width: 100%; height: auto; aspect-ratio: 2 / 1; background: #000; cursor: pointer; }
 #lens:focus-visible { outline-offset: -2px; }
 .sim-bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 9px 10px 10px; background: #1e1e1e; border-top: 1px solid #111; }
-.sim-bar button { min-height: 34px; padding: 0 12px; border-radius: 7px; border: 1px solid #3c3c3c; background: #2b2b2b; color: #dcdcdc; font: 500 14px/1 -apple-system, system-ui, sans-serif; transition: background-color .12s, box-shadow .2s, border-color .2s; }
+.sim-bar button { min-height: 34px; padding: 0 12px; border-radius: 7px; border: 1px solid #3c3c3c; background: #2b2b2b; color: #dcdcdc; font: 500 14px/1 -apple-system, system-ui, sans-serif; transition: background-color .12s, border-color .2s; }
 .sim-bar button:hover { background: #333; }
 .sim-bar button:active, .sim-bar button.pressed { background: #3d3d3d; }
-.sim-bar button.hint { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255, 177, 26, .45); animation: pulse 1.4s ease-in-out infinite; }
-@keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(255, 177, 26, .15); } }
+.sim-bar button:focus-visible { outline-color: #f4f4f5; }
 .sim-note { min-height: 0; margin: 0; text-align: center; color: var(--ink); font-size: 13px; font-weight: 600; }
 .sim-note:not(:empty) { min-height: 20px; margin-top: 8px; }
 .step-note { flex-basis: 100%; font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, .7); }
@@ -78,11 +79,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .steps li.now { background: var(--ink); color: #fff; }
 .steps li.done { color: var(--ink); }
 .step-n { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(21, 21, 21, .08); font-size: 13px; font-weight: 700; }
-.steps li.now .step-n { background: var(--accent); color: #151515; }
+.steps li.now .step-n { background: #fff; color: #151515; }
 .steps li.done .step-n { background: var(--up); color: #fff; }
 .or { color: rgba(255, 255, 255, .6); font-weight: 500; }
 .steps kbd { font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 8px; background: rgba(255, 255, 255, .14); }
-.play { min-height: 38px; padding: 0 18px; border: 0; border-radius: 99px; background: var(--accent); color: #151515; font-weight: 700; transition: transform .12s ease, filter .15s; }
+.play { min-height: 38px; padding: 0 18px; border: 0; border-radius: 99px; background: #202124; color: #fff; font-weight: 700; transition: transform .12s ease, filter .15s; }
 .play:hover { filter: brightness(1.05); }
 .play:active { transform: scale(.96); }
 .play:disabled { opacity: .5; cursor: default; }
@@ -94,67 +95,65 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .story-actions {
   display: flex; align-items: stretch; gap: 0;
   width: min(100%, 576px); margin: 10px auto 0;
+  transition: gap .4s cubic-bezier(.22, 1, .36, 1);
 }
 .story-actions .sl-playback { --playback-unit: 1.15px; --playback-ink: #111111; --playback-hover: #000000; --playback-active: #000000; width: 100%; }
 .story-actions .sl-playback__surface { display: flex; align-items: center; justify-content: center; gap: 12px; }
 .story-actions .sl-playback__icon { position: relative; left: auto; top: auto; transform: none; flex: none; }
 .story-actions .sl-playback__label { width: auto; }
-.story-actions__slot { min-width: 0; overflow: hidden; transition: flex-basis .42s cubic-bezier(.22, 1, .36, 1), opacity .32s ease, margin .42s ease; }
-.story-actions__slot:has(.is-amber) { overflow: visible; }
-.story-actions__slot--main { flex: 1 1 auto; opacity: 1; }
-.story-actions__slot--replay { flex: 0 0 0; opacity: 0; pointer-events: none; }
+.story-actions__slot {
+  flex: 1 1 0; min-width: 0; overflow: hidden;
+  transition: flex-grow .4s cubic-bezier(.22, 1, .36, 1), opacity .3s ease;
+}
+.story-actions__slot--replay { flex-grow: 0; opacity: 0; pointer-events: none; }
 .story-actions.is-split { gap: 14px; }
-.story-actions.is-split .story-actions__slot--main,
-.story-actions.is-split .story-actions__slot--replay { flex: 1 1 0; opacity: 1; pointer-events: auto; }
-.story-actions.is-replay .story-actions__slot--main { flex: 0 0 0; opacity: 0; pointer-events: none; }
-.story-actions.is-replay .story-actions__slot--replay { flex: 1 1 auto; opacity: 1; pointer-events: auto; }
-body.is-shade :is(.story-actions, .steps) { position: relative; z-index: 22; }
+.story-actions.is-split .story-actions__slot--replay { flex-grow: 1; opacity: 1; pointer-events: auto; }
+.story-actions.is-replay .story-actions__slot--main { flex-grow: 0; opacity: 0; pointer-events: none; }
+.story-actions.is-replay .story-actions__slot--replay { flex-grow: 1; opacity: 1; pointer-events: auto; }
 
-/* The whole page dims. The step in progress stays above the shade, and the shade does not take clicks. */
-.shade { position: fixed; inset: 0; z-index: 20; background: rgba(21, 21, 21, .52); pointer-events: none; opacity: 0; }
-body.is-shade .shade { opacity: 1; }
-body[data-spotlight="phone"] :is(.phone-col, #scenario-play),
+/* Dim the page without moving it. The active frame and the steps stay above the veil. */
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 20; pointer-events: none; opacity: 0;
+  background: rgba(21, 21, 21, .52);
+}
+body.is-shade::before { opacity: 1; }
+body.is-shade :is(.story-actions, .steps) { position: relative; z-index: 22; }
+body[data-spotlight="phone"] .phone-col,
 body[data-spotlight="chart"] .exchange-col,
 body[data-spotlight="glasses"] .sim { position: relative; z-index: 21; }
-.panel[data-spotlight] { grid-template-columns: clamp(210px, 23.5vw, 320px) minmax(0, 1fr) clamp(200px, 20vw, 280px); }
-/* Next action: one amber breath, then the ring rests until the hint ends. */
-@keyframes amber-ember {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(255, 206, 110, .9), 0 0 10px 2px rgba(255, 130, 20, .4); }
-  50% { box-shadow: 0 0 0 3px #fff1cc, 0 0 16px 6px rgba(255, 120, 20, .75); }
+/* Amber frame: the phone wears it for the whole opening stage. A result wears it when it arrives. */
+body[data-spotlight="phone"] .phone-col > .phone,
+.phone.is-ring {
+  box-shadow:
+    0 0 0 3px rgba(255, 206, 110, .95),
+    0 0 18px 4px rgba(255, 120, 20, .5),
+    0 18px 50px -24px rgba(0, 0, 0, .55),
+    inset 0 0 0 2px #2a2a2a;
+  animation: frame-breath 2s cubic-bezier(0.77, 0, 0.175, 1) 1;
 }
-.is-amber { position: relative; }
-.is-amber::after {
-  content: ""; position: absolute; z-index: 5; inset: -7px; border-radius: 20px; pointer-events: none;
-  box-shadow: 0 0 0 2px rgba(255, 206, 110, .9), 0 0 10px 2px rgba(255, 130, 20, .4);
-  animation: amber-ember 2s cubic-bezier(0.77, 0, 0.175, 1) 1;
+@keyframes frame-breath {
+  50% {
+    box-shadow:
+      0 0 0 4px #fff1cc,
+      0 0 22px 8px rgba(255, 120, 20, .75),
+      0 18px 50px -24px rgba(0, 0, 0, .55),
+      inset 0 0 0 2px #2a2a2a;
+  }
 }
-.sl-playback.is-amber::after { border-radius: 24px; }
-.exchange-col > .phone.is-amber { overflow: visible; }
-.exchange-col > .phone.is-amber::after { border-radius: 32px; }
-/* The glasses frame clips its corners. While a ring button glows, let that glow out without squaring the frame. */
-.sim:has(button.is-amber) { overflow: visible; }
-.sim:has(button.is-amber) .sim-title { border-radius: 12px 12px 0 0; overflow: hidden; }
-.sim:has(button.is-amber) .sim-bar { border-radius: 0 0 12px 12px; }
-.panel[data-spotlight] .exchange-col > .phone { aspect-ratio: 1 / 1.15; padding: 0; border-radius: 16px; box-shadow: 0 14px 32px -24px #0008; }
-.panel[data-spotlight] .exchange-col .screen { border-radius: inherit; }
-.panel[data-spotlight] .glasses { width: min(100%, 576px); justify-self: center; }
-.panel[data-spotlight] .sim-note:empty { min-height: 0; }
-.panel[data-spotlight] .sim-bar button.hint { animation: none; box-shadow: none; }
-.panel[data-spotlight] [data-free-control] { display: none; }
-
+.sim-bar button.is-ring {
+  border-color: #ffce6e;
+  box-shadow: 0 0 0 3px rgba(255, 206, 110, .95), 0 0 12px 2px rgba(255, 120, 20, .55);
+}
 @media (prefers-reduced-motion: no-preference) {
-  .shade { transition: opacity .7s ease; }
+  body::before { transition: opacity .7s ease; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .sim-bar button.hint, .is-amber::after { animation: none; }
+  body[data-spotlight="phone"] .phone-col > .phone, .phone.is-ring { animation: none; }
 }
 
 /* ── narrower screens: the glasses stay first ── */
 @media (max-width: 1240px) {
   .panel { grid-template-columns: 320px 320px; justify-content: center; grid-template-areas: "glasses glasses" "phone exchange"; }
-}
-@media (max-width: 900px) {
-  .panel[data-spotlight] { grid-template-columns: 320px minmax(0, 1fr); grid-template-areas: "phone glasses" "phone exchange"; }
 }
 @media (max-width: 760px) {
   /* below its native 576 px, nearest-neighbour drops 1 px strokes: let the browser smooth the downscale */
@@ -165,10 +164,5 @@ body[data-spotlight="glasses"] .sim { position: relative; z-index: 21; }
   .tab-n, .tab-t small { display: none; }
   .tab-t b { font-size: 13.5px; }
   .panel { padding: 16px 12px 24px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "glasses" "phone" "exchange"; justify-items: center; }
-  .panel[data-spotlight] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "phone" "exchange" "glasses"; }
-  .story-actions.is-split { flex-direction: column; gap: 10px; }
-  .story-actions.is-split .story-actions__slot--main,
-  .story-actions.is-split .story-actions__slot--replay { flex: none; width: 100%; }
-  .panel[data-spotlight] :is(.phone-col, .exchange-col) { width: min(100%, 320px); }
   .glasses { width: 100%; }
 }

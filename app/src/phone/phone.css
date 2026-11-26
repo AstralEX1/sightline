@@ -6,14 +6,13 @@
   /* Paper page, White cards (iOS grouped style), Ink text, Grey second text (5.4:1 on Paper). */
   --bg: #F4F4F4; --surface: #FFFFFF; --border: rgba(35, 35, 35, .12); --text: #232323; --text-2: #656565;
   --input-bg: rgba(35, 35, 35, .06);
-  /* Bybit orange is a fill only: text on it is Ink (9:1); text that would be orange is plain text, told apart by weight or fill */
-  --accent: #FFB11A; --on-accent: #232323; --accent-text: var(--text); --token-bg: var(--input-bg); --token-press: rgba(35, 35, 35, .16);
+  --accent: var(--text); --on-accent: var(--bg); --accent-text: var(--text); --token-bg: var(--input-bg); --token-press: rgba(35, 35, 35, .16);
   /* red text stays darker than the brand #FF453A, which is 3.3:1 on white and fails AA */
   --error: #C93434; --error-bg: rgba(255, 69, 58, .12); --success: #2E9B57; --chip: rgba(35, 35, 35, .08); --chip-neutral: #8A8F98;
   --scrim: rgba(0, 0, 0, .35); --menu-scrim: rgba(34, 35, 38, .06);
   --switch-off: rgba(35, 35, 35, .28);
-  /* Action fills sampled from Apple Shortcuts screenshots. Same in both themes. */
-  --act-stop: #B17DDF; --act-close: #F56472; --act-margin: #228FF7; --act-grow: #4CC961; --act-cancel: #F3AE54; --act-notify: #4BC7DB;
+  /* Action fills are the same in both themes. */
+  --act-stop: #B17DDF; --act-close: #F56472; --act-margin: #228FF7; --act-grow: #4CC961; --act-cancel: #626D7D; --act-notify: #4BC7DB;
   --font: Inter, -apple-system, BlinkMacSystemFont, 'Source Han Sans', 'Helvetica Neue', Arial, sans-serif;
 }
 @media (prefers-color-scheme: dark) {
@@ -27,7 +26,7 @@
 }
 @media (prefers-contrast: more) {
   :root { --border: var(--text); --text-2: var(--text); }
-  .phone :is(.switch__track, .circle-btn--accent, .chip--new) { box-shadow: inset 0 0 0 1px var(--text); } /* a fill alone is under 3:1 on the page */
+  .phone .switch__track { box-shadow: inset 0 0 0 1px var(--text); } /* the off fill alone is under 3:1 on the page */
 }
 @media (prefers-reduced-transparency: reduce) {
   :root { --scrim: #A3A4A6; --menu-scrim: #EEEFF2; }
@@ -70,7 +69,24 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 
 .phone .circle-btn { position: relative; display: flex; flex: none; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%;
   background: var(--surface); color: var(--text); }
-.phone .circle-btn--accent { background: var(--accent); color: var(--on-accent); }
+.phone .circle-btn--glass {
+  background: radial-gradient(ellipse at 30% 0%, rgb(255 255 255 / .48), transparent 68%),
+    color-mix(in srgb, var(--surface) 55%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: inset 0 1px 2px rgb(255 255 255 / .7), inset 0 0 0 1px var(--border),
+    inset 0 -3px 6px rgb(0 0 0 / .1), 0 4px 12px rgb(0 0 0 / .15);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .phone .circle-btn--glass { transition: transform .18s ease-out, opacity .18s ease-out; }
+  .phone .circle-btn--glass:active { transform: scale(.94); opacity: .8; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .phone .circle-btn--glass { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (prefers-contrast: more) {
+  .phone .circle-btn--glass { box-shadow: inset 0 0 0 2px var(--text); }
+}
 .phone .badge { position: absolute; top: -2px; right: -2px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--error);
   color: #FFFFFF; font-size: .6875rem; line-height: 18px; font-weight: 500; text-align: center; box-shadow: 0 0 0 2px var(--bg); }
 
@@ -93,6 +109,7 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .empty-state__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
 .phone .pill-btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border-radius: 22px; background: var(--surface); font-weight: 500; }
 .phone .pill-btn--accent { background: var(--accent); color: var(--on-accent); }
+.phone .nav--editor .pill-btn { justify-content: center; min-width: 64px; padding-inline: 16px; font-weight: 650; }
 
 /* Two columns; one once 10rem no longer fits twice (root ≥ 22 px). */
 .phone .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, max(10rem, calc((100% - 12px) / 2))), 1fr)); gap: 12px; } /* min(100%): at 320 px and 200% text, 10rem is wider than the screen */

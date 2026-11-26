@@ -321,6 +321,14 @@ test('notify: one OK, no second choice, and a tap does not confirm', () => {
   assert.equal(sc.text.hint, 'tap: OK')
 })
 
+test('notify keeps the recorded reason when exchange data becomes stale', () => {
+  const sc = alertOf({
+    terms: { type: 'notify' }, question: '', why: 'price crossed above 90,000', reasonType: 'PRICE', who: 'BTC',
+  }, { error: 'No fresh market data' })
+  assert.equal(sc.text.why, 'Price crossed above 90,000')
+  assert.deepEqual(sc.choices, ['ok'])
+})
+
 test('alert: Dismiss comes first and carries >, a swipe moves it and swaps the brightness', () => {
   const sc = alertOf()
   assert.equal(sc.at, 0)

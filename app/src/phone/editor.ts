@@ -243,7 +243,7 @@ function nav() {
       chip, title, h('span', { class: 'title-pill__chev', html: icon('down', 10, 3.6) }))
     : h('span', { class: 'title-pill' }, chip, title)
   const right = !s.id && !s.readOnly
-    ? h('button', { class: 'link-btn link-btn--strong', type: 'button', 'data-fk': 'add', onclick: () => void add() }, 'Add')
+    ? h('button', { class: 'pill-btn pill-btn--accent', type: 'button', 'data-fk': 'add', onclick: () => void add() }, 'Add')
     : h('span')
   return h('div', { class: 'nav nav--editor' }, backBtn(), pill, right)
 }

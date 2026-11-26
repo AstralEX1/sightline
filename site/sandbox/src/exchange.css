@@ -12,7 +12,8 @@
   --bx-down: #dc5250;
   --bx-up-bg: #1e2f26;
   --bx-down-bg: #391c1f;
-  --bx-accent: #eeae3f;
+  --bx-accent: #d6d8dc;
+  --bx-alert: #f0f1f3;
   display: flex; flex-direction: column; width: 100%; height: 100%; overflow: hidden; padding: 0; margin: 0;
   background: var(--bx-bg); color: var(--bx-text); color-scheme: dark; box-shadow: none;
   font: 12.5px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -21,10 +22,10 @@
 .bx *, .bx *::before, .bx *::after { box-sizing: border-box; }
 .bx [hidden] { display: none !important; }
 .bx button { font: inherit; color: inherit; cursor: pointer; margin: 0; }
-.bx :focus-visible { outline: 2px solid var(--bx-accent); outline-offset: 1px; }
+.bx :focus-visible { outline: 2px solid #f4f4f5; outline-offset: 1px; }
 .bx .ex-up { color: var(--bx-up); }
 .bx .ex-down { color: var(--bx-down); }
-.bx .ex-warn { color: var(--bx-accent); }
+.bx .ex-warn { color: var(--bx-alert); font-weight: 700; }
 
 /* ── Charts | Trade, the pair ── */
 .bx .ex-views { display: grid; grid-template-columns: 1fr 1fr; flex: none; height: 30px; margin: 16px 14px 0; border-radius: 4px; background: var(--bx-card); }
@@ -50,19 +51,15 @@
 .bx .ex-canvas.is-grabbing { cursor: grabbing; }
 .bx .ex-canvas:focus-visible { outline-offset: -2px; }
 .bx .ex-drag {
-  position: absolute; left: 8px; top: 8px; padding: 4px 10px; border-radius: 99px; background: rgba(238, 174, 63, .14); color: var(--bx-accent);
-  font-size: 12px; font-weight: 600; white-space: nowrap; pointer-events: none; animation: bx-nudge 2.4s ease-in-out infinite;
+  position: absolute; left: 8px; top: 8px; padding: 4px 10px; border-radius: 99px; background: rgba(255, 255, 255, .1); color: var(--bx-text2);
+  font-size: 12px; font-weight: 600; white-space: nowrap; pointer-events: none;
 }
-@keyframes bx-nudge { 50% { transform: translateY(3px); } }
-@media (prefers-reduced-motion: reduce) { .bx .ex-drag { animation: none; } }
 .bx .ex-slot { flex: none; min-height: 176px; padding: 0 14px; }
 .bx .ex-quickbar { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; flex: none; padding: 0 14px 4px; }
 .bx .ex-quick { height: 32px; border: 0; border-radius: 4px; color: #fff; font-size: 12px; font-weight: 700; }
 .bx .ex-quick:active { transform: scale(.98); }
 .bx .ex-cta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: none; padding: 8px 14px 18px; }
 
-.panel[data-spotlight] .bx :is(.ex-views, .ex-tag, .ex-badge, .ex-tf, .ex-drag, .ex-slot, .ex-quickbar, .ex-cta) { display: none; }
-.panel[data-spotlight] .bx .ex-last { padding-bottom: 8px; }
 
 /* ── buttons ── */
 .bx .ex-btn { width: 100%; height: 40px; border: 0; border-radius: 4px; color: #fff; font-size: 14.5px; font-weight: 600; transition: filter .15s, transform .12s ease; }
@@ -132,22 +129,15 @@
 .bx .ex-grid .ex-cell:nth-child(3n + 2) { text-align: center; }
 .bx .ex-grid .ex-cell:nth-child(3n) { text-align: right; }
 .bx .ex-grid .ex-cell:nth-child(5) { grid-column: span 2; text-align: right; }
+.bx[data-light="size"] [data-field="size"],
+.bx[data-light="stops"] [data-field="stops"] {
+  border-radius: 4px; background: rgba(255, 206, 110, .45); box-shadow: inset 0 0 0 2px rgba(255, 180, 40, .95);
+}
 .bx .ex-card-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .bx .ex-card-btns button, .bx .ex-cancel { height: 28px; border: 0; border-radius: 4px; background: var(--bx-field); color: var(--bx-text); font-size: 12.5px; font-weight: 600; }
 .bx .ex-cancel { margin-left: auto; padding: 0 14px; }
 .bx .ex-card-btns button:hover, .bx .ex-cancel:hover { background: var(--bx-active); }
 .bx .ex-edit { display: grid; gap: 8px; }
 
-/* What just changed (exchange.ts lit): an amber wash that fades in FLASH_MS. A lit card's cells don't wash twice. */
-.bx .ex-lit { border-radius: 3px; animation: bx-lit 4s ease-out both; }
-.bx .ex-lit .ex-lit { animation: none; }
-@keyframes bx-lit {
-  0%, 40% { background: rgba(238, 174, 63, .42); box-shadow: 0 0 0 4px rgba(238, 174, 63, .42); }
-  to { background: rgba(238, 174, 63, 0); box-shadow: 0 0 0 4px rgba(238, 174, 63, 0); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .bx .ex-lit { animation: none; background: rgba(238, 174, 63, .16); box-shadow: 0 0 0 4px rgba(238, 174, 63, .16); }
-  .bx .ex-lit .ex-lit { background: none; box-shadow: none; }
-}
 .bx .ex-empty { margin: 0; padding: 22px 0; color: var(--bx-text3); text-align: center; }
 .bx .ex-slot .ex-empty { padding-top: 64px; border-top: 1px solid var(--bx-card); }

@@ -226,6 +226,36 @@ test('a notify shortcut raises an OK card and never touches the exchange', async
   assert.deepEqual(ex.calls, [])
 })
 
+test('a simulated Notify card does not block a real Repeat alert', async () => {
+  const { ex, store, s, ticks } = setup([btc()], [{
+    name: 'BTC price watch',
+    enabled: true,
+    scope: { type: 'SYMBOL', symbol: 'BTCUSDT' },
+    conditions: { logic: 'ALL', items: [{ id: 'c1', type: 'PRICE', source: 'LAST', operator: 'GTE', threshold: '62000' }] },
+    action: { type: 'NOTIFY' },
+    trigger: { mode: 'REPEAT', intervalSec: 300 },
+    delivery: { glasses: true, phone: true },
+  }])
+  await ticks()
+  assert.equal((await s.test(store.listShortcuts()[0].id)).ok, true)
+  ex.prices.BTCUSDT = 63000
+  await ticks()
+  assert.equal(last(store).simulated, false)
+  assert.equal(last(store).actionType, 'NOTIFY')
+  assert.equal(s.state().pending, 2)
+})
+
+test('a Notify command only reuses its own pending card', async () => {
+  const { store, s, ticks } = setup([btc()], [tpl(6, d => { d.action = { type: 'NOTIFY' } })])
+  const command = store.createShortcut({ ...VOICE_SEEDS[0], action: { type: 'NOTIFY' }, enabled: true })
+  assert.ok(command.ok)
+  await ticks()
+  assert.equal((await s.command('stop')).ok, true)
+  assert.equal((await s.command('stop')).ok, true)
+  assert.equal(store.history().filter(a => a.shortcutId === command.shortcut.id).length, 1)
+  assert.equal(s.state().pending, 2)
+})
+
 test('Set SL is strict: a stop already past the mark builds no proposal, History says why', async () => {
   const { store, s, ticks } = setup([btc({ stopLoss: 0, markPrice: 60500 })], [tpl(7, d => { d.action = { type: 'SET_SL', target: { kind: 'ENTRY_OFFSET', percent: '-2' } } })])
   await ticks()

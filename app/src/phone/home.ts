@@ -130,7 +130,7 @@ export async function renderHome(el: HTMLElement, first: boolean) {
     h('a', { class: 'circle-btn circle-btn--history', href: '#/history', 'aria-label': app.unseen ? `History, ${app.unseen} new` : 'History', html: icon('clock', 22, 2) },
       app.unseen ? h('span', { class: 'badge', 'aria-hidden': 'true' }, String(app.unseen)) : null),
     h('a', {
-      class: 'circle-btn circle-btn--accent', href: '#/shortcut/new', html: icon('plus', 20, 2.4),
+      class: 'circle-btn circle-btn--glass', href: '#/shortcut/new', html: icon('plus', 20, 2.4),
       'aria-label': offline ? 'New shortcut, unavailable while the server is offline' : 'New shortcut',
       'aria-disabled': offline ? 'true' : undefined, onclick: (e: Event) => { if (offline) e.preventDefault() },
     }))

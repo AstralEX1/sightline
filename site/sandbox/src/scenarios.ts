@@ -47,17 +47,17 @@ export const TABS: Tab[] = [
   {
     id: 'liquidation', title: 'Liquidation alert', sub: 'Close half when BTC nears liquidation', template: template('tpl_6'), on: true,
     before: m => m.open('Buy', QTY, LEV), to: liqOf('Buy', P, LEV) * 1.025,
-    steps: ['Set up the shortcut and switch it on', 'The trigger fires', 'The alert arrives on the glasses', 'The close is sent, then the exchange fills it'],
+    steps: ['Switch on Near liquidation · half', 'BTC nears liquidation', 'The glasses ask: close half?', 'The exchange closes half'],
   },
   {
     id: 'profit', title: 'Lock in profit', sub: 'Stop to entry at +20% ROI', template: template('tpl_1'), on: true,
     before: m => m.open('Buy', QTY, LEV, 0, P * 0.98), to: P * 1.024, // a stop to move
-    steps: ['Set up the shortcut and switch it on', 'The trigger fires', 'The alert arrives on the glasses', 'The stop is sent, then it shows on the exchange'],
+    steps: ['Switch on ROI above 20% · breakeven', 'BTC reaches +20% ROI', 'The glasses ask: move the stop?', 'The stop moves to entry'],
   },
   {
     id: 'half', title: 'Take half', sub: 'Close half at +50% ROI', template: template('tpl_2'), on: true, voice: true,
     before: m => m.open('Buy', QTY, LEV), to: P * 1.055, // 10×: +5.5% is about +55% ROI
-    steps: ['Set up the shortcut and switch it on', 'The trigger fires', 'Say yes. Five seconds to cancel', 'The close is sent, then the exchange fills it'],
+    steps: ['Switch on ROI above 50% · half', 'BTC reaches +50% ROI', 'Say yes. Five seconds to cancel', 'The exchange closes half'],
   },
   {
     id: 'build', title: 'Build your own', sub: 'Drag BTC a little, down or up', template: template('tpl_2'), on: false,

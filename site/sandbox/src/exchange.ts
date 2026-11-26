@@ -13,7 +13,7 @@ const AXIS_W = 56
 const TIME_H = 16
 const BAR_W = 6
 const MIN_QTY = 0.001 // BTCUSDT's quantity step and minimum
-const FLASH_MS = 4000 // how long a change stays lit; bx-lit in exchange.css runs as long
+const FLASH_MS = 4000 // keep changed chart levels solid briefly
 
 const fmt = (n: number, d = 1) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
 const signed = (n: number, d = 2) => (n >= 0 ? '+' : '−') + fmt(Math.abs(n), d)
@@ -29,6 +29,7 @@ const input = (name: string, value = '') => el('input', { name, inputmode: 'deci
 /** A filled field with its caption floating above the value, and a unit on the right. */
 const box = (caption: string, i: HTMLInputElement, unit = '') => el('label', { class: 'ex-box' }, i, el('span', {}, caption), ...(unit ? [el('i', {}, unit)] : []))
 const cell = (k: string, v: string, cls = '') => el('div', { class: 'ex-cell' }, el('span', {}, k), el('b', { class: cls }, v))
+const field = (name: string, node: HTMLElement) => { node.dataset.field = name; return node }
 
 /** Replaces the children only when what they show changed: a click survives the twice-a-second refresh. */
 function swap(host: HTMLElement, kids: Node[]) {
@@ -227,30 +228,23 @@ export function mountExchange(root: HTMLElement, m: Market, onChartInput: () => 
     if (seen) for (const [k, v] of now) if (seen.get(k) !== v) changedAt.set(k, Date.now())
     seen = now
   }
-  /** Lit while one of its keys changed in the last FLASH_MS; the negative delay carries the fade across re-renders. */
-  function lit<T extends HTMLElement>(e: T, ...keys: string[]) {
-    const age = ageOf(...keys)
-    if (age < FLASH_MS) { e.classList.add('ex-lit'); e.style.animationDelay = `-${age}ms` }
-    return e
-  }
-
   const empty = (text: string) => el('p', { class: 'ex-empty' }, text)
-  const noPositions = () => lit(empty('No open positions'), 'pos') // a full close lights the empty slot
+  const noPositions = () => empty('No open positions')
   function posCard(p: Position, i: number) {
     const long = p.side === 'Buy'
     const pnl = p.unrealisedPnl
     const roi = p.positionIM ? (pnl / p.positionIM) * 100 : 0
     const tone = pnl >= 0 ? 'ex-up' : 'ex-down'
-    const card = lit(el('div', { class: 'ex-card' },
+    const card = el('div', { class: 'ex-card' },
       el('div', { class: 'ex-card-head' }, el('b', {}, SYMBOL), el('span', { class: 'ex-tag' }, 'Perp'),
         el('span', { class: `ex-tag ex-tag-${long ? 'up' : 'down'}` }, `${long ? 'Long' : 'Short'} ${p.leverage.toFixed(2)}x`)),
       el('div', { class: 'ex-pnl' },
         cell('Unrealized P&L (USDT)', signed(pnl), tone),
         cell('ROI', `${signed(roi)}%`, tone)),
       el('div', { class: 'ex-grid' },
-        lit(cell('Size (BTC)', fmt(p.size, 3)), 'size'), lit(cell('Entry Price', fmt(p.entryPrice)), 'entry'), cell('Mark Price', fmt(p.markPrice)),
-        lit(cell('Liq. Price', p.liqPrice ? fmt(p.liqPrice) : '--', 'ex-warn'), 'liq'),
-        lit(cell('TP/SL', `${p.takeProfit ? fmt(p.takeProfit) : '--'} / ${p.stopLoss ? fmt(p.stopLoss) : '--'}`), 'tp', 'sl'))), 'pos')
+        field('size', cell('Size (BTC)', fmt(p.size, 3))), cell('Entry Price', fmt(p.entryPrice)), cell('Mark Price', fmt(p.markPrice)),
+        cell('Liq. Price', p.liqPrice ? fmt(p.liqPrice) : '--', 'ex-warn'),
+        field('stops', cell('TP/SL', `${p.takeProfit ? fmt(p.takeProfit) : '--'} / ${p.stopLoss ? fmt(p.stopLoss) : '--'}`))))
     if (editing === p) card.append(editor(p))
     else card.append(el('div', { class: 'ex-card-btns' },
       el('button', { type: 'button', 'data-act': 'tpsl', 'data-i': String(i) }, 'TP/SL'),
@@ -280,14 +274,14 @@ export function mountExchange(root: HTMLElement, m: Market, onChartInput: () => 
   }
   function orderCard(o: Order, i: number) {
     const buy = o.side === 'Buy'
-    return lit(el('div', { class: 'ex-card' },
+    return el('div', { class: 'ex-card' },
       el('div', { class: 'ex-card-head' }, el('b', {}, SYMBOL), el('span', { class: 'ex-tag' }, 'Perp'),
         el('span', { class: `ex-tag ex-tag-${buy ? 'up' : 'down'}` }, `Limit / ${buy ? 'Buy' : 'Sell'}`),
         el('button', { type: 'button', class: 'ex-cancel', 'data-act': 'cancel', 'data-i': String(i) }, 'Cancel')),
       el('div', { class: 'ex-grid' },
         cell('Filled / Total (BTC)', `${fmt(o.qty - o.leavesQty, 3)} / ${fmt(o.qty, 3)}`),
         cell('Order Price', fmt(o.price)),
-        cell('Margin (USDT)', fmt((o.leavesQty * o.price) / (m.ex.leverage[SYMBOL] ?? 10), 2)))), `o:${o.orderId}`)
+        cell('Margin (USDT)', fmt((o.leavesQty * o.price) / (m.ex.leverage[SYMBOL] ?? 10), 2))))
   }
   function renderLists() {
     if (editing && !m.positions.includes(editing)) editing = null

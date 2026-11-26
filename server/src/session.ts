@@ -247,7 +247,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     const now = clock()
     const a = rule.action
     const alert: AlertRecord = {
-      id: crypto.randomUUID(), shortcutId: rule.id, version: rule.version, targetKey: t.key, target: t.label, title: titleOf(rule),
+      id: crypto.randomUUID(), shortcutId: rule.id, version: rule.version, targetKey: t.key, target: t.label, title: titleOf(rule), actionType: a.type,
       reason: why.reason, matched: why.matched, priority: priority(rule), simulated: !!why.simulated, delivery: rule.delivery, channels: [], status: '', createdAt: now,
     }
     let proposal: Proposal | undefined
@@ -263,7 +263,9 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
         return { alert, proposal, error: 'Could not read Bybit, try again' } // nothing saved: the next tick tries again
       }
       // A phrase or the menu asking for what a card already asks: that card answers it, a second one would ask twice.
-      const same = r.ok && why.voice && store.pendingProposals().find(q => q.targetKey === t.key && !q.simulated && sameTerms(q.terms, r.terms))
+      const same = r.ok && why.voice && store.pendingProposals().find(q =>
+        q.targetKey === t.key && !q.simulated && sameTerms(q.terms, r.terms)
+        && (q.terms.type !== 'notify' || (q.shortcutId === rule.id && q.version === rule.version)))
       if (same) return { alert, proposal: same }
       if (!r.ok) alert.skip = { code: r.code, reason: r.reason }
       else {
@@ -497,7 +499,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     }
 
     // The engine: every enabled shortcut with conditions, on every target of its scope. Voice-only ones are never evaluated.
-    const waiting = new Set(store.pendingProposals().map(p => `${p.shortcutId}:${p.targetKey}`))
+    const waiting = new Set(store.pendingProposals().filter(p => !p.simulated).map(p => `${p.shortcutId}:${p.targetKey}`))
     const failed = new Set<string>()
     // shortcut: trigger_state keeps a row per rule and position epoch for good; prune closed epochs if the table grows
     for (const rule of rules) {

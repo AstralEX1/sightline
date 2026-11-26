@@ -31,7 +31,7 @@ Overlays (not routes): token menu, bottom sheets (numeric, close amount, target,
 
 ### 3.1 Color
 
-Light mode uses Paper `#F4F4F4`, white cards and Ink `#232323`. Dark mode uses Ink, `#2E2E2E` cards and Paper text. Primary controls use Bybit orange `#FFB11A` with Ink text. Action-specific fills distinguish the logo-and-title tiles in both themes. The [stylesheet](../app/src/phone/phone.css) defines all semantic colors, contrast preferences and reduced-transparency overrides.
+Light mode uses Paper `#F4F4F4`, white cards and Ink `#232323`. Dark mode uses Ink, `#2E2E2E` cards and Paper text. Primary controls use Ink with Paper text in light mode and Paper with Ink text in dark mode. Action-specific fills distinguish the logo-and-title tiles in both themes. The [stylesheet](../app/src/phone/phone.css) defines all semantic colors, contrast preferences and reduced-transparency overrides.
 
 ### 3.2 Typography, controls and motion
 

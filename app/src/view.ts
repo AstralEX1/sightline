@@ -391,8 +391,8 @@ function alert(s: ServerState, c: Proposal, v: View): Screen {
   const t = c.terms
   if (t.type === 'notify') {
     return framed({
-      layout: 'alert', key: `alert:${c.id}`, card: c, icon: s.error ? 'hourglass' : iconOf(c),
-      head: { who: c.who, why: s.error ? 'Bybit data is stale' : lensWhy(c.why), queue: c.simulated ? 'TEST' : c.supersedes ? 'NEW' : s.pending > 1 ? `1/${s.pending}` : '' },
+      layout: 'alert', key: `alert:${c.id}`, card: c, icon: iconOf(c),
+      head: { who: c.who, why: lensWhy(c.why), queue: c.simulated ? 'TEST' : c.supersedes ? 'NEW' : s.pending > 1 ? `1/${s.pending}` : '' },
       labels: ['OK'], choices: ['ok'], hint: () => TAP.ok,
     }, v)
   }

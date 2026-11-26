@@ -73,6 +73,12 @@ const replay = $<HTMLButtonElement>('scenario-replay')
 type Story = 'idle' | 'running' | 'paused' | 'done'
 let story: Story = 'idle'
 let paused = false
+/** Guided step on screen: 0 setup, 1 trigger, 2 alert, 3 the exchange. It lags the server so each stage can rest. */
+let guidedStep = 0
+let exchangeShown = false
+let stagesDone = false
+/** The other scenarios stay hidden until this story reaches Replay. */
+let moreStories = false
 const tabsEl = $('tabs')
 const stepsEl = $('steps')
 new ResizeObserver(([entry]) => {
@@ -97,32 +103,26 @@ let missed = ''
 let status = ''
 
 const spotlightTargets = { phone: play, chart: $('exchange'), glasses: panel.querySelector('.glasses')! }
-const HINT_MS = 2000
 const BEAT_MS = 3400
 const GLIDE_MS = 4200
-let hintTimer = 0
+/** Hold the finished stage on screen before the next one begins. Long enough to see what just happened. */
+const STAGE_PAUSE_MS = 4000
+/** Read the lens line, then the ring button, before the demo presses it. */
+const GESTURE_BEAT_MS = 2800
+/** How long a result ring stays. The phone's own frame lasts the whole opening stage. */
+const RING_MS = 2800
 let shadeGen = 0
-function clearHint() {
-  clearTimeout(hintTimer)
-  for (const old of document.querySelectorAll('.is-amber')) old.classList.remove('is-amber')
-  phone.contentDocument?.querySelectorAll('[data-amber]').forEach(el => el.removeAttribute('data-amber'))
+let ringTimer = 0
+function clearRing() {
+  clearTimeout(ringTimer)
+  for (const old of document.querySelectorAll('.is-ring')) old.classList.remove('is-ring')
 }
-/** Light the next action with a short amber ember, then take it away. */
-function flash(el: Element | null | undefined) {
-  clearHint()
+/** An amber frame on one result, then it goes. A later ring replaces the earlier one. */
+function ring(el: Element | null | undefined, ms = RING_MS) {
+  clearRing()
   if (!el) return
-  const doc = el.ownerDocument
-  if (doc && doc !== document) {
-    let style = doc.getElementById('sandbox-amber')
-    if (!style) {
-      style = doc.createElement('style')
-      style.id = 'sandbox-amber'
-      style.textContent = '@keyframes sandbox-amber{0%,100%{box-shadow:0 0 0 2px rgba(255,206,110,.9),0 0 10px 2px rgba(255,130,20,.4)}50%{box-shadow:0 0 0 3px #fff1cc,0 0 16px 6px rgba(255,120,20,.75)}}[data-amber]{z-index:3}[data-amber]::after{content:"";position:absolute;z-index:5;inset:-7px;border-radius:20px;pointer-events:none;box-shadow:0 0 0 2px rgba(255,206,110,.9),0 0 10px 2px rgba(255,130,20,.4);animation:sandbox-amber 2s cubic-bezier(.77,0,.175,1) 1}.circle-btn[data-amber]::after{border-radius:999px}@media (prefers-reduced-motion:reduce){[data-amber]::after{animation:none}}'
-      doc.head.append(style)
-    }
-    el.setAttribute('data-amber', '')
-  } else el.classList.add('is-amber')
-  hintTimer = window.setTimeout(clearHint, HINT_MS)
+  el.classList.add('is-ring')
+  ringTimer = window.setTimeout(clearRing, ms)
 }
 function spotlight(target: keyof typeof spotlightTargets, reveal = false) {
   if (!tab.on) return
@@ -130,9 +130,7 @@ function spotlight(target: keyof typeof spotlightTargets, reveal = false) {
   panel.dataset.spotlight = target
   document.body.dataset.spotlight = target
   document.body.classList.add('is-shade')
-  if (reveal && matchMedia('(max-width: 900px)').matches) {
-    spotlightTargets[target].scrollIntoView({ block: 'nearest', behavior: 'instant' })
-  }
+  void reveal
 }
 /** The story is over: the dimming fades, then the frames drop back into the page. */
 function releaseShade() {
@@ -145,7 +143,8 @@ function releaseShade() {
     if (token !== shadeGen || id !== run) return
     delete panel.dataset.spotlight
     delete document.body.dataset.spotlight
-    clearHint()
+    clearRing()
+    delete $('exchange').dataset.light
   }, ms)
 }
 
@@ -160,14 +159,6 @@ function spotlightAlert() {
 }
 
 const shortcutHash = (id: string) => `#/shortcut/${encodeURIComponent(id)}`
-function flashShortcut(id: string, part: 'condition' | 'action') {
-  const doc = phone.contentDocument
-  if (doc?.location.hash !== shortcutHash(id)) return
-  const card = doc.querySelector(`main:not([hidden]) [data-shortcut-part="${part}"]`)
-  if (!card) return
-  card.setAttribute('data-fired', '')
-  setTimeout(() => card.removeAttribute('data-fired'), 1200)
-}
 
 /** A short line under the glasses window. */
 const noteEl = $('note')
@@ -188,6 +179,7 @@ const buttons = TABS.map((t, i) => {
   b.onkeydown = e => {
     const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
     if (!d) return
+    if (!moreStories) return
     const next = TABS[(i + d + TABS.length) % TABS.length]
     void open(next)
     $(`tab-${next.id}`).focus()
@@ -213,8 +205,12 @@ async function open(t: Tab, revealPhone = false) {
   enabledShortcutId = scenarioShortcutId = currentAlertId = renderedAlertId = undefined
   story = 'idle'
   paused = false
+  guidedStep = 0
+  exchangeShown = false
+  stagesDone = false
   delete play.dataset.restLabel
-  clearHint()
+  clearRing()
+  delete $('exchange').dataset.light
   shadeGen++
   document.body.classList.remove('is-shade')
   delete panel.dataset.spotlight
@@ -289,11 +285,9 @@ function renderSteps() {
   if (story === 'idle') play.disabled = !canPlay()
   const order: Phase[] = tab.on ? ['move', 'answer', 'done'] : ['add', 'move', 'answer']
   const at = tab.on
-    ? phase === 'done' ? tab.steps.length
-      : phase === 'executing' ? 3
-      : phase === 'answer' || phase === 'missed' ? 2
-      : phase === 'move' ? 1
-      : 0
+    ? phase === 'missed' ? 2
+      : stagesDone ? tab.steps.length
+      : guidedStep
     : phase === 'done' ? order.length : phase === 'missed' || phase === 'executing' ? order.indexOf('answer')
       : order.indexOf(phase)
   stepsEl.replaceChildren(...tab.steps.map((text, i) => {
@@ -319,7 +313,6 @@ function renderSteps() {
     if (i === at && note && phase === 'move') li.append(el('span', { className: 'step-note' }, note))
     return li
   }))
-  for (const g of ['down', 'tap']) document.querySelector(`[data-gesture="${g}"]`)?.classList.toggle('hint', phase === 'answer')
 }
 
 async function playMove(button: HTMLButtonElement) {
@@ -335,12 +328,12 @@ async function playMove(button: HTMLButtonElement) {
   if (button !== play) button.disabled = true
   renderSteps()
   try {
+    if (tab.on) spotlight('phone') // the amber frame is the opening: look here
     if (tab.on && scenarioShortcutId) {
       const doc = phone.contentDocument
       const back = doc?.querySelector<HTMLButtonElement>('main:not([hidden]) [aria-label="Back to Shortcuts"]')
       if (back) {
         spotlight('phone')
-        flash(back)
         await sleep(look)
         if (id !== run) return
         back.click()
@@ -350,7 +343,6 @@ async function playMove(button: HTMLButtonElement) {
       const sw = doc?.querySelector<HTMLButtonElement>('main:not([hidden]) .tile__switch[aria-checked="false"]')
       if (sw) {
         spotlight('phone')
-        flash(sw)
         await sleep(reduceMotion ? 0 : 1100)
         if (id !== run) return
         sw.click()
@@ -364,15 +356,22 @@ async function playMove(button: HTMLButtonElement) {
       }
     }
     if (id !== run) return
+    await sleep(reduceMotion ? 0 : STAGE_PAUSE_MS) // stage 1 rests before the trigger
+    if (id !== run) return
+    guidedStep = 1
+    renderSteps()
     server.hold(true) // the price may reach the trigger; the alert waits until the glasses have the room
-    flash(document.querySelector('.exchange-col > .phone'))
     spotlight('chart', true)
     if (reduceMotion) market.setPrice(tab.to)
     else await glide(tab.to, GLIDE_MS, id)
     if (id !== run) return
+    ring(document.querySelector('.exchange-col > .phone')) // the price has reached the line
+    await sleep(reduceMotion ? 0 : STAGE_PAUSE_MS) // the trigger stays on the chart
+    if (id !== run) return
+    guidedStep = 2
+    renderSteps()
     spotlight('glasses', true)
-    flash(canvas)
-    await sleep(reduceMotion ? 0 : 1400)
+    await sleep(reduceMotion ? 0 : STAGE_PAUSE_MS) // the glasses are in view before the alert exists
     if (id !== run) return
     server.hold(false)
     await server.tick()
@@ -436,10 +435,6 @@ setInterval(async () => {
     if (next === 'missed') missed = alert!.status.split(' · ')[0].toLowerCase()
     if (next === 'done' || next === 'missed') market.floor = 0 // the scenario is over: the market is free again
     const latest = alert?.status ?? ''
-    if (tab.on && alert && !alert.skip) {
-      if (alert.id !== currentAlertId && alert.matched.length) flashShortcut(alert.shortcutId, 'condition')
-      if (next === 'done' && (phase !== 'done' || alert.id !== currentAlertId)) flashShortcut(alert.shortcutId, 'action')
-    }
     currentAlertId = alert?.id
     spotlightAlert()
     if (next === 'answer' && phase !== 'answer') {
@@ -447,15 +442,35 @@ setInterval(async () => {
       if (tab.on) void answerGlasses(id)
     }
     if (next === 'add' && phase !== 'add') spotlight('phone')
-    if (tab.on && (next === 'executing' || next === 'done') && phase !== 'executing' && phase !== 'done') {
-      spotlight('chart', true)
-      flash(document.querySelector('.exchange-col > .phone'))
+    if (tab.on && (next === 'executing' || next === 'done') && !exchangeShown) {
+      exchangeShown = true
+      const finished = id
+      void (async () => {
+        await sleep(matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : STAGE_PAUSE_MS)
+        if (finished !== run) return
+        const filled = await until(finished, () => phase === 'done' || phase === 'missed', 12_000)
+        if (!filled || phase !== 'done') return
+        guidedStep = 3
+        renderSteps()
+        spotlight('chart', true)
+        const field = tab.id === 'profit' ? 'stops' : 'size'
+        const board = $('exchange')
+        board.dataset.light = field
+        window.setTimeout(() => { if (board.dataset.light === field) delete board.dataset.light }, STAGE_PAUSE_MS)
+      })()
     }
     if ((next === 'done' || next === 'missed') && phase !== next) {
       story = 'done'
+      moreStories = true
+      tabsEl.classList.add('is-open')
       paused = false
       const finished = run
-      window.setTimeout(() => { if (finished === run) releaseShade() }, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 3600)
+      window.setTimeout(() => {
+        if (finished !== run) return
+        stagesDone = true
+        renderSteps()
+        releaseShade()
+      }, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : STAGE_PAUSE_MS + 1800)
     }
     if (story === 'idle') play.disabled = !canPlay(next)
     if (next !== phase || latest !== status) {
@@ -472,14 +487,13 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('[data-gesture]')) 
   b.onmousedown = e => e.preventDefault() // keep focus off the button, so Enter and the arrows still reach the glasses
   b.onclick = () => press(b.dataset.gesture as Gesture)
 }
-/** A gesture from the keyboard or the lens also flashes its ring button, so the visitor sees what they did. */
 let answering = false
 /** The visitor does not have to hunt for Down and Click: show each, then press it. A spoken yes answers first. */
 async function answerGlasses(id: number) {
   if (answering || id !== run || tab.voice) return
   answering = true
   try {
-    const beat = matchMedia('(prefers-reduced-motion: reduce)').matches ? 200 : 1600
+    const beat = matchMedia('(prefers-reduced-motion: reduce)').matches ? 200 : GESTURE_BEAT_MS
     const label = () => canvas.getAttribute('aria-label') ?? ''
     await until(id, () => /Dismiss/i.test(label()))
     if (id !== run || phase !== 'answer') return
@@ -491,7 +505,7 @@ async function answerGlasses(id: number) {
       if (id !== run || phase !== 'answer' || host.voiceBusy()) return
     }
     if (!/>\s*(Close|Move|Set)/i.test(label())) {
-      flash(document.querySelector('[data-gesture="down"]'))
+      ring(document.querySelector('[data-gesture="down"]'))
       await sleep(beat)
       if (id !== run || phase !== 'answer' || host.voiceBusy()) return
       // The card ignores the first gesture while it is still settling.
@@ -501,6 +515,10 @@ async function answerGlasses(id: number) {
       }
       if (id !== run || phase !== 'answer' || host.voiceBusy() || !/>\s*(Close|Move|Set)/i.test(label())) return
     }
+    clearRing() // the choice is selected; Click stays dark until the line has been read
+    await sleep(beat)
+    if (id !== run || phase !== 'answer' || host.voiceBusy()) return
+    ring(document.querySelector('[data-gesture="tap"]'))
     await sleep(beat)
     if (id !== run || phase !== 'answer' || host.voiceBusy()) return
     press('tap')
@@ -513,7 +531,6 @@ function press(g: Gesture) {
   const b = document.querySelector(`[data-gesture="${g}"]`)
   b?.classList.add('pressed')
   setTimeout(() => b?.classList.remove('pressed'), 160)
-  if (tab.on && g === 'down' && phase === 'answer') flash(document.querySelector('[data-gesture="tap"]'))
 }
 $('lens').onclick = () => press('tap')
 const KEYS: Record<string, Gesture> = { ArrowUp: 'up', ArrowDown: 'down', Enter: 'tap', ' ': 'tap', Escape: 'double', Backspace: 'double', m: 'menu' }
@@ -542,4 +559,8 @@ const playback = (window as unknown as { MattePlayback: { mount(button: HTMLButt
 play.disabled = true
 
 const scenario = location.hash === '#sandbox' ? '#build' : location.hash
+if (scenario && scenario !== '#liquidation') {
+  moreStories = true
+  tabsEl.classList.add('is-open')
+}
 void open(TABS.find(t => `#${t.id}` === scenario) ?? TABS[0])

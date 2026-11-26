@@ -239,8 +239,8 @@ function boxText(sc: Screen): Record<string, string> {
 
 function reportRenderedAlert(sc: Screen, want: Record<string, string>) {
   let detail: RenderedAlert | null = null
-  if (sc.card && !sc.card.simulated && sc.choices.length > 1 && shown.opt1 === want.opt1 && shown.opt2 === want.opt2) {
-    detail = { id: sc.card.alertId, actionable: true }
+  if (sc.card && !sc.card.simulated && (sc.choices.length > 1 || sc.choices[0] === 'ok') && shown.opt1 === want.opt1 && shown.opt2 === want.opt2) {
+    detail = { id: sc.card.alertId, actionable: sc.choices.length > 1 }
   } else if (sc.toastAlertId && shown.top === want.top) {
     detail = { id: sc.toastAlertId, actionable: false }
   }

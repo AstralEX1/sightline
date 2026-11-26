@@ -1,4 +1,4 @@
-import type { ClosedBy, ConditionType, PriceSource } from './registry.ts'
+import type { ActionType, ClosedBy, ConditionType, PriceSource } from './registry.ts'
 
 export type Side = 'Buy' | 'Sell'
 
@@ -183,6 +183,8 @@ export interface AlertRecord {
   target: string
   /** The shortcut's name or action title, e.g. "Close position" */
   title: string
+  /** Action at the time of the alert. Older History records may omit it. */
+  actionType?: ActionType
   /** "liquidation distance 3.2%", or "Voice: protect all" */
   reason: string
   /** ids of the matching conditions */

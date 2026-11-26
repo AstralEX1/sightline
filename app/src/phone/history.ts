@@ -6,7 +6,8 @@ import { ACTION_ICON, icon } from './icons.ts'
 import { app, h, subNav, toast } from './ui.ts'
 
 /** Action of an alert: from its shortcut when known, else from the action title it carries. */
-export function actionOf(a: Pick<AlertRecord, 'shortcutId' | 'title'>): ActionType {
+export function actionOf(a: Pick<AlertRecord, 'shortcutId' | 'title' | 'actionType'>): ActionType {
+  if (a.actionType) return a.actionType
   const sc = app.tiles?.find(t => t.id === a.shortcutId)
   return sc?.action.type ?? (Object.keys(ACTION_TITLE) as ActionType[]).find(k => ACTION_TITLE[k] === a.title) ?? 'NOTIFY'
 }
@@ -23,7 +24,7 @@ export function dayLabel(ms: number, now = Date.now()): string {
 
 const time = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 
-export function chip(a: Pick<AlertRecord, 'shortcutId' | 'title'>, size: number) {
+export function chip(a: Pick<AlertRecord, 'shortcutId' | 'title' | 'actionType'>, size: number) {
   const { icon: name, color } = ACTION_ICON[actionOf(a)]
   return h('span', { class: 'chip chip--row', style: `--c: ${color}`, html: icon(name, size, 2.2) })
 }
