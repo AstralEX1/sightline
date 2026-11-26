@@ -22,8 +22,9 @@ export const loadSettings = store.load
 
 export function getSettings() {
   if (import.meta.env.MODE === 'paper') return { server: '', token: '' } // the local proxy connects to the isolated paper account
-  // The dev token wins: a token saved by an earlier run outlives a new APP_TOKEN in .env and would get 401.
-  return { server: store.get('gt.server') || DEFAULT_SERVER, token: devToken || store.get('gt.token') || demoToken }
+  const server = store.get('gt.server') || DEFAULT_SERVER
+  const token = store.get('gt.token') || (!server ? devToken : '') || (server === DEFAULT_SERVER ? demoToken : '')
+  return { server, token }
 }
 
 export function saveSettings(server: string, token: string) {
@@ -70,7 +71,7 @@ const id = (s: string) => encodeURIComponent(s)
 type Reply = { ok: boolean; message: string }
 
 // ── lens ──────────────────────────────────────────────────
-export const getState = () => request<ServerState>('GET', '/api/state')
+export const getState = (lensOpen = false) => request<ServerState>('GET', lensOpen ? '/api/state?client=lens' : '/api/state')
 /** The only call that trades. A resend with the same key gets the same execution back, never a second order. */
 export const confirm = (proposalId: string, idempotencyKey: string) =>
   request<Reply & { executionId?: string; status?: ExecutionStatus }>('POST', `/api/proposals/${id(proposalId)}/confirm`, { idempotencyKey })
@@ -82,6 +83,7 @@ export const pick = (proposalId: string, size: number, leverage: number) =>
 export const answer = (cardId: string, yes: boolean) => (yes ? confirm(cardId, `lens:${cardId}`) : dismiss(cardId, 'glasses'))
 export const getChart = (symbol: string) => request<Candle[]>('GET', `/api/chart?symbol=${encodeURIComponent(symbol)}`)
 export const getExecution = (executionId: string) => request<Execution>('GET', `/api/executions/${id(executionId)}`)
+export const getProposalExecution = (proposalId: string) => request<Execution>('GET', `/api/proposals/${id(proposalId)}/execution`)
 /** Glasses menu: raise the seeded "protect all" (`stop`), "lock profits" (`lock`) or "close all" (`close`) shortcut; `position` keeps one. */
 export const command = (kind: Command, position?: { symbol: string; positionIdx: number }) => request<Reply>('POST', '/api/command', { command: kind, position })
 /** The lens's answer to its alert: `answer` is null for silence or anything that is not a plain yes or no. */

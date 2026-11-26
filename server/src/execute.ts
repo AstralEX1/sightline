@@ -8,7 +8,7 @@ import type { Store } from './store.ts'
 import { executionLine } from './proposals.ts'
 import { price } from './format.ts'
 
-export type Revalidate = (p: Proposal) => Promise<{ ok: true } | { ok: false; message: string }>
+export type Revalidate = (p: Proposal) => Promise<{ ok: true; openLeverage?: number } | { ok: false; message: string }>
 export interface ConfirmResult { ok: boolean; message: string; execution?: Execution }
 
 const GONE: Record<Exclude<ProposalStatus, 'PENDING' | 'AUTHORIZED'>, string> = {
@@ -116,13 +116,12 @@ export function createExecutor(o: { ex: Exchange; store: Store; clock: () => num
       return save(e, 'REJECTED', `could not check the position: ${errorText(err)}`)
     }
     if (!v.ok) return save(e, 'REJECTED', v.message)
-    const t = p.terms
-    if (t.type === 'order' && t.setLeverage && t.leverage) {
+    if (v.openLeverage !== undefined) {
       // Before SUBMITTING: a leverage that did not take leaves no order behind, so nothing is unknown
       try {
-        await ex.setLeverage(t.symbol, t.leverage)
+        await ex.setLeverage(p.terms.symbol, v.openLeverage)
       } catch (err) {
-        return save(e, 'REJECTED', `could not set ${t.leverage}x leverage: ${errorText(err)}`)
+        return save(e, 'REJECTED', `could not set ${v.openLeverage}x leverage: ${errorText(err)}`)
       }
     }
     e = save(e, 'SUBMITTING') // intent is on disk before the request leaves

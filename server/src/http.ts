@@ -86,7 +86,12 @@ export function createServer(d: {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
     if (req.method === 'OPTIONS') return send(res, 204)
 
-    const url = new URL(req.url ?? '/', 'http://localhost')
+    let url: URL
+    try {
+      url = new URL(req.url ?? '/', 'http://localhost')
+    } catch {
+      return send(res, 400, { error: 'Invalid request URL' })
+    }
     const path = url.pathname
     if (!path.startsWith('/api/')) return send(res, 404, { error: 'Not found' })
     if (!authorized(req.headers.authorization, d.token)) return send(res, 401, { error: 'Unauthorized' })
@@ -97,7 +102,7 @@ export function createServer(d: {
 
       // Lens
       if (route === 'GET /api/state') {
-        d.notifier?.seen('lens')
+        if (url.searchParams.get('client') === 'lens') d.notifier?.seen('lens')
         return send(res, 200, { ...session.state(), voice: !!d.transcribe, source: d.source ?? '' })
       }
       const proposal = path.match(/^\/api\/proposals\/([\w-]+)\/(confirm|dismiss|pick)$/)
@@ -111,6 +116,11 @@ export function createServer(d: {
         if (typeof b.idempotencyKey !== 'string' || !b.idempotencyKey || b.idempotencyKey.length > 100) throw new HttpError(400, 'Expected {idempotencyKey}')
         const r = await session.confirm(proposal[1], b.idempotencyKey)
         return send(res, 200, { ok: r.ok, message: r.message, executionId: r.execution?.id, status: r.execution?.status })
+      }
+      const proposalExecution = path.match(/^\/api\/proposals\/([\w-]+)\/execution$/)
+      if (proposalExecution && req.method === 'GET') {
+        const e = store.executionByProposal(proposalExecution[1])
+        return e ? send(res, 200, e) : send(res, 404, { error: 'Not found' })
       }
       const execution = path.match(/^\/api\/executions\/([\w-]+)$/)
       if (execution && req.method === 'GET') {

@@ -27,6 +27,9 @@ if (problem) fail(problem)
 let ex: Exchange
 let source = 'Demo data' // shown on the phone page, so nobody mistakes the demo for an account
 const mode = env.EXCHANGE === 'bybit' ? 'bybit' : 'fake'
+const publicDemo = env.PUBLIC_DEMO === '1'
+if (publicDemo && mode !== 'fake') fail('PUBLIC_DEMO requires EXCHANGE=fake.')
+const telegramToken = publicDemo ? undefined : env.TELEGRAM_BOT_TOKEN
 if (mode === 'bybit') {
   const base = env.BYBIT_BASE || 'https://api-testnet.bybit.com'
   try {
@@ -42,10 +45,19 @@ if (mode === 'bybit') {
 }
 
 // One file per exchange mode, so demo shortcuts and alerts never mix with a real account's.
-const store = createStore(mode === 'fake' && env.PAPER_DEMO === '1' ? ':memory:' : fileURLToPath(new URL(`../data/${mode}.db`, import.meta.url)))
-store.seed([...STARTER_RULES, ...VOICE_SEEDS])
+const paperDemo = mode === 'fake' && env.PAPER_DEMO === '1'
+if (paperDemo) source = 'Paper'
+const store = createStore(paperDemo ? ':memory:' : fileURLToPath(new URL(`../data/${mode}.db`, import.meta.url)))
+const paperWindowSec = 120
+const starterRules = paperDemo ? STARTER_RULES.filter(rule => rule.action.type === 'CLOSE_POSITION')
+  .map(rule => ({ ...rule, trigger: { mode: 'REPEAT' as const, intervalSec: paperWindowSec } })) : STARTER_RULES
+if (paperDemo) {
+  const settings = store.settings()
+  store.saveSettings({ ...settings, expiry: { ...settings.expiry, marketSec: paperWindowSec } })
+}
+store.seed([...starterRules, ...VOICE_SEEDS])
 store.seed([CLOSE_SEED], 'seeded:close')
-const notifier = createNotifier({ store, token: env.TELEGRAM_BOT_TOKEN || undefined })
+const notifier = createNotifier({ store, token: telegramToken || undefined })
 const session = createSession(ex, store, Date.now, notifier.route)
 
 let busy = false
@@ -72,7 +84,7 @@ setInterval(() => {
 }, TICK_MS)
 
 // Telegram linking: /start <code> arrives by long polling, so no webhook and no public URL (§2).
-if (env.TELEGRAM_BOT_TOKEN) {
+if (telegramToken) {
   void (async () => {
     for (;;) {
       try {
@@ -85,9 +97,9 @@ if (env.TELEGRAM_BOT_TOKEN) {
   })()
 }
 
-const openaiKey = env.OPENAI_API_KEY
+const openaiKey = publicDemo ? undefined : env.OPENAI_API_KEY
 createServer({
   session, store, token, notifier, source,
   apiKeyInfo: () => ex.apiKeyInfo(),
   transcribe: openaiKey ? pcm => transcribe(pcm, openaiKey) : undefined,
-}).listen(port, host, () => console.log(`Trade Shortcuts server on http://${host}:${port} (exchange: ${mode}, voice: ${openaiKey ? 'on' : 'off'}, telegram: ${env.TELEGRAM_BOT_TOKEN ? 'on' : 'off'})`))
+}).listen(port, host, () => console.log(`Trade Shortcuts server on http://${host}:${port} (exchange: ${mode}, voice: ${openaiKey ? 'on' : 'off'}, telegram: ${telegramToken ? 'on' : 'off'})`))

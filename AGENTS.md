@@ -33,20 +33,20 @@ Leave about 800 ms between inputs (the lens ignores swipes closer than 700 ms) a
 
 Paper demo state and History are available through the loopback Vite proxy at `http://localhost:5173/api/state` and `/api/history`.
 
-Expected demo story: the lens lists BTC, ETH, SOL. About 30 s after the server starts, the enabled shortcut **Near liquidation · half** raises a BTC alert with `Dismiss` first. `down` then `click` confirms **Close 50%**, and the lens shows the fill. The trade then appears in `/api/history` and in History on the phone page.
+Expected demo story: the lens lists BTC, ETH, SOL. About 30 s after the server starts, the **Near liquidation · half** shortcut raises a BTC alert with `Dismiss` first. The card stays open for 120 s and can recur while its condition holds. `down` then `click` confirms **Close 50%**, and the lens shows the fill. The trade then appears in `/api/history` and in History on the phone page.
 
-The simulator needs a desktop session. On a headless box (CI, remote shell) run the checks below and the `/api` calls against `npm run server` alone, and say the lens was not shown.
+The simulator needs a desktop session. On a headless box (CI, remote shell) run the checks below. For API checks use a configured fake server on its own port and authenticate requests, and say the lens was not shown.
 
 ## Checks before any commit
 
 ```bash
-npm run typecheck && npm test && npm run build
+npm run typecheck && npm test && npm run build && npm run build:site
 ```
 
 ## Rules that hold everywhere
 
 - Never point `BYBIT_BASE` at a live host. `server/src/bybit.ts` refuses it on purpose; keep that guard.
-- Every exchange write goes through a proposal and `confirm` on the lens. Do not add a path that trades without lens authorization. A spoken yes can also confirm after the cancellable countdown when voice is enabled.
+- Every exchange write goes through a proposal and `confirm` on the lens. Do not add a path that trades without lens authorization. A spoken yes can also confirm an eligible alert after the cancellable countdown. An Open with pending size or leverage choices requires manual selection.
 - The rule catalog and validator (`server/src/registry.ts`, `server/src/validate.ts`) are shared by phone and server. Change them once.
 - Never commit `.env` or `server/data/`. Never print `APP_TOKEN` or exchange keys in logs or reports.
 - Specs: `docs/shortcuts-architecture.md` (server), `docs/trade-shortcuts-spec.md` (phone), `docs/glasses-shortcuts.md` (lens), `docs/design.md`.

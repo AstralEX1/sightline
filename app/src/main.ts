@@ -92,6 +92,7 @@ let execId = ''
 let review = ''
 /** An Open's size, picked on its size page; the leverage page comes next */
 let pick: { id: string; size: number } | undefined
+let picking = false
 let hide = ''
 let cursor = { key: '', at: 0 }
 let mic: 'off' | 'starting' | 'on' | 'stopping' | 'sending' = 'off'
@@ -394,6 +395,7 @@ async function draw() {
 
 const wear = new WearTracker()
 let polling = false
+let trackingExecution = false
 /** `force`: the phone page asked, so the glasses being off does not matter. */
 async function poll(force = false) {
   await settingsReady
@@ -402,7 +404,7 @@ async function poll(force = false) {
   polling = true
   const was = current().card // the alert on the lens before this state
   try {
-    state = await api.getState()
+    state = await api.getState(Boolean(bridge && page && page !== '-' && wear.inUse))
     offline = false
     needToken = false
   } catch (e) {
@@ -415,12 +417,18 @@ async function poll(force = false) {
   if (was && !outcome && state && state.card?.id !== was.id && state.card?.supersedes !== was.id && was.id !== hide &&
     was.expiresAt <= state.updatedAt + EXPIRY_SLACK_MS) outcome = { card: was, expired: true }
   const o = outcome
-  if (o && execId && !settled(o)) {
+  if (!trackingExecution && o && (execId || o.lost) && !settled(o)) {
+    trackingExecution = true
     try {
-      o.execution = await api.getExecution(execId)
+      const execution = execId ? await api.getExecution(execId) : await api.getProposalExecution(o.card.id)
+      if (outcome !== o) return
+      o.execution = execution
+      o.lost = false
+      execId = execution.id
       if (DONE.includes(o.execution.status)) doneAt ||= Date.now()
       if (settled(o) && DONE.includes(o.execution.status)) setTimeout(() => { if (outcome === o) void closeOutcome() }, NOTE_MS) // back to Main in 5 s
     } catch { /* the next poll asks again */ }
+    finally { trackingExecution = false }
   }
   // Its position closed: Detail goes back to Main, never on to the next coin.
   if (detailOpen && state && !state.positions.some(p => posKey(p) === focusKey)) detailOpen = false
@@ -664,17 +672,24 @@ function act(sc: Screen, i: number) {
 
 /** A tap on an Open's size or leverage page. The size page with one leverage, or the leverage page, sends the pick. */
 async function pickChoice(sc: Screen, card: Proposal, i: number) {
+  if (picking) return
   const { sizes, leverages } = card.picks!
   const onSize = sc.key.endsWith(':size')
   if (onSize) pick = { id: card.id, size: sizes[i] }
   if (onSize && leverages.length > 1) { cursor = { key: '', at: 0 }; return draw() }
   const size = pick?.id === card.id ? pick.size : sizes[0]
+  picking = true
   try {
     const r = await api.pick(card.id, size, onSize ? leverages[0] : leverages[i])
-    if (r.ok && r.proposalId) review = r.proposalId // Review of the new terms, once the poll brings them
+    if (r.ok && r.proposalId) {
+      hide = card.id
+      review = r.proposalId // Review of the new terms, once the poll brings them
+    }
     else note(r.message)
   } catch {
     note('No reply from the server · try again')
+  } finally {
+    picking = false
   }
   pick = undefined
   cursor = { key: '', at: 0 }
@@ -711,6 +726,7 @@ async function confirmCard(card: Proposal) {
   try {
     // One key per card: a second tap after a lost reply gets the same execution back, never a second order.
     const r = await api.confirm(card.id, `lens:${card.id}`)
+    if (outcome !== o) return
     if (r.executionId) execId = r.executionId
     else o.message = r.message // "Expired, nothing sent", "Replaced by a newer proposal, nothing sent"
   } catch {

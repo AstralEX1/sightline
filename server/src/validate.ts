@@ -28,6 +28,21 @@ const inRange = (n: number, r: Range) =>
   (r.gt === undefined || n > r.gt) && (r.ge === undefined || n >= r.ge) && (r.lt === undefined || n < r.lt) && (r.le === undefined || n <= r.le)
 
 const obj = (v: unknown) => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null)
+
+/** Translate pre-2026-11-25 actions before validating an edit or opening a saved rule. */
+export function normalizeLegacyAction(input: unknown) {
+  const a = obj(input)
+  if (a?.type === 'OPEN_POSITION') {
+    const { side, notionalUsdt, leverage, sl, tp } = a
+    if (side === 'LONG' || side === 'SHORT') {
+      return { type: side === 'LONG' ? 'OPEN_LONG' : 'OPEN_SHORT', sizes: [notionalUsdt], leverages: [leverage], sl, tp }
+    }
+  }
+  if (a?.type === 'ADD_MARGIN' && a.usdt !== undefined) {
+    return { type: 'ADD_MARGIN', unit: a.unit === undefined ? 'USDT' : a.unit, amount: a.amount === undefined ? a.usdt : a.amount }
+  }
+  return a
+}
 const oneOf = <T extends string>(v: unknown, list: readonly T[]): v is T => typeof v === 'string' && (list as readonly string[]).includes(v)
 
 /**
@@ -206,11 +221,7 @@ export function validateShortcut(input: unknown, ctx: { phrasesInUse?: string[] 
 
   // Do
   let action: Action | null = null
-  const a0 = obj(r.action)
-  // Open position (before 2026-11-25) is Open long or Open short with one size and one leverage.
-  const a = a0?.type === 'OPEN_POSITION'
-    ? { ...a0, type: a0.side === 'SHORT' ? 'OPEN_SHORT' : 'OPEN_LONG', sizes: [a0.notionalUsdt], leverages: [a0.leverage] }
-    : a0
+  const a = normalizeLegacyAction(r.action)
   const af = (f: string) => ({ field: `action.${f}` })
   const money = (v: unknown, what: string, f: string) => dec(v, what, { gt: 0, lt: BIG }, af(f))
   const stopRange = { gt: LIMITS.stopPct.min, lt: LIMITS.stopPct.max }
@@ -229,9 +240,7 @@ export function validateShortcut(input: unknown, ctx: { phrasesInUse?: string[] 
       break
     }
     case 'ADD_MARGIN': {
-      // A shortcut saved before 2026-11-25 has `usdt`
-      const unit = a.usdt !== undefined && a.unit === undefined ? 'USDT' : a.unit
-      const raw = a.usdt !== undefined && a.amount === undefined ? a.usdt : a.amount
+      const { unit, amount: raw } = a
       if (!oneOf(unit, ['USDT', 'MARGIN_PERCENT'] as const)) { add('bad_value', 'Choose USDT or a percent of the margin', af('unit')); break }
       const amount = unit === 'USDT' ? money(raw, 'an amount in USDT', 'amount')
         : dec(raw, 'a percent of the margin', { gt: LIMITS.marginPct.min, le: LIMITS.marginPct.max }, af('amount'))

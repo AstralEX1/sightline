@@ -143,10 +143,11 @@ export function resolve(action: Action, t: TargetRef, m: Market, authorized?: Te
     }
     case 'OPEN_LONG':
     case 'OPEN_SHORT': {
-      if (m.positions.some(q => q.symbol === t.symbol && q.size > 0)) return skip('not_flat', `${name} already has a position`)
+      if (m.positions.some(q => q.symbol === t.symbol && q.size > 0) || m.slots.some(s => s.size > 0)) return skip('not_flat', `${name} already has a position`)
       const side: Side = action.type === 'OPEN_LONG' ? 'Buy' : 'Sell'
       const slot = m.slots.find(s => s.positionIdx === 0) ?? m.slots.find(s => s.positionIdx === (side === 'Buy' ? 1 : 2))
       if (!slot) return skip('no_slot', 'position mode unknown')
+      if (authorized?.type === 'order' && authorized.positionIdx !== slot.positionIdx) return skip('slot_changed', 'position mode changed')
       // The symbol is flat, so the leverage picked on the glasses is set on it before the order; never changed unasked (§6).
       const open = (notional: number, lev: number): Resolved => {
         const qty = toStep(notional / last, qtyStep, Math.floor)
@@ -155,7 +156,6 @@ export function resolve(action: Action, t: TargetRef, m: Market, authorized?: Te
           ...(action.sl && { stopLoss: tick(targetPrice(action.sl, last, side)) }),
           ...(action.tp && { takeProfit: tick(targetPrice(action.tp, last, side)) }),
           ...cost(qty, lev),
-          ...(slot.leverage !== lev && { setLeverage: true }),
         }
         const stops = [terms.stopLoss !== undefined ? `stop ${shown(terms.stopLoss)}` : 'no stop', ...(terms.takeProfit !== undefined ? [`tp ${shown(terms.takeProfit)}`] : [])].join(' · ')
         return grow(terms, terms.leverage ?? lev) ?? { ok: true, terms, question: `Open ${side === 'Buy' ? 'long' : 'short'} ${terms.qty} ${name} · ${terms.notionalUsdt} USDT?`, note: `${terms.leverage}x · margin ~${dollars(terms.marginUsdt ?? 0)} · ${stops}` }
@@ -175,6 +175,7 @@ export function resolve(action: Action, t: TargetRef, m: Market, authorized?: Te
       if (!p) return skip('no_position', 'position is closed')
       if (!p.stopLoss) return skip('no_stop', 'set a stop loss first')
       if (!(p.leverage > 0)) return skip('leverage', 'leverage unknown')
+      if (authorized?.type === 'order' && authorized.leverage !== p.leverage) return skip('leverage_changed', 'position leverage changed')
       const qty = toStep(Number(action.notionalUsdt) / last, qtyStep, Math.floor)
       const terms = authorized?.type === 'order' ? authorized : {
         type: 'order' as const, symbol: t.symbol, side: p.side, qty, positionIdx: p.positionIdx, reduceOnly: false, orderLinkId: linkId, ...cost(qty, p.leverage),
@@ -189,6 +190,8 @@ export function resolve(action: Action, t: TargetRef, m: Market, authorized?: Te
     }
     case 'NOTIFY':
       return skip('notify', 'nothing to send')
+    default:
+      return skip('unknown_action', 'edit this shortcut to choose a supported action')
   }
 }
 

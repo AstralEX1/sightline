@@ -138,9 +138,11 @@ export async function renderSettings() {
   try {
     page = await api.getAccountSettings()
   } catch (e) {
+    page = null
+    const unauthorized = (e as api.ApiError).status === 401
     dynamic.replaceChildren(h('h2', { class: 'group-label' }, 'Bybit'),
-      h('div', { class: 'group' }, row('Status', status(false, 'Server offline')), row('Account', sourceEl), row('Glasses', glassesEl)),
-      h('p', { class: 'footnote' }, (e as Error).message))
+      h('div', { class: 'group' }, row('Status', status(false, unauthorized ? 'Check the server token' : 'Server offline')), row('Account', sourceEl), row('Glasses', glassesEl)),
+      h('p', { class: 'footnote' }, unauthorized ? 'Enter the APP_TOKEN under Connection and tap Connect.' : (e as Error).message))
     return
   }
   const b = page.bybit
@@ -148,11 +150,11 @@ export async function renderSettings() {
   const key = b.apiKey
   const access = key ? (key.readOnly || !key.trade ? 'Read only' : 'Read + Trade') : b.apiKeyError ? 'Unknown' : '—'
   dynamic.replaceChildren(
-    h('h2', { class: 'group-label' }, 'Bybit'),
+    h('h2', { class: 'group-label' }, b.source === 'Paper' ? 'Paper' : 'Bybit'),
     h('div', { class: 'group' },
       row('Status', status(up, up ? 'Connected' : 'Offline')),
       up ? null : h('p', { class: 'row row--note' }, b.status),
-      row('Environment', b.source.includes('testnet') ? 'Testnet' : 'Demo'),
+      row('Environment', b.source === 'Paper' ? 'Paper' : b.source.includes('testnet') ? 'Testnet' : 'Demo'),
       row('Account', sourceEl),
       row('API access', access),
       row('Withdrawals', key?.withdraw ? 'On' : 'Off'),

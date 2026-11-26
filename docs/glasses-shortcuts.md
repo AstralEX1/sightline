@@ -1,8 +1,8 @@
 # Trade Shortcuts on the G2 lens
 
-Lens side of `trade-shortcuts-spec.md` (§1, §8.3, §10). Shortcuts are created, edited, turned on and off only in the phone app; the lens shows open positions and answers the shortcuts that fire. Built on Trade Shortcuts's card (`app/src/main.ts` `CARD`, `docs/design.md`) and the G2 UI rules (8 px grid, three brightness levels, one focus marker, hint line last).
+The phone configures rules. The lens displays positions, alerts, proposal terms and execution results. [Phone specification](trade-shortcuts-spec.md) · [Design](design.md)
 
-Screens drawn at 576 × 288: https://claude.ai/artifact/1n89NY12383wwVqdkFS1Pr. Page Flow holds the chosen design (main screen, every alert, review and result); page Position detail holds the detail screen (top row; the row below is the earlier, overloaded version); the other pages keep rejected variants. Switch on the `guides` tweak to see the container boxes.
+Simulator captures: [position detail](../assets/lens-detail.jpg) · [alert](../assets/lens-alert.jpg) · [fill](../assets/lens-fill.jpg).
 
 Status: built in `app/src/view.ts` + `app/src/main.ts` (Main with `▶`, Detail with the hour's chart, Alert, Review, Result). Every line below was measured with `@evenrealities/pretext` and fits its box. Nothing here was tried on real glasses yet.
 
@@ -16,7 +16,7 @@ Status: built in `app/src/view.ts` + `app/src/main.ts` (Main with `▶`, Detail 
 | Review | What exactly am I opening? | qty, notional, leverage, margin, stop | swipe, tap |
 | Result | Did it happen? | the exchange's real status | nothing, or OK |
 
-The lens never edits or pauses shortcuts: that is the phone app's job (spec §2). Detail only counts the ones that are on for a position. The contextual menu offers Protect all, Lock profits, Pause/Resume cards and, when voice is available, Speak. Main adds Close all, Detail adds Close position (its position only): each close is a card that waits for a tap or a spoken yes.
+The contextual menu offers Protect all, Lock profits and Pause/Resume cards. Main also offers Close all; Detail offers Close position. Each eligible target gets its own proposal. Speech answers the current alert when enabled.
 
 ## 2. Flow
 
@@ -32,12 +32,12 @@ Main ──rule fires──▶ Alert ──tap action──▶ Sent ──▶ Fi
                       └─ time runs out / position or rule changed ──▶ Expired (Dismiss only)
 ```
 
-- One alert at a time. Queue order (spec §8.3): Close, Set or Move stop, Add margin, Cancel order first, critical before the rest; then Set take profit; then Notify; Open and Increase last. Oldest first within a group. The frame shows the place: `1/2`.
+- One alert at a time. Queue order: Close, Set or Move stop, Add margin, Cancel order first, critical before the rest; then Set take profit; then Notify; Open and Increase last. Oldest first within a group. The frame shows the place: `1/2`.
 - A rule that matches several positions raises one alert per position, each naming its own position.
 - OR rules raise one alert; the second line shows the strongest reason (liquidation beats ROI).
 - A new alert ignores taps for 1 s (`CARD_SETTLE_MS`), so a tap meant for the previous one cannot answer it. `Dismiss` is first and selected anyway.
-- The lens shows no countdown. The server still expires a proposal (30 s for market orders, 60 s for stops, margin and cancel) and the alert turns into Expired.
-- Alerts only reach the lens while the plugin is open. Otherwise the server sends a phone notification (spec §10); an alert that expired meanwhile goes to History, never to the lens.
+- Proposal expiry uses the server’s timing settings (defaults 30 s for market trades and 60 s for protection). A spoken yes shows a separate five-second cancellation countdown; a gesture or recognized no stops it.
+- Alerts only reach the lens while the plugin is open. Otherwise delivery follows the phone and Telegram settings; an alert that expired meanwhile goes to History, never to the lens.
 
 ## 3. Gestures
 
@@ -49,7 +49,7 @@ Main ──rule fires──▶ Alert ──tap action──▶ Sent ──▶ Fi
 
 Open long and Open short carry the sizes (USDT) and leverages the user set on the phone. With more than one of either, `Review…` opens a size page, then a leverage page, in the Review frame: the two option rows show two values of the list, swipe scrolls `>` through all of them, the hint ends with the place (`2/5`), and the leverage page shows the margin of the value under `>`. The tap on the last page sends the pick; the server answers with a new proposal and the lens shows its Review. A voice yes does not answer an Open with choices.
 
-The hint is the last line, dim, lower case, and says what a tap does on the choice under `>`: `swipe: choose · tap: dismiss`, then `tap: confirm` (or `tap: review`) once `>` is on the action. `double tap: exit` on Main and `double tap: back` on Detail always show, offline too. The other tips (`tap: details`, `tap, hold: menu` on Main, `swipe: next position` on Detail) are optional: on for the first 3 launches, then off, unless the phone's Settings › Gesture tips switch says otherwise. Alerts, Review and results always keep their line. A `>` left on an action goes back to Dismiss after 8 s without a swipe (`CURSOR_IDLE_MS`). An alert that fires while Detail is open takes over the lens; after it, the lens goes back to Detail. Speak is on the menu (not a Main tap). Swipes are gated to one per 700 ms (`SWIPE_GATE_MS`). Taps while sending are ignored.
+The hint is the last line, dim, lower case, and says what a tap does on the choice under `>`: `swipe: choose · tap: dismiss`, then `tap: confirm` (or `tap: review`) once `>` is on the action. `double tap: exit` on Main and `double tap: back` on Detail always show, offline too. The other tips (`tap: details`, `tap, hold: menu` on Main, `swipe: next position` on Detail) are optional: on for the first 3 launches, then off, unless the phone's Settings › Gesture tips switch says otherwise. Alerts, Review and results always keep their line. A `>` left on an action goes back to Dismiss after 8 s without a swipe (`CURSOR_IDLE_MS`). An alert that fires while Detail is open takes over the lens; after it, the lens goes back to Detail. Tap then hold opens the command menu. Swipes are gated to one per 700 ms (`SWIPE_GATE_MS`). Taps while sending are ignored.
 
 ## 4. Layouts
 
@@ -93,21 +93,20 @@ review:          # text 5, image 1
 ```
 
 - The only frame is the notification. Selection is `>` plus brightness 4; the other choice is one level dimmer (3). A swipe moves `>` with two text updates (content and `textColor`), no page rebuild.
-- Screens with one choice (Notify, Expired, results) keep it in `opt1`; Sent has none.
+- Screens with one choice (Expired, results) keep it in `opt1`; Sent has none.
 - The icon is a 48 × 48 PNG (2 px stroke on the 24 grid, scaled ×2). It arrives after the text; a failed transfer leaves a complete alert.
-- Detail, after even-g2-crypto-ticker and g2-kit's Kpi: coin and side big top left, leverage under it; PnL as big top right (`PNL: +$50`), the stop and liquidation distances from the mark under it. A missing stop says nothing. Under them the last hour as a plain line. Entry (dim, dotted) and stop (dashed) are named with their prices at the right, next to the bright last price; liquidation joins only within 1% of the last price. A level stretches the scale by up to 1.5 hour-ranges (or 1% of the price, if wider); past that it is pinned: its label with ↑ or ↓ at the edge and no line, so a far stop never flattens the hour. All chart labels share one precision taken from the scale; crowded labels stay centred on their lines. Distances in the text line keep two decimals under 1%. `−1h` / `now` below. No grid, no price axis, no time ticks. Take profit, size, ROI, the shortcuts count and the balance stay on the phone. The chart is read at most once a minute and sent last; if it fails, PnL and the distances are still in text. The title and PnL are pictures: if one fails the lens shows leverage without the coin, or no PnL, until the next draw. PnL is resent whenever its rounded text changes.
+- Detail, after even-g2-crypto-ticker and g2-kit's Kpi: coin and side big top left, leverage under it; PnL as big top right (`PNL: +$50`), the stop and liquidation distances from the mark under it. A missing stop says nothing. Under them the last hour as a plain line. Entry (dim, dotted) and stop (dashed) are named with their prices at the right, next to the bright last price; liquidation joins only within 1% of the last price. A level stretches the scale by up to 1.5 hour-ranges (or 1% of the price, if wider); past that it is pinned: its label with ↑ or ↓ at the edge and no line, so a far stop never flattens the hour. All chart labels share one precision taken from the scale; crowded labels stay centred on their lines. Distances in the text line keep two decimals under 1%. `−1h` / `now` below. No grid, no price axis, no time ticks. Take profit, size, ROI, the shortcuts count and the balance stay on the phone. The chart is read at most once a minute and sent last; if it fails, the independently rendered PnL and distance fields can still display. The title and PnL are pictures: if one fails the lens shows leverage without the coin, or no PnL, until the next draw. PnL is resent whenever its rounded text changes.
 - Detail's PnL reads `PNL: +$…` for zero or gains and `PNL: −$…` for losses. Absolute values below 10 show tenths, values from 10 show whole units, and values from 10,000 use thousands (one decimal below 100k, whole thousands thereafter).
 - Main sorts rows by liquidation distance, closest first. The selection (`▶`, brightness 4) moves with two text updates (cur and name), no rebuild, and follows the position, not the row number, when the order changes. More than 5 positions: pages of 4 plus a `▼ 1–4 of 7` row, swiped. A swipe on Detail changes the position by text updates too. Cells cut with `…` (`1000PEPE sh…`).
 
-## 5. Every alert
+## 5. Alert examples
 
-Nine alerts cover nine conditions and eight of the nine actions; Set Stop Loss reaches the lens through "protect all". The icon names the condition; `opt2` names the action and its size.
+These examples illustrate trade proposals. Notify appears as a status message. Protect all can generate a Set Stop Loss proposal. The icon names the condition; `opt2` names the action and its size.
 
 | Condition | Icon | who | why | Action | `opt2` |
 |---|---|---|---|---|---|
 | Near liquidation | warning triangle | `BTC long` | `3.2% to liquidation` | Close Position | `Close 50% · 0.025 BTC` |
 | Loss | trend down | `BTC long` | `ROI −18.2%` | Add Margin | `Add 100 USDT margin` |
-| Near stop | shield | `XRP long` | `0.9% to stop` | Notify | none: `> Dismiss` only |
 | Profit | trend up | `ETH short` | `ROI +31.4%` | Move Stop Loss | `Move stop to entry · 3,412` |
 | Near take profit | target | `ETH short` | `0.8% to take profit` | Close Position | `Close 50% · 0.6 ETH` |
 | Price change | pulse | `ETH long` | `+5.1% in 15 min` | Increase Position | `Review add · 200 USDT` |
@@ -115,12 +114,14 @@ Nine alerts cover nine conditions and eight of the nine actions; Set Stop Loss r
 | Full fill | check in circle | `SOL long` | `Order filled at 182.40` | Set Take Profit | `Set take profit · 191.52` |
 | Partial fill | half-filled circle | `BTC buy order` | `0.010 of 0.025 filled` | Cancel Order | `Cancel the rest · 0.015 BTC` |
 
-`opt1` is always `> Dismiss`. Open and Increase add exposure, so `opt2` opens Review, never the order (spec §10):
+`opt1` is always `> Dismiss`. Open and Increase add exposure, so `opt2` opens Review, never the order:
 
 | Review | ask | terms | `opt2` |
 |---|---|---|---|
 | Open | `Open BTC long?` | `0.0055 BTC · 500 USDT · 5×`, `Margin ≈ 100 USDT · stop 88,200` | `Open long · 0.0055 BTC` |
 | Increase | `Add to ETH long?` | `0.06 ETH · 200 USDT`, `Stop 3,280 stays` | `Add · 0.06 ETH` |
+
+For an Open with multiple configured sizes or leverages, Review first asks for size (USDT) and then leverage, skipping a single-option list. Choosing the last option sends `POST /api/proposals/:id/pick`, which creates a replacement proposal for the selected terms. Choosing is separate from confirming. Voice answers are disabled while options are pending. An eligible fixed-terms alert can take a spoken yes directly into its cancellable countdown.
 
 Review hint: `swipe: choose · tap: dismiss · double tap: back`, `tap: confirm` once `>` is on the order.
 
@@ -141,7 +142,7 @@ Review hint: `swipe: choose · tap: dismiss · double tap: back`, `tap: confirm`
 | Server unreachable | — | Main top line bright: `No connection to your server · retrying` | table hidden, no alert drawn |
 | No positions | — | Main top line: `Bybit Demo · no open positions` | table empty |
 
-Results come from order and execution updates only. `Sent` is never shown as `Filled` (spec §8.3, T22).
+The result follows the server execution. Stop, margin and cancel operations can report Applied, while orders progress through acknowledgement and fill states. `Sent` is never shown as `Filled`.
 
 ## 7. Words and symbols
 
@@ -152,12 +153,12 @@ Results come from order and execution updates only. `Sent` is never shown as `Fi
 - Symbols the firmware font has: `· … → ≤ ≥ ≈ × − ━ ─ ▲ ▼ ● ○ ■ □ ▶ > ↗ ↘`. It has no `✓ ✗ ⚠`: those are icons, never text.
 - Icons for `app/src/icons.ts` (24 grid, 2 px stroke, drawn at 48 px): warning triangle and bell and shield exist; new: trend up, trend down, shield crossed out, target, pulse, check in circle, half-filled circle, arrow up-right, clock, x in circle, question mark in circle, hourglass.
 
-## 8. Where this departs from spec §10
+## 8. Differences from the original design canvas
 
 1. `Dismiss` comes first and carries `>` when an alert opens; the spec mock has `> Confirm` selected. A stray tap must not trade.
 2. The confirm item names its outcome (`Close 50% · 0.025 BTC`), not `Confirm`, so the tap confirms exactly what the lens shows.
-3. No countdown on the lens; expiry shows as the Expired state.
-4. Editing, enable/disable and test alerts stay phone-only. The lens still has a contextual menu for `Protect all`, `Lock profits`, `Pause 15 min` and `Speak` (architecture voice seeds).
+3. Expiry appears as Expired. Voice confirmation has its own cancellation countdown.
+4. Editing, enabling and test alerts are phone actions. The lens menu can request proposals and pause the display of cards for 15 minutes.
 
 ## 9. QA before calling it done
 
@@ -167,7 +168,7 @@ Results come from order and execution updates only. `Sent` is never shown as `Fi
 - [ ] Double tap on an alert dismisses it; on Main it opens the host exit dialog.
 - [ ] Two OR branches true at once: one alert. Two positions matching: two alerts, each named.
 - [ ] An expired proposal turns the alert into Expired and removes the action.
-- [ ] Duplicate tap, duplicate WebSocket event: one order at most (idempotent proposal id).
+- [ ] Duplicate tap, repeated poll or repeated fill: one order at most (idempotent proposal id).
 - [ ] Server unreachable: no alert drawn; stale exchange data: top line says since when.
 - [ ] The 48 px icon arrives after the text; a failed icon transfer leaves a complete alert.
 - [ ] On real G2: readability over bright and dark backgrounds, redraw time vs `CARD_SETTLE_MS`, R1 swipe and tap.
