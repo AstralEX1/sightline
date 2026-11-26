@@ -29,12 +29,29 @@ export function chip(a: Pick<AlertRecord, 'shortcutId' | 'title'>, size: number)
 }
 
 function row(a: AlertRecord) {
-  return h('li', { class: 'hist' },
-    chip(a, 18),
-    h('div', { class: 'hist__text' },
-      h('div', { class: 'hist__top' }, h('span', {}, a.title), h('span', { class: 'hist__time' }, time(a.createdAt))),
-      h('div', { class: 'hist__sub' }, [a.target, a.reason].filter(Boolean).join(' · ')),
-      h('div', { class: 'hist__status' }, a.status)))
+  const body = h('div', { class: 'hist__details', 'aria-live': 'polite' })
+  const disclosure = h('details', {},
+    h('summary', { class: 'hist__summary' }, chip(a, 18),
+      h('span', { class: 'hist__text' },
+        h('span', { class: 'hist__top' }, h('span', {}, a.title), h('span', { class: 'hist__time' }, time(a.createdAt))),
+        h('span', { class: 'hist__sub' }, [a.target, a.reason].filter(Boolean).join(' · ')),
+        h('span', { class: 'hist__status' }, a.status))), body)
+  const field = (label: string, value: string) => h('div', {}, h('dt', {}, label), h('dd', {}, value))
+  disclosure.addEventListener('toggle', async () => {
+    if (!disclosure.open) return
+    body.textContent = 'Loading details…'
+    try {
+      const { proposed, outcome, receipt } = await api.getAlertDetails(a.id)
+      body.replaceChildren(h('dl', {},
+        field('Trigger', a.reason),
+        proposed ? field('Proposed', proposed) : null,
+        outcome ? field('Outcome', outcome) : null,
+        receipt ? field('Position readback', receipt) : null))
+    } catch {
+      body.textContent = 'Details unavailable. Reopen to try again.'
+    }
+  })
+  return h('li', { class: 'hist' }, disclosure)
 }
 
 export async function renderHistory(el: HTMLElement) {

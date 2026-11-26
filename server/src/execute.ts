@@ -76,6 +76,7 @@ export function createExecutor(o: { ex: Exchange; store: Store; clock: () => num
 
   function save(e: Execution, status: ExecutionStatus, message = '', patch: Partial<Execution> = {}): Execution {
     const next = { ...e, ...patch, status, message, updatedAt: clock() }
+    if (e.status === 'PARTIALLY_FILLED' && (status !== e.status || next.filledQty !== e.filledQty)) delete next.receipt
     if (!RESOLVED.includes(status)) lookedAt.delete(e.id)
     store.transaction(() => {
       store.saveExecution(next)

@@ -6,6 +6,8 @@ The phone editor, G2 client and Bybit adapter share one rule catalog. It has 13 
 
 The phone opens a template as an unsaved When/Do rule. Save it, then enable it on Home. On the lens, an actionable alert starts on Dismiss. For Open long or Open short with alternative sizes or leverages, the user picks the terms by hand and reviews the exact order. Other eligible cards support a spoken yes or no when transcription and voice answers are enabled. A yes starts a five-second cancellation window.
 
+Settings in the Even app can send a connection check to the lens in the same session. The phone reports success after a tap on the TEST card. Quiet mode shows connection status and the nearest liquidation risk between alerts. History opens each record to show the proposed terms, execution outcome, and position readback when recorded. The landing page links directly to the beta installation steps.
+
 ## Running each version
 
 | Target | Entry point | Account and storage |
@@ -19,6 +21,7 @@ The phone opens a template as an unsaved When/Do rule. Save it, then enable it o
 
 ## Verification and release history
 
+- The G2 connection check, Quiet mode, and History changes passed typecheck and all 593 automated tests. The app, landing page, and browser sandbox built successfully. The browser simulator confirmed the TEST card, opened the position list from Quiet mode, and recorded a simulated close from 0.050 to 0.025 BTC in History. Physical G2/R1 verification is pending.
 - Working tree based on `f5a7e38`, including local server changes, 25 November 2026. With Node 22.23.4, typecheck and all 587 automated tests passed (zero skipped). The app, landing page, browser sandbox and a test `.ehpk` built in an isolated copy with a placeholder HTTPS origin.
 - Even Hub lists `com.tradeshortcuts.g2` version `0.1.0` as Private on the beta channel (25 November). The working manifest now declares `0.1.1`. A byte comparison matched the portal download to the local submission package. Use the portal build record and package digest to identify this beta.
 - Recorded on 24 November 2026 on Bybit testnet (XRPUSDT): open, duplicate `orderLinkId` refused (110072), set SL/TP each keeps the other, SL past mark rejected, limit order listed and cancelled, reduce-only half and oversize close (no flip), fills deduped by `execId`, add margin on isolated (110076 on cross, as expected). A real Telegram bot linked via `/start <code>` and delivered an alert.

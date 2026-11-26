@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import type { AlertRecord, Candle, Execution, ExecutionStatus, Order, Position, ServerState, Settings } from '../../server/src/types.ts'
+import type { AlertDetails, AlertRecord, Candle, Execution, ExecutionStatus, Order, Position, ServerState, Settings } from '../../server/src/types.ts'
 import type { catalog, ShortcutRule, Template } from '../../server/src/registry.ts'
 import type { EditableShortcut, Validation } from '../../server/src/validate.ts'
 import type { Command } from '../../server/src/session.ts'
@@ -16,7 +16,7 @@ const devToken: string = import.meta.env.DEV ? import.meta.env.VITE_APP_TOKEN ??
 // The public demo server's token, set only for the hosted phone page; a token typed in Settings wins.
 const demoToken: string = import.meta.env.VITE_DEMO_TOKEN ?? ''
 
-const store = createStorage(['gt.server', 'gt.token', 'gt.hints', 'gt.launches', 'gt.voice', 'gt.hiddenTemplates'], (() => { try { return localStorage } catch { return null } })())
+const store = createStorage(['gt.server', 'gt.token', 'gt.hints', 'gt.launches', 'gt.voice', 'gt.hiddenTemplates', 'gt.quiet'], (() => { try { return localStorage } catch { return null } })())
 /** Call once the Even bridge is up: the settings live in its storage, not in the WebView's. */
 export const loadSettings = store.load
 
@@ -36,6 +36,8 @@ const launches = () => Number(store.get('gt.launches')) || 0
 /** Optional gesture tips on the lens: the phone switch, or on for the first launches. */
 export const hintsOn = () => tipsShown(store.get('gt.hints'), launches())
 export const setHints = (on: boolean) => store.set('gt.hints', on ? 'on' : 'off')
+export const quietModeOn = () => store.get('gt.quiet') === 'on'
+export const setQuietMode = (on: boolean) => store.set('gt.quiet', on ? 'on' : 'off')
 /** The mic opens for 5 s when an alert arrives, so a spoken yes or no answers it. On unless switched off on the phone. */
 export const voiceAnswersOn = () => store.get('gt.voice') !== 'off'
 export const setVoiceAnswers = (on: boolean) => store.set('gt.voice', on ? 'on' : 'off')
@@ -68,10 +70,16 @@ async function request<T>(method: string, path: string, body?: unknown, timeoutM
 }
 
 const id = (s: string) => encodeURIComponent(s)
+// Settings and the lens share a WebView, even when several beta testers share the server.
+const glassesClient = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('')
+const glassesTestPath = `/api/glasses-test/${glassesClient}`
 type Reply = { ok: boolean; message: string }
 
 // ── lens ──────────────────────────────────────────────────
-export const getState = (lensOpen = false) => request<ServerState>('GET', lensOpen ? '/api/state?client=lens' : '/api/state')
+export const getState = (lensOpen = false) => request<ServerState>('GET', lensOpen ? `/api/state?client=lens&device=${glassesClient}` : '/api/state')
+export const startGlassesTest = () => request<{ id: string; remainingMs: number }>('POST', glassesTestPath, {})
+export const getGlassesTest = (testId: string) => request<{ acknowledged: boolean }>('GET', `${glassesTestPath}/${id(testId)}`)
+export const acknowledgeGlassesTest = (testId: string) => request<{ acknowledged: boolean }>('POST', `${glassesTestPath}/${id(testId)}`, {})
 /** The only call that trades. A resend with the same key gets the same execution back, never a second order. */
 export const confirm = (proposalId: string, idempotencyKey: string) =>
   request<Reply & { executionId?: string; status?: ExecutionStatus }>('POST', `/api/proposals/${id(proposalId)}/confirm`, { idempotencyKey })
@@ -121,6 +129,7 @@ export const getOpenOrders = () => request<Order[]>('GET', '/api/orders/open')
 export const getSymbols = () => request<string[]>('GET', '/api/symbols')
 /** Newest first; pass the last line's createdAt for the next page. */
 export const getHistory = (before?: number) => request<AlertRecord[]>('GET', `/api/history${before ? `?before=${before}` : ''}`)
+export const getAlertDetails = (alertId: string) => request<AlertDetails>('GET', `/api/history/${id(alertId)}`)
 /** New alerts for the in-app banner; polling it also tells the server the app is open. */
 export const getNotifications = (after: number) => request<AlertRecord[]>('GET', `/api/notifications?after=${after}`)
 export const getAccountSettings = () => request<SettingsPage>('GET', '/api/settings')

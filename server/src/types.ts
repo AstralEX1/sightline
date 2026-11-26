@@ -119,6 +119,8 @@ export interface ServerState extends SessionState {
   voice?: boolean
   /** Which account is behind the numbers, e.g. "Bybit testnet" or "Demo data" */
   source?: string
+  /** Pending, short-lived acknowledgement requested from the lens by Settings. */
+  glassesTestId?: string
 }
 
 /** Bybit V5, USDT linear perpetuals only (docs/shortcuts-architecture.md §11). Writes throw ExchangeRejected on a clear no. */
@@ -194,6 +196,12 @@ export interface AlertRecord {
   /** Set when the action's guards fail for this target: no proposal then */
   skip?: { code: string; reason: string }
   createdAt: number
+}
+
+export interface AlertDetails {
+  proposed?: string
+  outcome?: string
+  receipt?: string
 }
 
 export type ProposalStatus = 'PENDING' | 'DISMISSED' | 'EXPIRED' | 'SUPERSEDED' | 'AUTHORIZED'

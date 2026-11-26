@@ -232,15 +232,23 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .switch__knob { position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); transition: transform .15s ease-out, background .15s; }
 .phone .switch[aria-checked='true'] .switch__knob { background: var(--on-accent); transform: translateX(20px); } /* dark knob: white on the yellow track would vanish */
 
-.phone .hist { display: flex; gap: 12px; padding: 12px 16px; --sep: 56px; }
+.phone .hist { --sep: 56px; }
 .phone .group:has(> .hist) { --sep: 56px; }
+.phone .hist__summary { display: flex; gap: 12px; padding: 12px 16px; cursor: pointer; list-style: none; }
+.phone .hist__summary::-webkit-details-marker { display: none; }
+.phone .hist__summary::after { content: '›'; align-self: center; color: var(--text-2); }
+.phone .hist details[open] .hist__summary::after { transform: rotate(90deg); }
 .phone .hist .chip { margin-top: 1px; }
 .phone .hist__text { flex: 1; min-width: 0; }
 .phone .hist__top { display: flex; justify-content: space-between; gap: 8px; }
 .phone .hist__top > :first-child { min-width: 0; overflow-wrap: anywhere; } /* a long name wraps instead of pushing the time out */
 .phone .hist__time { flex: none; font-size: .8125rem; color: var(--text-2); }
-.phone .hist__sub { font-size: .8125rem; line-height: 1.25rem; color: var(--text-2); overflow-wrap: anywhere; }
-.phone .hist__status { font-size: .8125rem; line-height: 1.25rem; font-weight: 600; }
+.phone .hist__sub { display: block; font-size: .8125rem; line-height: 1.25rem; color: var(--text-2); overflow-wrap: anywhere; }
+.phone .hist__status { display: block; font-size: .8125rem; line-height: 1.25rem; font-weight: 600; }
+.phone .hist__details { padding: 0 16px 12px 56px; font-size: .8125rem; line-height: 1.25rem; overflow-wrap: anywhere; }
+.phone .hist__details dl { display: grid; gap: 6px; margin: 0; }
+.phone .hist__details dt { color: var(--text-2); }
+.phone .hist__details dd { margin: 0; }
 .phone .sentinel { height: 1px; }
 
 .phone .lens { display: flex; gap: 12px; align-items: flex-start; min-height: 9rem; padding: 16px; border-radius: 12px; background: var(--surface); }

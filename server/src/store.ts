@@ -86,6 +86,7 @@ export interface Store {
   alertsAfter(after: number, limit?: number): AlertRecord[]
   saveProposal(p: Proposal): void
   proposal(id: string): Proposal | null
+  latestProposalForAlert(alertId: string): Proposal | null
   /** Status PENDING, oldest first. */
   pendingProposals(): Proposal[]
   /** Upsert by id; a different execution with the same proposalId or idempotencyKey throws. */
@@ -134,6 +135,7 @@ CREATE TABLE IF NOT EXISTS proposals (
   id TEXT PRIMARY KEY, account_id TEXT NOT NULL, shortcut_id TEXT NOT NULL, alert_id TEXT NOT NULL, status TEXT NOT NULL,
   created_at INTEGER NOT NULL, json TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS proposals_status ON proposals (account_id, status, shortcut_id);
+CREATE INDEX IF NOT EXISTS proposals_alert ON proposals (account_id, alert_id);
 CREATE TABLE IF NOT EXISTS executions (
   id TEXT PRIMARY KEY, account_id TEXT NOT NULL, proposal_id TEXT NOT NULL UNIQUE, idempotency_key TEXT NOT NULL,
   status TEXT NOT NULL, created_at INTEGER NOT NULL, json TEXT NOT NULL,
@@ -313,6 +315,8 @@ export function createStore(path: string, clock: () => number = Date.now): Store
       if (prev?.status !== p.status) store.audit('proposal', p.id, p.status)
     }),
     proposal: pId => one<Proposal>('SELECT json FROM proposals WHERE account_id = ? AND id = ?', ACCOUNT, pId),
+    latestProposalForAlert: aId => one<Proposal>(
+      'SELECT json FROM proposals WHERE account_id = ? AND alert_id = ? ORDER BY rowid DESC LIMIT 1', ACCOUNT, aId),
     pendingProposals: () => many<Proposal>(`SELECT json FROM proposals WHERE account_id = ? AND status = 'PENDING' ORDER BY created_at, rowid`, ACCOUNT),
 
     saveExecution: e => store.transaction(() => {

@@ -6,9 +6,9 @@ import { getTextWidth } from '@evenrealities/pretext'
 import type { IconName } from './icons.ts'
 
 /** Which boxes main.ts LAYOUTS puts on the lens (docs/glasses-shortcuts.md §4). */
-export type Layout = 'main' | 'detail' | 'alert' | 'review'
+export type Layout = 'quiet' | 'main' | 'detail' | 'alert' | 'review'
 /** What a tap on opt1 / opt2 does: dismiss the proposal, confirm it, open its Review, close a result, or pick an Open's size or leverage. */
-export type Choice = 'dismiss' | 'confirm' | 'review' | 'close' | 'pick'
+export type Choice = 'dismiss' | 'confirm' | 'review' | 'close' | 'pick' | 'ack-glasses-test'
 
 /**
  * Text for each glasses container. Table columns are separate containers, so rows line up
@@ -62,6 +62,8 @@ export interface View {
   focus?: number
   /** Detail of the focused position is open */
   detail?: boolean
+  quiet?: boolean
+  positionsOpen?: boolean
   /** The server answered 401, so the phone page still needs the token */
   needToken?: boolean
   /** The optional tips on Main and Detail (tap: details, tap, hold: menu, swipe: next position). Double tap and the
@@ -91,13 +93,13 @@ const LIQ_FLAG_PCT = 10
 export const INNER_PX: Record<string, number> = {
   top: 540, name: 140, cur: 140, price: 124, loss: 100, gain: 100, flag: 164, hint: 540,
   who: 380, why: 380, queue: 68, ask: 452, terms: 452, opt1: 540, opt2: 540,
-  table: 236, lev: 268,
+  table: 236, lev: 268, risk: 540,
 }
 /** Brightness of each box unless a state says otherwise (§4). */
 const TONE: Record<string, number> = {
   top: 3, name: 3, cur: 4, price: 3, loss: 4, gain: 2, flag: 4, hint: 2,
   frame: 3, who: 4, why: 3, queue: 2, ask: 4, terms: 3, opt1: 3, opt2: 3,
-  table: 3, lev: 3,
+  table: 3, lev: 3, risk: 3,
 }
 const SPACE_PX = getTextWidth(' ')
 /** As wide as '> ' (15 px), so an unselected choice lines up with the selected one. */
@@ -198,17 +200,36 @@ function top(text: string, now?: number): string {
 
 const pauseLine = (s: ServerState | null, min: number) => (min > 0 ? `Cards paused · ${min} min left${s?.pending ? ` · ${s.pending} waiting` : ''}` : '')
 
+const problemLine = (s: ServerState | null, v: View) =>
+  (v.needToken ? 'Server token missing · enter it on the phone' : '') ||
+  (v.offline ? 'No connection to your server · retrying' : '') || (!s ? 'Connecting…' : '') ||
+  (s?.error ? (s.updatedAt ? `Bybit data stale since ${hhmm(s.updatedAt)} · retrying` : `Bybit: ${s.error}`) : '')
+
+const sourceName = (s: ServerState | null) =>
+  s?.source === 'Demo data' || s?.source === 'Bybit demo' ? 'Bybit Demo' : s?.source || 'Bybit'
+
+function quiet(s: ServerState | null, v: View): Screen {
+  const issue = problemLine(s, v) || (s && !s.updatedAt ? 'Waiting for market data…' : '')
+  const status = issue || v.voice || s?.toast || pauseLine(s, v.pausedMin ?? 0) || `Monitoring · ${sourceName(s)}`
+  const nearest = issue || !s ? undefined : rankPositions(s.positions)[0]
+  const dist = nearest && liqDistancePct(nearest)
+  const risk = nearest && dist !== undefined && Number.isFinite(dist)
+    ? `${name(nearest)} · ${dist.toFixed(dist < 1 ? 2 : 1)}% to liq` : ''
+  return { layout: 'quiet', key: 'quiet', icon: '', choices: [], at: 0, card: null,
+    text: { top: fit(status, INNER_PX.top), risk: risk && alignRight(fit(risk, INNER_PX.risk), INNER_PX.risk),
+      hint: issue ? 'double tap: exit' : 'tap: positions · double tap: exit' },
+    tone: { ...TONE, top: issue || s?.toast ? 4 : TONE.top },
+  }
+}
+
 function main(s: ServerState | null, v: View): Screen {
   const pausedMin = v.pausedMin ?? 0
   const live = s && !v.offline && !v.needToken ? s : null
   const ranked = live ? rankPositions(live.positions) : []
   const n = ranked.length
   const focus = clampFocus(v.focus, n)
-  const problem = v.voice || (v.needToken ? 'Server token missing · enter it on the phone' : '') ||
-    (v.offline ? 'No connection to your server · retrying' : '') || (!s ? 'Connecting…' : '') ||
-    (s?.error ? (s.updatedAt ? `Bybit data stale since ${hhmm(s.updatedAt)} · retrying` : `Bybit: ${s.error}`) : '') ||
-    s?.toast || pauseLine(s, pausedMin)
-  const source = s?.source === 'Demo data' || s?.source === 'Bybit demo' ? 'Bybit Demo' : s?.source || 'Bybit'
+  const problem = v.voice || problemLine(s, v) || s?.toast || pauseLine(s, pausedMin)
+  const source = sourceName(s)
   const head = problem || `${source} · ${n ? `${n} position${n === 1 ? '' : 's'}` : 'no open positions'}`
   const text: Record<string, string> = { top: top(head, v.now), name: '', cur: '', price: '', loss: '', gain: '', flag: '', hint: '' }
   // A pause is a state you chose, not news: it stays at ordinary brightness for its 15 minutes.
@@ -230,7 +251,7 @@ function main(s: ServerState | null, v: View): Screen {
   }
   // Double tap is the only way out, offline too. No "swipe: choose": the `>` and the page counter already show it.
   const tips = v.hints && live
-  text.hint = fit([tips && n ? 'tap: details' : '', 'double tap: exit', tips ? 'tap, hold: menu' : ''].filter(Boolean).join(' · '), INNER_PX.hint)
+  text.hint = fit([tips && n ? 'tap: details' : '', v.quiet ? 'double tap: back' : 'double tap: exit', tips ? 'tap, hold: menu' : ''].filter(Boolean).join(' · '), INNER_PX.hint)
   return { layout: 'main', key: 'main', text, tone, icon: '', choices: [], at: 0, card: null }
 }
 
@@ -266,7 +287,7 @@ function detail(p: Position, at: number, total: number, v: View): Screen {
 
 /** The framed pages: `head` is the text inside the frame, `labels` go in opt1 and opt2 with `>` on one. */
 /** What a tap does on the choice under `>`, said in the hint line. */
-const TAP: Record<Choice, string> = { dismiss: 'tap: dismiss', confirm: 'tap: confirm', review: 'tap: review', close: 'tap: close', pick: 'tap: pick' }
+const TAP: Record<Choice, string> = { dismiss: 'tap: dismiss', confirm: 'tap: confirm', review: 'tap: review', close: 'tap: close', pick: 'tap: pick', 'ack-glasses-test': 'tap: OK' }
 
 function framed(o: { layout: 'alert' | 'review'; key: string; head: Record<string, string>; labels: string[]; choices: Choice[]; icon: IconName; card: Proposal | null; hint: (at: number) => string }, v: View): Screen {
   const at = v.cursor?.key === o.key ? Math.min(v.cursor.at, o.labels.length - 1) : 0 // Dismiss first: a stray tap must not trade
@@ -390,18 +411,25 @@ export function screen(s: ServerState | null, v: View = {}): Screen {
     return c.picks ? picker({ ...order, picks: c.picks }, v) : review(live, order, v)
   }
   if (live && c) return alert(live, c, v)
+  if (live?.glassesTestId) return framed({
+    layout: 'alert', key: `glasses-test:${live.glassesTestId}`, card: null, icon: 'bell',
+    head: { who: 'Connection check', why: 'Tap OK to confirm you see this', queue: 'TEST' },
+    labels: ['OK'], choices: ['ack-glasses-test'], hint: () => TAP['ack-glasses-test'],
+  }, { ...v, voice: '' })
   if (live && v.detail) {
     const ranked = rankPositions(live.positions)
     const focus = clampFocus(v.focus, ranked.length)
     const p = ranked[focus]
     if (p) return detail(p, focus, ranked.length, v)
   }
+  if (v.quiet && !v.positionsOpen) return quiet(s, v)
   return main(s, v)
 }
 
 /** The same screen as plain lines, for the phone page. */
 export function previewText(sc: Screen): string {
   const t = sc.text
+  if (sc.layout === 'quiet') return [t.top, t.risk.trim(), t.hint].filter(Boolean).join('\n')
   if (sc.layout === 'detail') {
     return [[sc.title, sc.pnl].filter(Boolean).join('   '), [t.lev, t.table].filter(Boolean).join('   '), '', t.hint].filter((l, i, a) => l || a[i - 1]).join('\n').replace(/\n{3,}/g, '\n\n').trim()
   }
