@@ -121,7 +121,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
   const epochs = new Map(Object.entries(store.epochs()))
   // shortcut: in memory, so a restart between the tap and the fill leaves that one without a receipt; store `before` on the execution if that matters
   const receipts = new Map<string, { before?: Position; epoch?: string; at: number }>()
-  let toasts: string[] = []
+  const toasts: { text: string; alertId?: string }[] = []
   let headSince = 0
   let error: string | null = null
   let updatedAt = 0
@@ -130,11 +130,11 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     while (toasts.length && clock() - headSince >= TOAST_MS) { toasts.shift(); headSince += TOAST_MS }
   }
   /** `first`: the answer to the user's own tap or voice, shown at once ahead of the queue. */
-  const say = (text: string, first = false) => {
+  const say = (text: string, { first = false, alertId }: { first?: boolean; alertId?: string } = {}) => {
     dropShown()
     if (first || !toasts.length) headSince = clock()
-    if (first) toasts.unshift(text)
-    else toasts.push(text)
+    if (first) toasts.unshift({ text, alertId })
+    else toasts.push({ text, alertId })
     if (toasts.length > MAX_TOASTS) toasts.splice(1, 1) // keep the one on screen, drop the oldest waiting
   }
   const ctxNow = (): Ctx => ({ positions, orders, balance, tickers })
@@ -291,7 +291,9 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       return true
     })
     if (!saved) return { alert, proposal: undefined, error: 'Shortcut changed' }
-    if (a.type === 'NOTIFY' && rule.delivery.glasses && store.settings().notifications.glasses) say(`${alert.title} · ${alert.target} · ${alert.reason}`)
+    if (a.type === 'NOTIFY' && rule.delivery.glasses && store.settings().notifications.glasses) {
+      say(`${alert.title} · ${alert.target} · ${alert.reason}`, { alertId: why.simulated ? undefined : alert.id })
+    }
     return { alert, proposal }
   }
 
@@ -449,7 +451,6 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       if (!e || e.status === 'REJECTED' || e.status === 'SIMULATED' || now - r.at > RECEIPT_TTL_MS) { receipts.delete(id); continue }
       const partial = e.status === 'PARTIALLY_FILLED'
       if ((partial ? !!e.receipt : e.status !== 'FILLED' && e.status !== 'APPLIED') || e.updatedAt >= now) continue
-      if (!partial) receipts.delete(id)
       const t = e.terms
       const after = t.type === 'cancel' ? undefined : positions.find(p => p.symbol === t.symbol && p.positionIdx === t.positionIdx)
       // Bybit updates its position timestamp on every fill, so compare the tracked lifecycle instead.
@@ -457,12 +458,20 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
         receipts.delete(id)
         continue
       }
+      if (t.type === 'order') {
+        // Fills and position snapshots arrive independently from Bybit.
+        const expected = (r.before?.size ?? 0) + (t.reduceOnly ? -e.filledQty : e.filledQty)
+        if (Math.abs(expected - (after?.size ?? 0)) >= 0.5e-8 || (after && !r.before && after.side !== t.side)) continue
+      }
       const receipt = receiptLine(t, r.before, after)
+      if (!partial) receipts.delete(id)
       if (!receipt) continue
       store.transaction(() => {
         store.saveExecution({ ...e, receipt })
         const a = store.alert(store.proposal(e.proposalId)?.alertId ?? '')
-        if (a) store.saveAlert({ ...a, status: `${executionLine(e)} · ${receipt}` })
+        if (a && store.latestProposalForAlert(a.id)?.id === e.proposalId) {
+          store.saveAlert({ ...a, status: `${executionLine(e)} · ${receipt}` })
+        }
       })
     }
 
@@ -529,7 +538,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
   }
 
   async function voice(text: string, at?: { symbol: string; positionIdx: number }): Promise<Reply> {
-    const reply = (message: string) => { say(message, true); return { ok: false, message } }
+    const reply = (message: string) => { say(message, { first: true }); return { ok: false, message } }
     if (!normalizePhrase(text)) return reply('Heard nothing')
     const rule = matchShortcut(text, store.listShortcuts().filter(r => r.enabled))
     if (!rule) return reply(`No shortcut for "${text}"`)
@@ -560,7 +569,8 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
         balance,
         card: q[0] ?? null,
         pending: q.length,
-        toast: toasts[0] ?? null,
+        toast: toasts[0]?.text ?? null,
+        toastAlertId: toasts[0]?.alertId,
         error: error ?? (updatedAt && clock() - updatedAt > STALE_MS ? `No fresh data for ${Math.round((clock() - updatedAt) / 1000)}s` : null),
         updatedAt,
         onByPosition,
@@ -590,7 +600,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
           if (s?.version === p.version) store.saveTrigger(key, { ...s, phase: 'armed', lastAlertAt: null, latched: false })
         }
       }
-      say(r.message, true)
+      say(r.message, { first: true })
       return r
     },
 

@@ -107,6 +107,7 @@ export interface SessionState {
   card: Proposal | null
   pending: number
   toast: string | null
+  toastAlertId?: string
   error: string | null
   updatedAt: number
   /** Enabled shortcuts that currently apply to each open position, keyed `symbol:positionIdx` */

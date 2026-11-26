@@ -14,7 +14,7 @@ import {
   type EvenAppBridge,
 } from '@evenrealities/even_hub_sdk'
 import type { Candle, ExecutionStatus, Proposal, ServerState } from '../../server/src/types.ts'
-import { CARD_SETTLE_MS, previewText, screen, rankPositions, clampFocus, type Layout, type Outcome, type Screen } from './view.ts'
+import { CARD_SETTLE_MS, previewText, screen, rankPositions, clampFocus, type Layout, type Outcome, type RenderedAlert, type Screen } from './view.ts'
 import * as api from './api.ts'
 import { png, svg, chartPng, titlePng, type IconName } from './icons.ts'
 import { startPhonePage } from './phone/index.ts'
@@ -230,6 +230,16 @@ function boxText(sc: Screen): Record<string, string> {
   return Object.fromEntries(LAYOUTS[sc.layout].map(b => [b.name, sc.text[b.name] || ' ']))
 }
 
+function reportRenderedAlert(sc: Screen, want: Record<string, string>) {
+  let detail: RenderedAlert | null = null
+  if (sc.card && !sc.card.simulated && sc.choices.length > 1 && shown.opt1 === want.opt1 && shown.opt2 === want.opt2) {
+    detail = { id: sc.card.alertId, actionable: true }
+  } else if (sc.toastAlertId && shown.top === want.top) {
+    detail = { id: sc.toastAlertId, actionable: false }
+  }
+  window.dispatchEvent(new CustomEvent('trade-shortcuts:rendered-alert', { detail }))
+}
+
 /** Tap then long press opens this menu (Even Hub docs, Contextual Menu). Labels stay under 16 characters, verbs first (Even Hub docs). */
 // Each close is a card to confirm, by tap or a spoken yes, like every other trade.
 const menu = (on: Layout) => new MenuContainerProperty({
@@ -362,6 +372,7 @@ async function draw() {
         shownChart = ''
         pageSince = Date.now() // the page just reached the lens, with `>` on Dismiss
         shownChoices = sc.choices.join()
+        if (import.meta.env.TRADE_SHORTCUTS_SANDBOX) reportRenderedAlert(sc, want)
         if (sc.icon) await sendIcon(sc.icon)
         if (sc.title) await sendTitle(sc.title)
         if (sc.pnl) await sendPnl(sc.pnl)
@@ -387,6 +398,7 @@ async function draw() {
       }
       // New choices on the same page ("Sent" turning into OK): they settle like a new page before a tap counts.
       if (sc.choices.join() !== shownChoices && shown.opt1 === want.opt1) { shownChoices = sc.choices.join(); pageSince = Date.now() }
+      if (import.meta.env.TRADE_SHORTCUTS_SANDBOX) reportRenderedAlert(sc, want)
       if (sc.icon && sc.icon !== shownIcon) await sendIcon(sc.icon) // the picture last, so text never waits on it
       if (sc.title && sc.title !== shownTitle) await sendTitle(sc.title)
       if (sc.pnl && sc.pnl !== shownPnl) await sendPnl(sc.pnl)

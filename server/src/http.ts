@@ -78,7 +78,7 @@ export function createServer(d: {
   const { session, store } = d
   let apiKey: { at: number; value: ApiKeyInfo | null; error?: string } | null = null
   const glassesTests = new Map<string, { id: string; expiresAt: number; acknowledged: boolean }>()
-  /** A tile's two lines, When and Do: worded here once, for shortcuts and templates. */
+  /** A tile's When and Do summaries: worded here once, for shortcuts and templates (home shows logo + title). */
   const lines = (r: Draft) => ({ summary: conditionSummary(r), doSummary: actionSummary(r.action) })
   const tile = (r: ReturnType<Store['listShortcuts']>[number]) => ({ ...r, title: r.name ?? ACTION_TITLE[r.action.type], ...lines(r) })
 
@@ -234,7 +234,7 @@ export function createServer(d: {
         const e = p && store.executionByProposal(p.id)
         const details: AlertDetails = {
           proposed: p?.picks ? 'Quantity and leverage awaiting selection' : p?.question.replace(/\?$/, ''),
-          outcome: e ? executionLine(e) : alert.status,
+          outcome: e ? executionLine(e) : p?.status === 'PENDING' && !alert.simulated ? 'Waiting for a tap on Even G2' : alert.status,
           receipt: e?.receipt,
         }
         return send(res, 200, details)

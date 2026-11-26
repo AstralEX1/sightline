@@ -1,6 +1,7 @@
 /** Guided scenes and the free sandbox share the real phone app, G2 bridge and paper market. */
 import './style.css'
-import { CARD_SETTLE_MS } from '../../../app/src/view.ts'
+import { CARD_SETTLE_MS, type RenderedAlert } from '../../../app/src/view.ts'
+import type { AlertRecord } from '../../../server/src/types.ts'
 import { createBackend, type Backend } from './backend.ts'
 import { mountExchange } from './exchange.ts'
 import { createHost, type Gesture } from './host.ts'
@@ -34,6 +35,7 @@ let scene: Scene = 'phone'
 let backend: Backend | undefined
 let playback: AbortController | undefined
 let replayOnReady = false
+let renderedAlert: RenderedAlert | null = null
 const market = new Market()
 
 const lens = new Lens(lensCanvas, () => {
@@ -52,6 +54,11 @@ const sandbox = {
   attach(w: Window, id: number) {
     if (id !== run || !backend) return false
     host.attach(w, () => id === run)
+    w.addEventListener('trade-shortcuts:rendered-alert', event => {
+      const { detail } = event as CustomEvent<RenderedAlert | null>
+      // The simulator commits bridge updates on the parent's next paint.
+      requestAnimationFrame(() => { if (id === run) renderedAlert = detail })
+    })
     return true
   },
   fetch(input: RequestInfo | URL, init?: RequestInit, id = run) {
@@ -107,6 +114,7 @@ async function open(next: Tab, replay = false) {
   if (document.activeElement === restart) panel.focus({ preventScroll: true })
   backend?.stop()
   backend = undefined
+  renderedAlert = null
   chartStatus.hidden = true
   lens.showHints = next.target === null
   lens.setPage({})
@@ -156,7 +164,7 @@ function showPrice(from: number, target: number, fraction: number) {
 }
 
 async function playScenario() {
-  const { target, draft } = tab
+  const { target } = tab
   const server = backend
   if (target === null || !server || play.disabled || scene !== 'phone' || playback) return
   const controller = new AbortController()
@@ -168,6 +176,7 @@ async function playScenario() {
     await server.tick() // establish the reference price before the simulated move
     await delay(600)
     if (signal.aborted) return
+    const startedAt = Date.now()
     const from = market.price
     const falling = target < from
     $('price-start').textContent = `${cash(from)} USDT`
@@ -191,11 +200,15 @@ async function playScenario() {
     if (signal.aborted) return
     await server.tick()
     await delay(reduceMotion.matches ? 900 : 300)
-    const notification = draft.action.type === 'NOTIFY'
-    const expires = performance.now() + (notification ? 5500 : 2800)
-    while (!signal.aborted && performance.now() < expires && !lensReady(notification)) await delay(80)
     if (signal.aborted) return
-    if (lensReady(notification)) renderScene('glasses')
+    const response = await server.fetch('/api/history')
+    if (!response.ok) return
+    const alerts: AlertRecord[] = await response.json()
+    const fired = new Set(alerts.filter(a => a.createdAt >= startedAt && !a.simulated).map(a => a.id))
+    const expires = performance.now() + 5500
+    while (fired.size && !signal.aborted && performance.now() < expires && !lensReady(fired)) await delay(80)
+    if (signal.aborted) return
+    if (lensReady(fired)) renderScene('glasses')
     else chartStatus.hidden = false
   } finally {
     if (playback === controller) playback = undefined
@@ -203,13 +216,9 @@ async function playScenario() {
 }
 
 /** Present actual lens content. Do not synthesize an alert if an edited rule did not fire. */
-function lensReady(notification: boolean) {
-  if (!lens.pagePaintedAt) return false
-  const boxes = lens.page.textObject ?? []
-  const text = (name: string) => boxes.find(box => box.containerName === name)?.content?.trim() ?? ''
-  if (notification) return text('top').includes(' · BTC · price up ')
-  return text('queue') !== 'TEST' && text('opt1').includes('Dismiss') && Boolean(text('opt2'))
-    && performance.now() - lens.pagePaintedAt >= CARD_SETTLE_MS
+function lensReady(fired: ReadonlySet<string>) {
+  return renderedAlert && fired.has(renderedAlert.id) && lens.pagePaintedAt > 0 &&
+    (!renderedAlert.actionable || performance.now() - lens.pagePaintedAt >= CARD_SETTLE_MS)
 }
 
 function press(gesture: Gesture) {

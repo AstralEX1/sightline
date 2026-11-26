@@ -2,27 +2,20 @@
 // Build: npm run build  ->  js/islands.js
 import { createRoot } from 'react-dom/client';
 import { Accordion } from '@base-ui/react/accordion';
-import { TEMPLATES, VOICE_SEEDS } from '../../../server/src/registry.ts';
-import { conditionSummary, actionSummary } from '../../../server/src/proposals.ts';
+import { ACTION_TITLE, TEMPLATES, VOICE_SEEDS } from '../../../server/src/registry.ts';
 import { ACTION_ICON, icon } from '../../../app/src/phone/icons.ts';
-import { targetTag } from '../../../app/src/phone/sentence.ts';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
-/* Shortcut tiles as the phone's Templates grid draws them (app/src/phone/home.ts: When over Do, + badge), worded by the
-   server's own summaries, so a rebuild follows any template change.
+/* Shortcut tiles as the phone's Templates grid draws them (app/src/phone/home.ts: logo + title, + badge).
    data-tpl lists template numbers or voice phrases; "all" is the marquee, doubled for its loop. */
-const half = (cls, glyph, word, value, tag) =>
-  `<span class="${cls}"><span class="tpl-label"><span class="tpl-chip">${icon(glyph)}</span>${word}${tag ? `<span class="tpl-tag">${tag}</span>` : ''}</span><span class="tpl-value">${value}</span></span>`;
-const tile = (d) => {
-  const voice = !d.conditions.items.length;
-  return `<div class="tpl" style="--c:${ACTION_ICON[d.action.type].color}"><span class="tpl-add" aria-hidden="true">${icon('plus', 12)}</span>`
-    + half('tpl-when', voice ? 'mic' : 'when', voice ? 'Say' : 'When', conditionSummary(d))
-    + half('tpl-do', 'do-empty', 'Do', actionSummary(d.action), targetTag(d.scope)) + '</div>';
+const tile = (title, draft) => {
+  const { icon: name, color } = ACTION_ICON[draft.action.type];
+  return `<div class="tpl" style="--c:${color}"><span class="tpl-top"><span class="tpl-glyph">${icon(name, 32)}</span><span class="tpl-add" aria-hidden="true">${icon('plus', 12)}</span></span><span class="tpl-title">${title}</span></div>`;
 };
-const templates = TEMPLATES.map((t) => [t.id.replace('tpl_', ''), tile(t.draft)]);
-const tiles = new Map([...templates, ...VOICE_SEEDS.map((v) => [v.voicePhrase, tile(v)])]);
+const templates = TEMPLATES.map((t) => [t.id.replace('tpl_', ''), tile(t.title, t.draft)]);
+const tiles = new Map([...templates, ...VOICE_SEEDS.map((v) => [v.voicePhrase, tile(ACTION_TITLE[v.action.type], v)])]);
 for (const el of $$('[data-tpl]')) {
   if (el.dataset.tpl === 'all') {
     const group = templates.map(([, html]) => html).join('');

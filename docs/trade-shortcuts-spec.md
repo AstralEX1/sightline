@@ -31,7 +31,7 @@ Overlays (not routes): token menu, bottom sheets (numeric, close amount, target,
 
 ### 3.1 Color
 
-Light mode uses Paper `#F4F4F4`, white cards and Ink `#232323`. Dark mode uses Ink, `#2E2E2E` cards and Paper text. Primary controls use the theme’s neutral colors. The New shortcut button uses a glass surface. Action-specific fills distinguish the When/Do tiles in both themes. The [stylesheet](../app/src/phone/phone.css) defines all semantic colors, contrast preferences and reduced-transparency overrides.
+Light mode uses Paper `#F4F4F4`, white cards and Ink `#232323`. Dark mode uses Ink, `#2E2E2E` cards and Paper text. Primary controls use Bybit orange `#FFB11A` with Ink text. Action-specific fills distinguish the logo-and-title tiles in both themes. The [stylesheet](../app/src/phone/phone.css) defines all semantic colors, contrast preferences and reduced-transparency overrides.
 
 ### 3.2 Typography, controls and motion
 
@@ -39,7 +39,7 @@ The app bundles the Inter variable font and Phosphor icons. Relative type sizes 
 
 ## 4. Components
 
-Home has a History button, a New shortcut button, an account status link, saved tiles and the template library. Each tile has When and Do rows. A custom name can replace the When label, and a target tag identifies a specific market or position. A saved tile has a switch; a template has a plus. The body of a saved tile opens its editor. Tapping a category heading toggles the grid and stores the preference on the device.
+Home has a History button, a New shortcut button, an account status link, saved tiles and the template library. Each tile shows the action logo and a title: a custom name when set, otherwise the action title. A saved tile has a switch; a template has a plus. The body of a saved tile opens its editor. Tapping a category heading toggles the grid and stores the preference on the device.
 
 The editor uses editable tokens in a sentence, an Apply to disclosure, choice menus and bottom sheets. Numeric fields display units and bounds. The When/Do sentence uses menus for comparisons, single-choice sheets for metrics and actions, and a numeric sheet for quantities. Selecting a different metric clears incompatible units. An invalid choice leaves the rule editable and shows the validator’s reason beside the affected field. Sheets with pending edits use Cancel or Done.
 

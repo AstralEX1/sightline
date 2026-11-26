@@ -17,6 +17,6 @@ See the [lens specification](glasses-shortcuts.md) for gestures and screen layou
 
 ## Phone
 
-Each shortcut is a two-row **When / Do** tile. The tile color follows the action. Tapping the tile opens the editor. A separate switch enables or pauses the rule. Templates open as unsaved rules for the user to review and add.
+Each shortcut is a tile with the **action logo and title**. The tile color follows the action. Tapping the tile opens the editor. A separate switch enables or pauses the rule. Templates open as unsaved rules for the user to review and add.
 
-The phone uses Inter, Phosphor icons and a neutral Even palette. The New shortcut button uses a translucent glass surface. [Phone specification](trade-shortcuts-spec.md) · [Stylesheet](../app/src/phone/phone.css) · [Apple Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/)
+The phone uses Inter, Phosphor icons and Bybit orange for primary controls. [Phone specification](trade-shortcuts-spec.md) · [Stylesheet](../app/src/phone/phone.css) · [Apple Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/)

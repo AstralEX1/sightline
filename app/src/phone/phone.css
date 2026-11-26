@@ -6,9 +6,8 @@
   /* Paper page, White cards (iOS grouped style), Ink text, Grey second text (5.4:1 on Paper). */
   --bg: #F4F4F4; --surface: #FFFFFF; --border: rgba(35, 35, 35, .12); --text: #232323; --text-2: #656565;
   --input-bg: rgba(35, 35, 35, .06);
-  --accent: var(--text); --on-accent: var(--bg); --accent-text: var(--text); --token-bg: var(--input-bg); --token-press: rgba(35, 35, 35, .16);
-  --glass-fill: rgba(255, 255, 255, .65); --glass-edge: rgba(35, 35, 35, .12);
-  --glass-highlight: rgba(255, 255, 255, .95); --glass-shadow: rgba(35, 35, 35, .14);
+  /* Bybit orange is a fill only: text on it is Ink (9:1); text that would be orange is plain text, told apart by weight or fill */
+  --accent: #FFB11A; --on-accent: #232323; --accent-text: var(--text); --token-bg: var(--input-bg); --token-press: rgba(35, 35, 35, .16);
   /* red text stays darker than the brand #FF453A, which is 3.3:1 on white and fails AA */
   --error: #C93434; --error-bg: rgba(255, 69, 58, .12); --success: #2E9B57; --chip: rgba(35, 35, 35, .08); --chip-neutral: #8A8F98;
   --scrim: rgba(0, 0, 0, .35); --menu-scrim: rgba(34, 35, 38, .06);
@@ -24,13 +23,11 @@
     --error: #FF453A; --error-bg: rgba(255, 69, 58, .16); --chip: rgba(255, 255, 255, .1);
     --scrim: rgba(0, 0, 0, .55); --menu-scrim: rgba(0, 0, 0, .3);
     --switch-off: rgba(255, 255, 255, .22);
-    --glass-fill: rgba(255, 255, 255, .12); --glass-edge: rgba(255, 255, 255, .24);
-    --glass-highlight: rgba(255, 255, 255, .32); --glass-shadow: rgba(0, 0, 0, .4);
   }
 }
 @media (prefers-contrast: more) {
   :root { --border: var(--text); --text-2: var(--text); }
-  .phone :is(.switch__track, .chip--new) { box-shadow: inset 0 0 0 1px var(--text); } /* a fill alone is under 3:1 on the page */
+  .phone :is(.switch__track, .circle-btn--accent, .chip--new) { box-shadow: inset 0 0 0 1px var(--text); } /* a fill alone is under 3:1 on the page */
 }
 @media (prefers-reduced-transparency: reduce) {
   :root { --scrim: #A3A4A6; --menu-scrim: #EEEFF2; }
@@ -73,20 +70,7 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 
 .phone .circle-btn { position: relative; display: flex; flex: none; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%;
   background: var(--surface); color: var(--text); }
-.phone .circle-btn--glass {
-  border: 1px solid var(--glass-edge);
-  background: radial-gradient(ellipse at 25% 0%, var(--glass-highlight), transparent 68%), var(--glass-fill);
-  box-shadow: inset 0 1px 1px var(--glass-highlight), inset 0 -1px 2px var(--glass-edge), 0 3px 9px var(--glass-shadow);
-  -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%);
-}
-.phone .circle-btn--glass:active { opacity: 1; }
-@media (prefers-reduced-motion: no-preference) {
-  .phone .circle-btn--glass { transition: transform .18s cubic-bezier(.2,.8,.2,1); }
-  .phone .circle-btn--glass:active { transform: scale(.93); }
-}
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
-  .phone .circle-btn--glass { border-color: currentColor; background: var(--surface); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
-}
+.phone .circle-btn--accent { background: var(--accent); color: var(--on-accent); }
 .phone .badge { position: absolute; top: -2px; right: -2px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--error);
   color: #FFFFFF; font-size: .6875rem; line-height: 18px; font-weight: 500; text-align: center; box-shadow: 0 0 0 2px var(--bg); }
 
@@ -120,25 +104,25 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .tpl-group__chev { display: flex; flex: none; color: var(--text-2); transition: transform .2s ease-out; } /* reduced motion: the global rule drops transform, so it snaps */
 .phone .tpl-group__toggle[aria-expanded='true'] .tpl-group__chev { transform: rotate(90deg); }
 
-/* Logo (action glyph) + title. Color follows the action, like Apple Shortcuts. */
-.phone .tile { position: relative; display: flex; flex-direction: column; min-height: 5.5rem; border-radius: 20px; }
+/* Logo (action glyph) + title. Fixed height so every tile in a row matches. */
+.phone .tile { position: relative; display: flex; flex-direction: column; height: 7rem; border-radius: 20px; }
 .phone :is(.tile, .chip) { background: var(--c); }
 .phone .tile { color: #FFFFFF; }
 .phone .chip { color: #FFFFFF; } /* every action glyph is white on its color */
 .phone .tile.is-loading { background: var(--chip); opacity: .4; }
 /* Templates look like your shortcuts (same fill, white glyph); a + takes the switch's place */
 .phone .tile--template { background-color: var(--c); background-image: linear-gradient(rgb(0 0 0 / .16), rgb(0 0 0 / .38) 50px, rgb(0 0 0 / .41)); }
-.phone .tile__body, .phone .tile--template { flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 12px; padding: 16px; border-radius: 20px; }
+.phone .tile__body, .phone .tile--template { flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 12px; min-height: 0; padding: 16px; border-radius: 20px; }
 /* Keep white glyphs and labels readable on every action fill. */
 .phone .tile__body { background: linear-gradient(rgb(0 0 0 / .16), rgb(0 0 0 / .38) 50px, rgb(0 0 0 / .41)); }
 .phone :is(.tile__body, .tile--template) { transition: opacity .2s ease-out, transform .2s ease-out; }
 .phone :is(.tile__body, .tile--template):active { opacity: .85; transform: scale(.97); transition: none; }
-.phone .tile__glyph { display: flex; width: 2rem; height: 2rem; }
+.phone .tile__glyph { display: flex; flex: none; width: 2rem; height: 2rem; }
 .phone .tile__glyph svg { width: 2rem; height: 2rem; }
 .phone .tile__top { display: flex; justify-content: space-between; align-items: flex-start; }
 .phone .tile__badge { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: rgb(255 255 255 / .25); color: #FFFFFF; }
-.phone .tile__title { display: -webkit-box; overflow: hidden; padding-right: 38px; font-size: .9375rem; line-height: 1.1875rem; font-weight: 500; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; } /* names go up to 40 characters with no spaces: two lines, then …; clear of the switch */
-.phone .tile--template .tile__title { padding-right: 0; }
+/* Title at the bottom: 2 lines reserved so one- and two-line names share the same tile height; wrap on spaces, break only if a 40-char name has none. */
+.phone .tile__title { display: -webkit-box; min-height: 2.375rem; overflow: hidden; font-size: .9375rem; line-height: 1.1875rem; font-weight: 500; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: break-word; word-break: break-word; }
 .phone .tile__switch { position: absolute; z-index: 1; top: 4px; right: 4px; display: flex; align-items: center; justify-content: center; width: 50px; height: 44px; }
 .phone .tile__track { position: relative; width: 40px; height: 24px; border-radius: 12px; background: rgb(255 255 255 / .26); }
 .phone .tile__knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #FFFFFF; transition: transform .15s ease-out; }
@@ -352,7 +336,7 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .banner__time { flex: none; align-self: flex-start; font-size: .8125rem; color: var(--text-2); }
 
 /* caption (13) and label-size lines carry no tracking, the body default is -.01em */
-.phone :is(.status-line, .tile__label, .confirm-line, .footnote, .row--note, .marker, .hist__time, .hist__sub, .hist__status, .empty-state__text, .lens__text, .radio-row__detail, .choice-row__sub, .pick-row__sub, .pick-row__detail, .dialog__text, .banner__sub, .banner__where, .banner__time) { letter-spacing: 0; }
+.phone :is(.status-line, .tile__title, .confirm-line, .footnote, .row--note, .marker, .hist__time, .hist__sub, .hist__status, .empty-state__text, .lens__text, .radio-row__detail, .choice-row__sub, .pick-row__sub, .pick-row__detail, .dialog__text, .banner__sub, .banner__where, .banner__time) { letter-spacing: 0; }
 
 /* §3.5: reduced motion turns every move into a short cross-fade. */
 @media (prefers-reduced-motion: reduce) {

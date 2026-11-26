@@ -82,7 +82,9 @@ export function createExecutor(o: { ex: Exchange; store: Store; clock: () => num
       store.saveExecution(next)
       const p = store.proposal(next.proposalId)
       const a = p && store.alert(p.alertId)
-      if (a) store.saveAlert({ ...a, status: executionLine(next) })
+      if (a && store.latestProposalForAlert(a.id)?.id === next.proposalId) {
+        store.saveAlert({ ...a, status: executionLine(next) })
+      }
     })
     return next
   }

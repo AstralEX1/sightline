@@ -33,6 +33,8 @@ export interface Screen {
   at: number
   /** The alert or Review on the lens (not a result): the proposal a tap answers */
   card: Proposal | null
+  /** The alert whose notification is visible in the status line. */
+  toastAlertId?: string
   /** Detail's coin and side, drawn big ("BTC long") */
   title?: string
   /** Detail's PnL, drawn as big as the title ("PNL: +$50") */
@@ -40,6 +42,8 @@ export interface Screen {
   /** Detail's price chart: whose closes to fetch and the position's levels drawn across them (0 = none) */
   chart?: { symbol: string; entry: number; stop: number; tp: number; liq: number }
 }
+
+export type RenderedAlert = { id: string; actionable: boolean }
 
 /** What became of the card the lens answered, or lost before an answer. On the lens until OK or Dismiss. */
 export interface Outcome {
@@ -213,12 +217,14 @@ const sourceName = (s: ServerState | null) =>
 
 function quiet(s: ServerState | null, v: View): Screen {
   const issue = problemLine(s, v) || (s && !s.updatedAt ? 'Waiting for market data…' : '')
-  const status = issue || v.voice || s?.toast || pauseLine(s, v.pausedMin ?? 0) || `Monitoring · ${sourceName(s)}`
+  const override = issue || v.voice
+  const status = override || s?.toast || pauseLine(s, v.pausedMin ?? 0) || `Monitoring · ${sourceName(s)}`
   const nearest = issue || !s ? undefined : rankPositions(s.positions)[0]
   const dist = nearest && liqDistancePct(nearest)
   const risk = nearest && dist !== undefined && Number.isFinite(dist)
     ? `${name(nearest)} · ${dist.toFixed(dist < 1 ? 2 : 1)}% to liq` : ''
   return { layout: 'quiet', key: 'quiet', icon: '', choices: [], at: 0, card: null,
+    toastAlertId: override ? undefined : s?.toastAlertId,
     text: { top: fit(status, INNER_PX.top), risk: risk && alignRight(fit(risk, INNER_PX.risk), INNER_PX.risk),
       hint: issue ? 'double tap: exit' : 'tap: positions · double tap: exit' },
     tone: { ...TONE, top: issue || s?.toast ? 4 : TONE.top },
@@ -231,7 +237,8 @@ function main(s: ServerState | null, v: View): Screen {
   const ranked = live ? rankPositions(live.positions) : []
   const n = ranked.length
   const focus = clampFocus(v.focus, n)
-  const problem = v.voice || problemLine(s, v) || s?.toast || pauseLine(s, pausedMin)
+  const override = v.voice || problemLine(s, v)
+  const problem = override || s?.toast || pauseLine(s, pausedMin)
   const source = sourceName(s)
   const head = problem || `${source} · ${n ? `${n} position${n === 1 ? '' : 's'}` : 'no open positions'}`
   const text: Record<string, string> = { top: top(head, v.now), name: '', cur: '', price: '', loss: '', gain: '', flag: '', hint: '' }
@@ -255,7 +262,7 @@ function main(s: ServerState | null, v: View): Screen {
   // Double tap is the only way out, offline too. No "swipe: choose": the `>` and the page counter already show it.
   const tips = v.hints && live
   text.hint = fit([tips && n ? 'tap: details' : '', v.quiet ? 'double tap: back' : 'double tap: exit', tips ? 'tap, hold: menu' : ''].filter(Boolean).join(' · '), INNER_PX.hint)
-  return { layout: 'main', key: 'main', text, tone, icon: '', choices: [], at: 0, card: null }
+  return { layout: 'main', key: 'main', text, tone, icon: '', choices: [], at: 0, card: null, toastAlertId: override ? undefined : live?.toastAlertId }
 }
 
 /** Signed distance from the mark price to a level, as `−1.9%` / `+3.3%`. */

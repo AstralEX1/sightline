@@ -106,6 +106,27 @@ test('History retrieves proposed terms and recorded partial execution for an exi
   assert.equal((await call('GET', '/history/unknown')).status, 404)
 })
 
+test('History keeps the replacement proposal separate from the rejected execution', async () => {
+  const { call, session, store, ex } = await serve()
+  assert.ok(store.createShortcut({ ...draft(6), enabled: true }).ok)
+  await session.tick()
+  const old = session.state().card!
+  ex.list[0].size = 0.04
+  const rejected = await session.confirm(old.id, 'tap')
+  assert.equal(rejected.execution?.status, 'REJECTED')
+  assert.equal(session.state().card?.supersedes, old.id)
+
+  const path = `/history/${old.alertId}`
+  const alert = store.alert(old.alertId)!
+  assert.equal(alert.status, 'Refreshed · the terms changed')
+  assert.deepEqual((await call('GET', path)).body, {
+    proposed: 'Close 50% · 0.02 BTC', outcome: 'Waiting for a tap on Even G2',
+  })
+  // A server upgrade can find a pending replacement with the old execution's status still on the alert.
+  store.saveAlert({ ...alert, status: rejected.message })
+  assert.equal((await call('GET', path)).body.outcome, 'Waiting for a tap on Even G2')
+})
+
 test('only an authenticated lens heartbeat marks glasses active', async () => {
   const { store, session, call } = await serve({ trackClients: true })
   const made = store.createShortcut({ ...draft(6), action: { type: 'NOTIFY' } })

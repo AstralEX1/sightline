@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { screen } from '../../../app/src/view.ts'
 import { createStore } from '../../../server/src/store.ts'
 import { createSession } from '../../../server/src/session.ts'
 import { Market } from '../src/market.ts'
@@ -34,6 +35,9 @@ for (const tab of TABS) {
         assert.equal(alert.status, 'Shown on Even G2')
         assert.equal(session.state().toast, 'Notify · BTC · price up 10.0%')
         assert.equal(session.state().card, null)
+        assert.equal(screen(session.state()).toastAlertId, alert.id)
+        assert.equal(screen(session.state(), { quiet: true }).toastAlertId, alert.id)
+        assert.equal(screen(session.state(), { voice: 'Microphone open' }).toastAlertId, undefined)
       } else {
         assert.match(alert.status, /Waiting for a tap/)
         assert.equal(session.state().card?.alertId, alert.id)

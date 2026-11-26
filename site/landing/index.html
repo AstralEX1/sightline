@@ -84,19 +84,15 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
 .sl [data-cta] a.duration-500{transition-duration:.5s,.5s,.5s,.5s,.5s,.16s}
 .sl [data-cta] a:active,header a[href="#get"]:active{transform:scale(.97)}
 }
-/* shortcut templates as the phone draws them (app/src/phone/phone.css: action colours, .tile--template); filled by src/islands.jsx */
+/* shortcut templates as the phone draws them (app/src/phone/phone.css: logo + title); filled by src/islands.jsx */
 .sl{--act-stop:#B17DDF;--act-close:#F56472;--act-margin:#228FF7;--act-grow:#4CC961;--act-cancel:#F3AE54;--act-notify:#4BC7DB}
 .sl .tpls{display:grid;grid-template-columns:repeat(2,minmax(0,200px));gap:12px;margin-top:24px}
-.sl .tpl{position:relative;display:flex;flex-direction:column;justify-content:space-between;min-height:143px;padding:16px;border-radius:20px;color:#fff;background-color:var(--c);background-image:linear-gradient(rgb(0 0 0/.16),rgb(0 0 0/.38) 50px,rgb(0 0 0/.41))}
-.sl .tpl-add{position:absolute;top:13px;right:16px;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:rgb(255 255 255/.25)}
-.sl .tpl-when,.sl .tpl-do{display:flex;flex-direction:column;gap:3px}
-.sl .tpl-do{padding-top:11px}
-.sl .tpl-label{display:flex;align-items:center;font-size:12px;line-height:20px;font-weight:600;opacity:.8}
-.sl .tpl-chip{display:grid;place-items:center;flex:none;width:20px;height:20px;margin-right:6px;border-radius:6px;background:rgb(255 255 255/.22)}
-.sl .tpl-chip svg{width:12px;height:12px}
-.sl .tpl-do .tpl-chip svg{width:11px;height:11px}
-.sl .tpl-tag{min-width:0;margin-left:6px;padding:0 6px;border-radius:6px;background:rgb(255 255 255/.22);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.sl .tpl-value{font-size:22px;line-height:27px;font-weight:700;letter-spacing:-.015em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.sl .tpl{position:relative;display:flex;flex-direction:column;justify-content:space-between;height:112px;padding:16px;border-radius:20px;color:#fff;background-color:var(--c);background-image:linear-gradient(rgb(0 0 0/.16),rgb(0 0 0/.38) 50px,rgb(0 0 0/.41))}
+.sl .tpl-top{display:flex;justify-content:space-between;align-items:flex-start}
+.sl .tpl-glyph{display:flex;flex:none;width:32px;height:32px}
+.sl .tpl-glyph svg{width:32px;height:32px}
+.sl .tpl-add{display:grid;place-items:center;flex:none;width:26px;height:26px;border-radius:50%;background:rgb(255 255 255/.25)}
+.sl .tpl-title{display:-webkit-box;min-height:38px;overflow:hidden;font-size:15px;line-height:19px;font-weight:500;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:break-word;word-break:break-word}
 .sl .mq .tpl{flex:none;width:180px}
 /* stats row: 6 cells, 3 columns on desktop, 2 on mobile */
 .sl .nums{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -165,8 +161,8 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
 <section class="pos" id="shortcuts">
   <div class="wrap sc">
     <div class="duo">
-      <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/home.jpg" alt="Shortcuts for liquidation risk, taking profit and voice commands, with on and off switches" width="786" height="1704" loading="lazy"></div></div>
-      <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/templates.jpg" alt="Shortcut templates under Protect, Take profit and Market, shown as When and Do tiles" width="786" height="1704" loading="lazy"></div></div>
+      <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/home.jpg" alt="Shortcut tiles with an action logo and title, such as Close position and Move stop loss, each with an on or off switch" width="390" height="844" loading="lazy"></div></div>
+      <div class="phone"><i class="hw"></i><div class="scr shot"><img src="img/app/templates.jpg" alt="Shortcut templates under Protect, Take profit and Market: action logo, title, and a plus button" width="390" height="844" loading="lazy"></div></div>
     </div>
     <div>
       <span class="kick">Your shortcuts</span>

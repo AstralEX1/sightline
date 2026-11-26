@@ -99,9 +99,9 @@ export const voice = (pcm: Uint8Array) => request<{ heard: string; answer: 'yes'
 
 // ── phone: shortcuts, editor, history, settings ───────────
 export type Catalog = ReturnType<typeof catalog>
-/** A Shortcuts tile: the rule plus its derived title and its When (`summary`) and Do lines. */
+/** A Shortcuts tile: the rule plus its derived title and When/Do summaries (home shows logo + title). */
 export type Tile = ShortcutRule & { title: string; summary: string; doSummary: string }
-/** A template with the same two lines. */
+/** A template with the same title helpers and summaries. */
 export type TemplateTile = Template & Pick<Tile, 'summary' | 'doSummary'>
 export type Preview = { key: string; label: string; values: Record<string, number | null> }
 export type SettingsPage = {

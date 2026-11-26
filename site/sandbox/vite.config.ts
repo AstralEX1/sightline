@@ -8,6 +8,7 @@ const at = (p: string) => fileURLToPath(new URL(p, import.meta.url))
 export default defineConfig({
   root: at('.'),
   base: './',
+  define: { 'import.meta.env.TRADE_SHORTCUTS_SANDBOX': 'true' },
   resolve: {
     alias: {
       'node:http': at('src/shims/http.ts'),

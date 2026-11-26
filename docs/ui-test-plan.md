@@ -21,7 +21,7 @@ Shared server: several testers run at once. Prefix every shortcut you create wit
 
 | ID | Precondition | Do | Expect |
 |---|---|---|---|
-| P01 | 4 own shortcuts, one off | open home | 2-column tiles in creation order, each When over Do; off tile darker, knob left; status line `Bybit · Demo`, `G2` / `G2 off` |
+| P01 | 4 own shortcuts, one off | open home | 2-column equal-height tiles in creation order, each action logo + title; off tile darker, knob left; status line `Bybit · Demo`, `G2` / `G2 off` |
 | P02 | an own shortcut | tap its switch on, off; then make enable fail (incomplete draft) | API call, switch moves; failure springs back + toast / editor with issues; body does not open on switch tap |
 | P03 | | tap tile body | editor of that shortcut |
 | P04 | note the saved shortcuts | open Price crosses a level, go back untouched, reload; then supply a symbol and threshold and tap Add | the first visit creates nothing; the completed rule persists disabled and can be enabled on Home |

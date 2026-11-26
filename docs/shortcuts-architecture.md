@@ -268,7 +268,7 @@ Endpoints, by the screen that calls them. All under `/api`, behind the existing 
 | Screen | Call | Returns or does |
 |---|---|---|
 | Shortcuts | `GET /shortcuts`, `POST /shortcuts/:id/enable`, `/pause` | tiles: derived title (or `name`), When line `summary` ("Liq ≤ 5% or ROI ≤ −20%"), Do line `doSummary` ("Close 50%"), `enabled` |
-| Shortcuts · Templates | `GET /templates` | 12 categorized templates with When/Do summaries. Opening one on the phone is local. The separate create-by-template API can persist an incomplete disabled draft. |
+| Shortcuts · Templates | `GET /templates` | 12 categorized templates with title and When/Do summaries. Opening one on the phone is local. The separate create-by-template API can persist an incomplete disabled draft. |
 | New Shortcut, Editor | `GET /catalog` | condition and action registry, editor words, parameter bounds, the three matrices |
 | Editor | `POST /shortcuts/validate` | `Validation` (§7) plus, for the numeric sheet and Apply to, the targets it matches now ("3 now") and each condition's current value per target ("Now 18.2% on BTCUSDT long") |
 | Editor | `POST /shortcuts`, `PUT /shortcuts/:id`, `DELETE /shortcuts/:id` | save a new version; invalidates outstanding proposals of the old one |
@@ -307,7 +307,7 @@ The symbol picker pages through tradable USDT perpetuals. The account open-order
 
 All numerical values are editable examples, not recommended trading thresholds. Templates instantiate disabled drafts and require complete parameters before activation. Each uses the same registry/engine.
 
-The Templates grid on the Shortcuts screen shows them in this order, grouped by category, as When and Do tiles (phone spec §4). Tapping a category heading folds or expands its tiles (phone spec §5.1). Retired examples used by the engine suite live on as test fixtures (`server/test/removed-templates.ts`) so the engine tests built on them keep their coverage.
+The Templates grid on the Shortcuts screen shows them in this order, grouped by category, as logo-and-title tiles (phone spec §4). Tapping a category heading folds or expands its tiles (phone spec §5.1). Retired examples used by the engine suite live on as test fixtures (`server/test/removed-templates.ts`) so the engine tests built on them keep their coverage.
 
 Numbers fit a 5–10× position: breakeven before taking part, add a quarter more margin at 5% from liquidation, close half at 3%. `#` is the template id (`tpl_<#>`), stable across reorders and removals.
 
