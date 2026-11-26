@@ -472,6 +472,21 @@ function result(o: Outcome, v: View): Screen {
     : framed({ ...rest, layout: 'alert', head: { who: o.card.who, why, queue: '' } }, v)
 }
 
+/**
+ * An unanswered card stays on the lens only when the queue is empty.
+ * A newer card is the alert coming back, so the expired screen must not cover it.
+ */
+export function keepExpired(
+  was: { id: string; expiresAt: number } | null | undefined,
+  next: { id: string } | null | undefined,
+  updatedAt: number,
+  slack: number,
+  hiddenId: string,
+): boolean {
+  if (!was || was.id === hiddenId || next) return false
+  return was.expiresAt <= updatedAt + slack
+}
+
 /** The whole glasses screen. Pure, so it is tested without the SDK. */
 export function screen(s: ServerState | null, v: View = {}): Screen {
   // An alert that cannot be answered (server down, token refused) is not drawn: a tap on it would go nowhere.

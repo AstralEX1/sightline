@@ -54,14 +54,14 @@ const solLong = (size: number) => ({ key: 'pos:SOLUSDT:0:e1', symbol: 'SOLUSDT',
   symbol: 'SOLUSDT', side: 'Buy' as const, size, entryPrice: 100, markPrice: 100, liqPrice: 0, unrealisedPnl: 0, stopLoss: 0,
   takeProfit: 0, positionIM: 10, leverage: 10, isolated: true, positionIdx: 0, openedAt: 0 } })
 
-test('Close says the percent it sends when the qty step rounds it down', () => {
+test('Close keeps the rule percent and notes when the qty step rounds it down', () => {
   const close = (size: number) => resolve({ type: 'CLOSE_POSITION', percent: '50' }, solLong(size), market)
   const even = close(0.004)
   assert.ok(even.ok)
   assert.deepEqual([even.question, even.note], ['Close 50% · 0.002 SOL?', 'market, reduce-only'])
   const odd = close(0.003)
   assert.ok(odd.ok)
-  assert.deepEqual([odd.question, odd.note], ['Close 33% · 0.001 SOL?', 'market, reduce-only · 50% rounds down to 0.001 SOL'])
+  assert.deepEqual([odd.question, odd.note], ['Close 50% · 0.001 SOL?', 'market, reduce-only · 50% rounds down to 0.001 SOL'])
 })
 
 test('Open: a stop past where the margin is gone is skipped, long and short', () => {

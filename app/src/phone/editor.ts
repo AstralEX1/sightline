@@ -427,7 +427,7 @@ function whenCard(m: ReturnType<typeof marks>) {
     lines.push(h('p', {}, h('span', { class: 'chip', html: icon('when', 14, 2.6) }), 'When',
       d.voicePhrase ? h('span', {}, ' you say ', h('em', { class: 'phrase' }, d.voicePhrase)) : null))
   }
-  return h('div', { class: 'card card--when sentence', 'data-shortcut-part': 'condition' }, ...lines,
+  return h('div', { class: 'card card--when sentence' }, ...lines,
     items.length < cat.limits.maxConditions && !s.readOnly
       ? h('button', { class: 'add-btn', type: 'button', 'data-fk': 'add-cond', html: icon('plus-circle', 20, 2), onclick: () => conditionSheet() }, 'Add condition')
       : null,
@@ -437,13 +437,13 @@ function whenCard(m: ReturnType<typeof marks>) {
 function doCard(issues: Issue[]) {
   const a = s.draft.action
   if (!a) {
-    return h('div', { class: 'card card--when sentence', 'data-shortcut-part': 'action' },
+    return h('div', { class: 'card card--when sentence' },
       h('p', {}, h('span', { class: 'chip', html: icon('do-empty', 14, 2.6) }), 'Do'),
       s.readOnly ? null : h('button', { class: 'add-btn', type: 'button', 'data-fk': 'add-action', html: icon('plus-circle', 20, 2), onclick: () => actionSheet('add-action') }, 'Add action'),
       marker(issues))
   }
   const ic = ACTION_ICON[a.type]
-  return h('div', { class: 'card sentence', 'data-shortcut-part': 'action' }, h('div', { class: 'row-line' },
+  return h('div', { class: 'card sentence' }, h('div', { class: 'row-line' },
     h('div', { class: 'row-line__main' },
       h('p', {}, h('span', { class: 'chip', style: `--c: ${ic.color}`, html: icon(ic.icon, 14, 2.4) }),
         h('span', { class: issues.length ? 'word is-error' : 'word' }, 'Do'), ' ', ...sentence(actionParts(a), undefined, issues.length > 0)),

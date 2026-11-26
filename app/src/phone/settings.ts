@@ -16,9 +16,15 @@ const sourceEl = h('span', { id: 'source', class: 'row__value' }, 'Connecting…
 const glassesEl = h('span', { id: 'glasses', class: 'row__value' }, 'Looking for glasses…')
 /** Stored on the phone, not the server: it works offline, and the lens reads it on the next draw. */
 const hintsEl = rowSwitch(api.hintsOn(), 'set-hints', (on, el) => { el.setAttribute('aria-checked', String(on)); api.setHints(on) })
-const voiceEl = rowSwitch(api.voiceAnswersOn(), 'set-voice', (on, el) => { el.setAttribute('aria-checked', String(on)); api.setVoiceAnswers(on) })
+const voiceEl = rowSwitch(api.voiceAnswersOn(), 'set-voice', (on, el) => {
+  if (el.disabled) return
+  el.setAttribute('aria-checked', String(on)); api.setVoiceAnswers(on)
+})
 const quietEl = rowSwitch(api.quietModeOn(), 'set-quiet', (on, el) => { el.setAttribute('aria-checked', String(on)); api.setQuietMode(on) })
 const testStatus = h('p', { class: 'row row--note', role: 'status' }, 'Open Trade Shortcuts in the Even app to test your G2.')
+const VOICE_ON = 'When an alert arrives the mic listens for 5 s. Say yes or no in any language. After yes, a 5 s countdown runs before anything is sent; any tap, swipe or “no” stops it. On the position list or a position, tap and hold, then Speak, and say “close” or “закрой”. A tap on the position screen does the same. The card still has to be confirmed.'
+const VOICE_OFF = 'Spoken answers are off: this server has no transcription. Close still works from the menu and from a tap on the position.'
+const voiceFoot = h('p', { class: 'footnote' }, VOICE_ON)
 const testButton = h('button', { class: 'row--btn is-accent', type: 'button', disabled: true, onclick: () => void testGlasses() }, 'Send test to G2')
 export function enableGlassesTest() {
   testButton.disabled = false
@@ -29,6 +35,13 @@ export const syncHints = () => {
   hintsEl.setAttribute('aria-checked', String(api.hintsOn()))
   voiceEl.setAttribute('aria-checked', String(api.voiceAnswersOn()))
   quietEl.setAttribute('aria-checked', String(api.quietModeOn()))
+}
+
+/** No transcription on this server: the switch stays off and cannot be saved on. */
+function applyVoice(canHear: boolean) {
+  voiceEl.disabled = !canHear
+  voiceEl.setAttribute('aria-checked', String(canHear && api.voiceAnswersOn()))
+  voiceFoot.textContent = canHear ? VOICE_ON : VOICE_OFF
 }
 
 const row = (label: string, value: Node | string, id?: string) =>
@@ -87,7 +100,7 @@ export function buildSettings(el: HTMLElement) {
       h('div', { class: 'row row--switch' }, h('span', { id: 'set-voice' }, 'Answer alerts by voice'), voiceEl)),
     h('p', { class: 'footnote' }, 'Quiet mode shows the status and nearest liquidation risk. Tap on G2 to see the full position list.'),
     h('p', { class: 'footnote' }, 'Tips like “tap: details”. Alerts and trades always say what a tap does, and double tap always shows.'),
-    h('p', { class: 'footnote' }, 'When an alert arrives the mic listens for 5 s. Say yes or no in any language. After yes, a 5 s countdown runs before anything is sent; any tap, swipe or “no” stops it. On the position list or a position, tap and hold, then Speak, and say “close” or “закрой”. A tap on the position screen does the same. The card still has to be confirmed.'),
+    voiceFoot,
     h('h2', { class: 'group-label' }, 'Lens now'),
     h('div', { class: 'lens' }, h('span', { id: 'preview-icon', class: 'lens__icon' }), h('pre', { id: 'preview', class: 'lens__text' })),
     h('p', { class: 'footnote' }, 'What Even G2 shows right now. Every trade is confirmed there; the phone never confirms one.'))
@@ -154,6 +167,7 @@ export async function renderSettings() {
     return
   }
   const b = page.bybit
+  applyVoice(page.voice !== false)
   const up = b.status === 'Connected'
   const key = b.apiKey
   const access = key ? (key.readOnly || !key.trade ? 'Read only' : 'Read + Trade') : b.apiKeyError ? 'Unknown' : '—'
@@ -167,7 +181,9 @@ export async function renderSettings() {
       row('API access', access),
       row('Withdrawals', key?.withdraw ? 'On' : 'Off'),
       row('Live trading', 'Off')),
-    h('p', { class: 'footnote' }, 'Read from your Bybit API key. Change these on Bybit.'),
+    h('p', { class: 'footnote' }, b.source.toLowerCase().includes('bybit')
+      ? 'Read from your Bybit API key. Change these on Bybit.'
+      : 'Paper account. No Bybit key and no live orders.'),
     h('h2', { class: 'group-label' }, 'Even G2'),
     h('div', { class: 'group' }, row('Glasses', glassesEl), h('div', { class: 'row' }, testButton), testStatus),
     h('h2', { class: 'group-label' }, 'Notifications'),

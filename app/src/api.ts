@@ -95,7 +95,7 @@ export const getProposalExecution = (proposalId: string) => request<Execution>('
 /** Glasses menu: raise the seeded "protect all" (`stop`), "lock profits" (`lock`) or "close all" (`close`) shortcut; `position` keeps one. */
 export const command = (kind: Command, position?: { symbol: string; positionIdx: number }) => request<Reply>('POST', '/api/command', { command: kind, position })
 /** The lens's answer to its alert: `answer` is null for silence or anything that is not a plain yes or no. */
-export const voice = (pcm: Uint8Array) => request<{ heard: string; answer: 'yes' | 'no' | null }>('POST', '/api/voice', pcm, VOICE_TIMEOUT_MS)
+export const voice = (pcm: Uint8Array) => request<{ heard: string; answer: 'yes' | 'no' | null; close: { all: boolean; coin?: string } | null }>('POST', '/api/voice', pcm, VOICE_TIMEOUT_MS)
 
 // ── phone: shortcuts, editor, history, settings ───────────
 export type Catalog = ReturnType<typeof catalog>
@@ -107,6 +107,8 @@ export type Preview = { key: string; label: string; values: Record<string, numbe
 export type SettingsPage = {
   settings: Settings
   bybit: { source: string; status: string; apiKey: { readOnly: boolean; trade: boolean; withdraw: boolean } | null; apiKeyError?: string; liveTrading: false }
+  /** False when this server has no transcription. Absent on an older server: leave the voice switch as stored. */
+  voice?: boolean
 }
 
 export const getCatalog = () => request<Catalog>('GET', '/api/catalog')

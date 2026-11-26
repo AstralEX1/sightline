@@ -1,64 +1,41 @@
-/** Guided scenes and the free sandbox share the real phone app, G2 bridge and paper market. */
+/**
+ * The sandbox page. The phone frame runs the real app (app.html: app/src/main.ts unchanged); this page plays the Even
+ * app for it (host.ts, drawing the lens), runs the real server against a simulated exchange (backend.ts, market.ts),
+ * and shows one scenario per tab (scenarios.ts).
+ */
 import './style.css'
-import { CARD_SETTLE_MS, type RenderedAlert } from '../../../app/src/view.ts'
-import type { AlertRecord } from '../../../server/src/types.ts'
+import { CLOSE_SEED, VOICE_SEEDS } from '../../../server/src/registry.ts'
 import { createBackend, type Backend } from './backend.ts'
 import { mountExchange } from './exchange.ts'
 import { createHost, type Gesture } from './host.ts'
 import { Lens } from './lens.ts'
 import { Market } from './market.ts'
-import { mountScenarioTabs } from './scenario-tabs.ts'
-import { openScenarioPosition, scenarioDrafts, TABS, type Tab } from './scenarios.ts'
+import { TABS, type Tab } from './scenarios.ts'
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T
-const phone = $<HTMLIFrameElement>('phone')
-const panel = $('panel')
-const play = $<HTMLButtonElement>('play')
-const restart = $<HTMLButtonElement>('restart')
-const progress = $('progress')
-const chartStatus = $('chart-status')
-const lensCanvas = $<HTMLCanvasElement>('lens')
-const gestures = [...document.querySelectorAll<HTMLButtonElement>('[data-gesture]')]
-const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)')
-const scenes = ['phone', 'chart', 'glasses'] as const
-const sceneNames = ['Phone', 'BTC chart', 'Glasses']
-type Scene = typeof scenes[number]
-const sceneViews = [document.querySelector<HTMLElement>('.phone-col')!, document.querySelector<HTMLElement>('.chart-col')!,
-  document.querySelector<HTMLElement>('.glasses')!]
-const exchangeView = document.querySelector<HTMLElement>('.exchange-col')!
+const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, ...kids: (Node | string)[]) => {
+  const e = Object.assign(document.createElement(tag), props)
+  e.append(...kids)
+  return e
+}
 
-const initialId = location.hash === '#build' ? 'sandbox' : location.hash.slice(1)
-const initialIndex = Math.max(0, TABS.findIndex(t => t.id === initialId))
-let tab = TABS[initialIndex]
-let run = 0
-let scene: Scene = 'phone'
-let backend: Backend | undefined
-let playback: AbortController | undefined
-let replayOnReady = false
-let renderedAlert: RenderedAlert | null = null
-const market = new Market()
-
-const lens = new Lens(lensCanvas, () => {
-  if (!lens.pagePaintedAt) return
+const canvas = $<HTMLCanvasElement>('lens')
+const lens = new Lens(canvas, () => {
   const labels = lens.page.textObject?.filter(box => ['top', 'who', 'why', 'ask', 'terms', 'opt1', 'opt2'].includes(box.containerName))
     .map(box => box.content?.replace(/\s+/g, ' ').trim()).filter(Boolean)
-  const name = labels?.length ? `Even G2 display. ${labels.join('. ')}` : 'Even G2 display'
-  if (lensCanvas.getAttribute('aria-label') !== name) lensCanvas.setAttribute('aria-label', name)
+  const label = labels?.length ? `Even G2 display. ${labels.join('. ')}` : 'Even G2 display'
+  if (canvas.getAttribute('aria-label') !== label) canvas.setAttribute('aria-label', label)
 })
-const host = createHost(lens)
-const exchange = mountExchange($('exchange'), market)
-setInterval(() => market.refresh(), 500)
-setInterval(() => { if (tab.target === null && backend) market.drift() }, 1000)
+const host = createHost(lens, () => say('The glasses would ask to close the app here. The sandbox keeps it open.'))
+const market = new Market()
+let backend: Backend | undefined
+let run = 0
 
+// What app-host.ts finds in the phone frame's parent.
 const sandbox = {
   attach(w: Window, id: number) {
     if (id !== run || !backend) return false
     host.attach(w, () => id === run)
-    w.addEventListener('trade-shortcuts:rendered-alert', event => {
-      const { detail } = event as CustomEvent<RenderedAlert | null>
-      // The simulator commits bridge updates on the parent's next paint.
-      requestAnimationFrame(() => { if (id === run) renderedAlert = detail })
-    })
     return true
   },
   fetch(input: RequestInfo | URL, init?: RequestInit, id = run) {
@@ -68,252 +45,208 @@ const sandbox = {
 }
 ;(window as unknown as { sandbox: typeof sandbox }).sandbox = sandbox
 
+const exchange = mountExchange($('exchange'), market)
+setInterval(() => market.refresh(), 500) // the app's trades change FakeExchange directly: show them
+setInterval(() => { if (backend) market.drift() }, 1000) // time passes: the chart moves on its own
+
+const phone = $<HTMLIFrameElement>('phone')
+const tabsEl = $('tabs')
+const stepsEl = $('steps')
 new ResizeObserver(([entry]) => {
   phone.style.setProperty('--phone-scale', String(entry.contentRect.width / 390))
 }).observe(phone.parentElement!)
 
-$('tabs').append(...TABS.map((t, index) => {
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.id = `tab-${t.id}`
-  button.className = 'nv-button'
-  button.setAttribute('role', 'tab')
-  button.dataset.tab = String(index)
-  button.textContent = t.title
-  return button
-}))
-mountScenarioTabs($('workspace'), initialIndex, index => void open(TABS[index]))
+// ── tabs ──
+let tab = TABS[0]
+/** Where the visitor is: add the shortcut, move the price, answer the alert, done; or the alert ended unanswered. */
+type Phase = 'add' | 'move' | 'answer' | 'executing' | 'done' | 'missed'
+let phase: Phase = 'move'
+let gliding = false
+/** A line under the current step: why it is still there. */
+let note = ''
+/** How the tab's own alert ended, when it ended without the action. */
+let missed = ''
+let status = ''
 
-function renderScene(next: Scene) {
-  scene = next
-  const free = tab.target === null
-  const index = scenes.indexOf(next)
-  panel.dataset.scene = free ? 'free' : next
-  sceneViews.forEach((view, i) => { view.hidden = free ? i === 1 : i > index })
-  exchangeView.hidden = !free
-  for (const button of gestures) if (button.hasAttribute('data-free-control')) button.hidden = !free
-  play.hidden = free || next !== 'phone' || Boolean(playback)
-  play.disabled = true
-  restart.hidden = !free && next === 'phone' && !playback
-  restart.setAttribute('aria-label', free ? 'Reset sandbox' : 'Replay scenario')
-  progress.hidden = free
-  progress.setAttribute('aria-valuenow', String(index + 1))
-  progress.setAttribute('aria-valuetext', sceneNames[index])
-  $('scene-status').textContent = free ? '' : sceneNames[index]
-  for (const [i, bar] of Array.from(progress.children).entries()) bar.toggleAttribute('data-reached', i <= index)
-  spotlight(next, false)
+/** A short line under the glasses window. */
+const noteEl = $('note')
+let noteTimer: ReturnType<typeof setTimeout> | undefined
+function say(text: string) {
+  noteEl.textContent = text
+  clearTimeout(noteTimer)
+  noteTimer = setTimeout(() => { noteEl.textContent = '' }, 4000)
 }
 
-function spotlight(device: Scene, scroll = true) {
-  const free = tab.target === null
-  sceneViews.forEach((view, index) => {
-    const dimmed = !free && !view.hidden && scenes[index] !== device
-    if (dimmed && view.contains(document.activeElement)) panel.focus({ preventScroll: true })
-    view.toggleAttribute('data-dimmed', dimmed)
-    view.inert = dimmed
-  })
-  if (scroll && matchMedia('(max-width: 640px)').matches) {
-    sceneViews[scenes.indexOf(device)].scrollIntoView({ block: 'nearest', behavior: 'instant' })
+const buttons = TABS.map((t, i) => {
+  const b = el('button', { type: 'button', id: `tab-${t.id}`, className: 'tab', role: 'tab' } as Partial<HTMLButtonElement>,
+    el('span', { className: 'tab-n' }, String(i + 1)),
+    el('span', { className: 'tab-t' }, el('b', {}, t.title), el('small', {}, t.sub)))
+  b.setAttribute('aria-controls', 'panel')
+  b.onmousedown = e => e.preventDefault() // a click must not keep focus here: Enter and the arrows belong to the glasses
+  b.onclick = () => void open(t)
+  b.onkeydown = e => {
+    const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+    if (!d) return
+    const next = TABS[(i + d + TABS.length) % TABS.length]
+    void open(next)
+    $(`tab-${next.id}`).focus()
   }
-}
+  return b
+})
+tabsEl.append(...buttons)
 
-/** Switching or replaying discards the previous paper account and reloads the app against a fresh one. */
-async function open(next: Tab, replay = false) {
+/** A tab starts from scratch: a new account, the server, and the app reloaded on the phone. */
+async function open(t: Tab) {
   const id = ++run
-  playback?.abort()
-  playback = undefined
-  replayOnReady = replay
-  tab = next
-  history.replaceState(null, '', `#${next.id}`)
-  if (document.activeElement === restart) panel.focus({ preventScroll: true })
+  tab = t
+  history.replaceState(null, '', `#${t.id}`)
+  for (const b of buttons) {
+    const on = b.id === `tab-${t.id}`
+    b.setAttribute('aria-selected', String(on))
+    b.tabIndex = on ? 0 : -1
+  }
+  $('panel').setAttribute('aria-labelledby', `tab-${t.id}`)
   backend?.stop()
   backend = undefined
-  renderedAlert = null
-  chartStatus.hidden = true
-  lens.showHints = next.target === null
+  gliding = false
+  stepsEl.replaceChildren()
+  say('')
   lens.setPage({})
-  lensCanvas.setAttribute('aria-label', 'Even G2 display')
-  renderScene('phone')
   market.reset()
-  await openScenarioPosition(next, market)
+  await t.before(market)
   if (id !== run) return
-  backend = createBackend(market.ex, scenarioDrafts(next))
+  // the glasses menu's commands (Protect all, Lock profits, Close all) need their shortcuts, as in `npm run demo`
+  backend = createBackend(market.ex, [...(t.on ? [structuredClone(t.template.draft)] : []), ...VOICE_SEEDS, CLOSE_SEED])
+  // during the scenario the price stops 1% short of liquidation: a fast drag cannot skip the alert window
+  const long = market.positions.find(x => x.side === 'Buy')
+  market.floor = long ? long.liqPrice * 1.01 : 0
+  // A new query reloads the app even when only the hash would change; build-your-own opens the template in the editor.
+  phone.src = `app.html?run=${id}${t.on ? '' : `#/shortcut/new?tpl=${t.template.id}`}`
   exchange.start()
-  phone.src = `app.html?run=${id}`
+  phase = t.on ? 'move' : 'add'
+  note = missed = status = ''
+  renderSteps()
 }
 
-restart.onclick = () => void open(tab, tab.target !== null)
-play.onclick = () => void playScenario()
+$('restart').onclick = () => void open(tab)
 
-/** The in-frame app controls the real shortcut. Wait until its enabled tile is present before offering playback. */
-setInterval(() => {
-  if (tab.target === null || scene !== 'phone' || playback || !backend) return
-  const link = activeShortcut()
-  play.disabled = !link
-  if (link && replayOnReady) {
-    replayOnReady = false
-    void playScenario()
-  }
-}, 150)
-
-function activeShortcut() {
-  const frame = phone.contentDocument
-  const current = frame?.URL && new URL(frame.URL).searchParams.get('run') === String(run)
-  if (!current) return null
-  const enabled = frame.querySelector('main[aria-label="Shortcuts"]:not([hidden]) .tile__switch[aria-checked=true]')
-  return enabled?.closest('.tile')?.querySelector<HTMLAnchorElement>('.tile__body') ?? null
-}
-
-const line = document.querySelector<SVGPolylineElement>('#price-line')!
-const clip = document.querySelector<SVGRectElement>('#plot-clip')!
-const change = $('price-change')
-const prices = [0, .021, .031, .024, .114, .18, .163, .33, .48, .44, .62, .78, .74, 1]
-const cash = (price: number) => Math.round(price).toLocaleString('en-US')
-const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
-
-type EditorPart = 'condition' | 'action'
-const editorPart = (part: EditorPart) => phone.contentDocument?.querySelector<HTMLElement>(
-  `main[aria-label="Shortcut"]:not([hidden]) [data-shortcut-part="${part}"]`,
-)
-
-async function flashEditor(part: EditorPart, signal: AbortSignal) {
-  const row = editorPart(part)
-  if (!row || signal.aborted) return
-  spotlight('phone')
-  const view = row.ownerDocument.defaultView
-  const box = row.getBoundingClientRect()
-  if (view && (box.top < 12 || box.bottom > view.innerHeight - 12)) {
-    view.scrollTo({ top: view.scrollY + box.top - 24, behavior: 'instant' })
-  }
-  row.setAttribute('data-fired', '')
-  try { await delay(760) } finally { row.removeAttribute('data-fired') }
-}
-
-async function historyOf(server: Backend): Promise<AlertRecord[]> {
-  const response = await server.fetch('/api/history')
-  return response.ok ? response.json() : []
-}
-
-async function watchAction(server: Backend, id: string, signal: AbortSignal) {
-  while (!signal.aborted) {
-    const alert = (await historyOf(server)).find(item => item.id === id)
-    if (!alert || signal.aborted) return
-    if (/^(Shown on Even G2|Filled|Done)(?:\s|$)/.test(alert.status)) {
-      // The confirmation or notification has reached the simulated account or G2.
-      await delay(650)
-      if (signal.aborted) return
-      await flashEditor('action', signal)
-      if (!signal.aborted) spotlight('glasses')
-      return
+// ── steps under the glasses ──
+function renderSteps() {
+  const order: Phase[] = tab.on ? ['move', 'answer', 'done'] : ['add', 'move', 'answer']
+  // switched off on a tab where it starts on: the first step asks for it back
+  const at = phase === 'done' ? order.length : phase === 'missed' || phase === 'executing' ? order.indexOf('answer')
+    : phase === 'add' && tab.on ? 0 : order.indexOf(phase)
+  stepsEl.replaceChildren(...tab.steps.map((text, i) => {
+    const li = el('li', { className: i < at ? 'done' : i === at ? 'now' : '' }, el('span', { className: 'step-n' }, i < at ? '✓' : String(i + 1)), el('span', {}, text))
+    if (i === at && order[i] === 'move') {
+      const play = el('button', { type: 'button', className: 'play', disabled: gliding }, '▶ Play')
+      play.onclick = () => void playMove(play)
+      li.append(el('span', { className: 'or' }, 'or'), play)
     }
-    if (!/^(Waiting|Sending|Submitted|Partly filled)/.test(alert.status)) return
-    await delay(400)
-  }
+    if (i === at && phase === 'answer') li.append(el('kbd', {}, 'Down'), el('span', { className: 'or' }, 'then'), el('kbd', {}, 'Click'))
+    if (i === at && phase === 'executing') li.append(el('span', { className: 'step-note' }, status))
+    if (i === at && phase === 'add') li.append(el('span', { className: 'or' }, tab.on ? 'Switch the shortcut back on ← on the phone' : '← on the phone'))
+    if (i === at && phase === 'missed') {
+      const again = el('button', { type: 'button', className: 'play' }, '↺ Start over')
+      again.onclick = () => void open(tab)
+      li.className = 'now missed'
+      li.append(el('span', { className: 'step-note' }, `Not done: ${missed}.`), again)
+    }
+    if (i === at && note && phase === 'move') li.append(el('span', { className: 'step-note' }, note))
+    return li
+  }))
+  for (const g of ['down', 'tap']) document.querySelector(`[data-gesture="${g}"]`)?.classList.toggle('hint', phase === 'answer')
 }
 
-function showPrice(from: number, target: number, fraction: number) {
-  const i = fraction * (prices.length - 1)
-  const prior = Math.min(prices.length - 2, Math.floor(i))
-  const offset = prices[prior] + (prices[prior + 1] - prices[prior]) * (i - prior)
-  market.setPrice(from + (target - from) * offset)
-  const pct = (market.price / from - 1) * 100
-  $('chart-price').textContent = cash(market.price)
-  change.textContent = `${pct < 0 ? '−' : '+'}${Math.abs(pct).toFixed(1)}%`
-  change.toggleAttribute('data-falling', pct < 0)
-  clip.setAttribute('width', String(4 + 474 * fraction))
-}
-
-async function playScenario() {
-  const { target } = tab
+async function playMove(button: HTMLButtonElement) {
+  const id = run
   const server = backend
-  const link = activeShortcut()
-  if (target === null || !server || !link || play.disabled || scene !== 'phone' || playback) return
-  const shortcutId = decodeURIComponent(link.hash.slice('#/shortcut/'.length))
-  const controller = new AbortController()
-  const { signal } = controller
-  playback = controller
-  if (document.activeElement === play) panel.focus({ preventScroll: true })
-  renderScene('phone')
-  phone.contentWindow!.location.hash = link.hash
-  try {
-    await server.tick() // establish the reference price before the simulated move
-    const editorDeadline = performance.now() + 3000
-    while (!signal.aborted && !editorPart('condition') && performance.now() < editorDeadline) await delay(50)
-    await delay(650)
-    if (signal.aborted) return
-    const startedAt = Date.now()
-    const from = market.price
-    const falling = target < from
-    $('price-start').textContent = `${cash(from)} USDT`
-    $('price-end').textContent = `${cash(target)} USDT`
-    line.toggleAttribute('data-falling', falling)
-    line.setAttribute('points', prices.map((v, i) => `${3 + 474 * i / (prices.length - 1)},${falling ? 20 + 151 * v : 171 - 151 * v}`).join(' '))
-    showPrice(from, target, 0)
-    renderScene('chart')
-    spotlight('chart')
-    if (reduceMotion.matches) showPrice(from, target, 1)
-    else await new Promise<void>(done => {
-      const startedAt = performance.now()
-      const frame = (now: number) => {
-        if (signal.aborted) return done()
-        const fraction = Math.min(1, (now - startedAt) / 2400)
-        showPrice(from, target, fraction)
-        if (fraction === 1) done()
-        else requestAnimationFrame(frame)
-      }
-      requestAnimationFrame(frame)
-    })
-    if (signal.aborted) return
-    await server.tick()
-    await delay(reduceMotion.matches ? 900 : 300)
-    if (signal.aborted) return
-    const alerts = await historyOf(server)
-    const fired = new Set(alerts.filter(a => a.shortcutId === shortcutId && a.createdAt >= startedAt && !a.simulated).map(a => a.id))
-    const expires = performance.now() + 5500
-    if (fired.size) await flashEditor('condition', signal)
-    while (fired.size && !signal.aborted && performance.now() < expires && !lensReady(fired)) await delay(80)
-    if (signal.aborted) return
-    const alert = lensReady(fired) && renderedAlert
-    if (alert) {
-      renderScene('glasses')
-      spotlight('glasses')
-      await watchAction(server, alert.id, signal)
-    } else {
-      spotlight('chart')
-      chartStatus.hidden = false
+  if (!server || gliding) return
+  gliding = true
+  button.disabled = true
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) market.setPrice(tab.to)
+  else await glide(tab.to, 2600, id)
+  if (id !== run) return
+  await server.tick()
+  await new Promise(r => setTimeout(r, 1200)) // the steps poll catches an alert in this time
+  if (id !== run) return
+  gliding = false
+  // the rule did not fire here (an edited rule, or the position was closed): Play comes back with a reason
+  if (phase === 'move') note = 'It did not fire at this price. Drag the chart further, or Start over.'
+  renderSteps()
+}
+
+/** Eases the price to `to`, one step a frame, so the chart, the server's polls and the lens all see the move. */
+function glide(to: number, ms: number, id: number) {
+  const from = market.price
+  const t0 = performance.now()
+  return new Promise<void>(done => {
+    const frame = (now: number) => {
+      if (id !== run) return done()
+      const k = Math.min(1, (now - t0) / ms)
+      market.setPrice(from + (to - from) * (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2))
+      if (k < 1) requestAnimationFrame(frame)
+      else done()
     }
-  } finally {
-    if (playback === controller) playback = undefined
-  }
+    requestAnimationFrame(frame)
+  })
 }
 
-/** Present actual lens content. Do not synthesize an alert if an edited rule did not fire. */
-function lensReady(fired: ReadonlySet<string>) {
-  return renderedAlert && fired.has(renderedAlert.id) && lens.pagePaintedAt > 0 &&
-    (!renderedAlert.actionable || performance.now() - lens.pagePaintedAt >= CARD_SETTLE_MS)
-}
+/** The steps follow the server: a shortcut exists, an alert is waiting for the glasses, it was answered. */
+setInterval(async () => {
+  const server = backend
+  if (!server) return
+  const id = run
+  try {
+    const get = (path: string) => server.fetch(path).then(r => r.json())
+    type Tile = { id: string; enabled: boolean; voicePhrase?: string }
+    type Alert = { shortcutId: string; status: string; simulated?: boolean }
+    const [shortcuts, alerts] = (await Promise.all([get('/api/shortcuts'), get('/api/history')])) as [Tile[], Alert[]]
+    if (id !== run) return
+    // the tab's own rule: not the menu's voice shortcuts, and not a Test from the editor
+    const own = shortcuts.filter(s => !s.voicePhrase)
+    const alert = alerts.find(a => !a.simulated && own.some(s => s.id === a.shortcutId))
+    // the app saves a new shortcut off: it counts once it is switched on
+    const next: Phase = !own.some(s => s.enabled) && !alert ? 'add'
+      : !alert ? 'move'
+      : /^Waiting/.test(alert.status) ? 'answer'
+      : /^(Sending|Submitted|Partly filled)/.test(alert.status) ? 'executing'
+      : /^(Filled|Done|Shown|Logged)/.test(alert.status) ? 'done'
+      : 'missed' // expired, dismissed, skipped, withdrawn, rejected: nothing happened on the exchange
+    if (next === 'missed') missed = alert!.status.split(' · ')[0].toLowerCase()
+    if (next === 'done' || next === 'missed') market.floor = 0 // the scenario is over: the market is free again
+    const latest = alert?.status ?? ''
+    if (next !== phase || latest !== status) {
+      phase = next
+      status = latest
+      if (next !== 'move') note = ''
+      renderSteps()
+    }
+  } catch { /* the tab is being replaced */ }
+}, 400)
 
-function press(gesture: Gesture) {
-  if (tab.target !== null && scene !== 'glasses') return
-  host.gesture(gesture)
-  const button = gestures.find(button => button.dataset.gesture === gesture)
-  button?.classList.add('pressed')
-  setTimeout(() => button?.classList.remove('pressed'), 160)
+// ── glasses input: buttons, the lens itself, the keyboard ──
+for (const b of document.querySelectorAll<HTMLButtonElement>('[data-gesture]')) {
+  b.onmousedown = e => e.preventDefault() // keep focus off the button, so Enter and the arrows still reach the glasses
+  b.onclick = () => host.gesture(b.dataset.gesture as Gesture)
 }
-for (const button of gestures) {
-  button.onmousedown = event => event.preventDefault()
-  button.onclick = () => press(button.dataset.gesture as Gesture)
+/** A gesture from the keyboard or the lens also flashes its ring button, so the visitor sees what they did. */
+function press(g: Gesture) {
+  host.gesture(g)
+  const b = document.querySelector(`[data-gesture="${g}"]`)
+  b?.classList.add('pressed')
+  setTimeout(() => b?.classList.remove('pressed'), 160)
 }
-lensCanvas.onclick = () => press('tap')
-const keys: Record<string, Gesture> = { ArrowUp: 'up', ArrowDown: 'down', Enter: 'tap', ' ': 'tap', Escape: 'double', Backspace: 'double', m: 'menu' }
-document.addEventListener('keydown', event => {
-  if (tab.target !== null && scene !== 'glasses') return
-  const target = event.target as HTMLElement
-  if (target.closest('input, textarea, select, button, canvas:not(#lens)') || event.metaKey || event.ctrlKey || event.altKey) return
-  const gesture = keys[event.key]
-  if (!gesture || (tab.target !== null && !['up', 'down', 'tap'].includes(gesture))) return
-  event.preventDefault()
-  press(gesture)
+$('lens').onclick = () => press('tap')
+const KEYS: Record<string, Gesture> = { ArrowUp: 'up', ArrowDown: 'down', Enter: 'tap', ' ': 'tap', Escape: 'double', Backspace: 'double', m: 'menu' }
+document.addEventListener('keydown', e => {
+  const t = e.target as HTMLElement
+  if (t.closest('input, textarea, select, button, canvas:not(#lens)') || e.metaKey || e.ctrlKey || e.altKey) return
+  const g = KEYS[e.key]
+  if (!g) return
+  e.preventDefault()
+  press(g)
 })
 
-void open(tab)
+const scenario = location.hash === '#sandbox' ? '#build' : location.hash
+void open(TABS.find(t => `#${t.id}` === scenario) ?? TABS[0])

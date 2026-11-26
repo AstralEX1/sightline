@@ -15,7 +15,7 @@ import {
 } from '@evenrealities/even_hub_sdk'
 import type { Candle, ExecutionStatus, Proposal, ServerState } from '../../server/src/types.ts'
 import type { Command } from '../../server/src/session.ts'
-import { CARD_SETTLE_MS, previewText, screen, rankPositions, clampFocus, type Layout, type Outcome, type RenderedAlert, type Screen } from './view.ts'
+import { CARD_SETTLE_MS, keepExpired, previewText, screen, rankPositions, clampFocus, type Layout, type Outcome, type RenderedAlert, type Screen } from './view.ts'
 import * as api from './api.ts'
 import { png, svg, chartPng, titlePng, type IconName } from './icons.ts'
 import { coin } from '../../server/src/format.ts'
@@ -439,9 +439,13 @@ async function poll(force = false) {
   } finally {
     polling = false
   }
-  // It left the queue unanswered and not for a newer version of itself: its time ran out.
-  if (was && !outcome && state && state.card?.id !== was.id && state.card?.supersedes !== was.id && was.id !== hide &&
-    was.expiresAt <= state.updatedAt + EXPIRY_SLACK_MS) outcome = { card: was, expired: true }
+  // It left the queue unanswered. A newer card is already the return, so it is not covered by Expired.
+  if (!outcome && state && keepExpired(was, state.card, state.updatedAt, EXPIRY_SLACK_MS, hide)) {
+    outcome = { card: was!, expired: true }
+    const expired = outcome
+    setTimeout(() => { if (outcome === expired) void closeOutcome() }, NOTE_MS)
+  }
+  if (outcome?.expired && state?.card) outcome = null
   const o = outcome
   if (!trackingExecution && o && (execId || o.lost) && !settled(o)) {
     trackingExecution = true
@@ -468,13 +472,12 @@ async function poll(force = false) {
 
 // ── voice: the mic opens when an alert arrives; yes starts a countdown, no dismisses ──
 
-async function startListening(ms: number, cardId: string, mode: 'answer' | 'command' = 'answer') {
-  if (!bridge || mic !== 'off' || !canUseVoice() || noVoice()) return
-  if (mode === 'command' && !api.voiceAnswersOn()) return
+async function startListening(ms: number, target: Listen) {
+  if (!bridge || mic !== 'off' || !canUseVoice() || !speakOn()) return
+  if (target.kind === 'close' && !api.voiceAnswersOn()) return
   mic = 'starting'
-  listenMode = mode
+  listening = target
   listenMs = ms
-  listenFor = cardId
   const attempt = ++micAttempt
   audio = []
   const ok = await call(() => bridge!.audioControl(true, AudioInputSource.Glasses)).catch(() => false) // a lost reply must not leave the mic 'starting' for good
@@ -492,6 +495,7 @@ async function startListening(ms: number, cardId: string, mode: 'answer' | 'comm
 
 async function stopListening(message = 'Recording interrupted · try again') {
   micAttempt++
+  listening = null
   if (mic === 'off' || mic === 'stopping') return
   const closing = mic === 'sending' // sendVoice has already queued microphone shutdown
   audio = []
@@ -507,7 +511,7 @@ async function sendVoice() {
   if (mic !== 'on') return
   if (!canUseVoice()) return interruptVoice()
   const attempt = micAttempt
-  const cardId = listenFor
+  const target = listening
   mic = 'sending'
   clearTimeout(listenTimer)
   if (bridge) await call(() => bridge!.audioControl(false)).catch(() => {})
@@ -532,11 +536,9 @@ async function sendVoice() {
     }
   }
   mic = 'off'
-  if (r && canUseVoice()) await onAnswer(cardId, r)
-  else if (listenMode === 'command') {
-    listenMode = 'answer'
-    if (pcm.length < MIN_AUDIO_BYTES) note('Heard nothing · say close') // a failed transcription already left its own note
-  }
+  listening = null
+  if (r && target && canUseVoice()) await onTranscript(target, r)
+  else if (target?.kind === 'close' && pcm.length < MIN_AUDIO_BYTES) note('Heard nothing · say close')
   return poll()
 }
 
@@ -549,51 +551,56 @@ function positionForClose(coinName?: string) {
   return hits.find(p => focused && posKey(p) === posKey(focused)) ?? hits[0]
 }
 
-/** Raises the close card. One position, or every position when `position` is omitted. The card still has to be confirmed. */
+/** Menu and spoken close share this. The card still has to be confirmed. `position` keeps one; omitted means every position. */
 let asking = false
-async function askClose(position?: { symbol: string; positionIdx: number }) {
+async function raiseCommand(kind: Command, position?: { symbol: string; positionIdx: number }) {
   if (asking) return
   asking = true
-  pausedUntil = 0 // you asked for this card: show it
-  note('One moment…', Infinity)
-  await draw()
+  const label = kind === 'close' ? 'Close' : 'Menu'
   try {
-    await api.command('close', position)
+    pausedUntil = 0 // you asked for this card: show it
+    note('One moment…', Infinity)
+    await draw()
+    await api.command(kind, position)
     note('', 0) // the server's toast says what it queued
   } catch (e) {
-    note(`Close: ${(e as Error).message}`)
+    note(`${label}: ${(e as Error).message}`)
   } finally {
     asking = false
   }
   return poll()
 }
 
-/** "close" / "закрой" on the list or a position: the same card as the menu, never an order by itself. */
-function onSpokenClose(heard: string) {
-  listenMode = 'answer'
-  const intent = closeIntent(heard)
+type VoiceReply = Awaited<ReturnType<typeof api.voice>>
+
+/** Speak on the list or a position. `close` came back with the transcript. A sentence is not a close. */
+function onSpokenClose(r: VoiceReply) {
+  const intent = r.close
   if (!intent) {
-    note(heard ? `Heard "${heard}" · say close` : 'Heard nothing · say close')
+    note(r.heard ? `Heard "${r.heard}" · say close` : 'Heard nothing · say close')
     return draw()
   }
-  if (intent.all) return askClose()
+  if (intent.all) return raiseCommand('close')
   const p = positionForClose(intent.coin)
   if (!p) {
     note(intent.coin ? `No ${intent.coin.toUpperCase()} position` : 'No position to close')
     return draw()
   }
-  return askClose(p)
+  return raiseCommand('close', p)
+}
+
+/** One transcript, one target. A card that arrived during Speak still takes a plain yes or no. */
+async function onTranscript(target: Listen, r: VoiceReply) {
+  const open = current()
+  if (target.kind === 'close') {
+    if (open.layout === 'alert' && open.card && r.answer) return onAnswer(open.card.id, r)
+    return onSpokenClose(r)
+  }
+  return onAnswer(target.id, r)
 }
 
 /** A spoken answer, for the alert the mic opened for; a gesture since then already answered it. */
-async function onAnswer(cardId: string, r: { heard: string; answer: 'yes' | 'no' | null }) {
-  if (listenMode === 'command') {
-    listenMode = 'answer'
-    const open = current()
-    // A card that arrived while the mic was open still takes a plain yes or no. Anything else is a close phrase.
-    if (open.layout === 'alert' && open.card && r.answer) cardId = open.card.id
-    else return onSpokenClose(r.heard)
-  }
+async function onAnswer(cardId: string, r: VoiceReply) {
   if (countdown) return r.answer === 'no' ? stopCountdown() : undefined // a yes while counting changes nothing
   const sc = current()
   if (sc.layout !== 'alert' || sc.card?.id !== cardId) return
@@ -615,7 +622,7 @@ function startCountdown(card: Proposal) {
     clearInterval(countdownTimer)
     void confirmCard(card, micAttempt)
   }, 250)
-  void startListening(COUNTDOWN_LISTEN_MS, card.id)
+  void startListening(COUNTDOWN_LISTEN_MS, { kind: 'card', id: card.id })
   return draw()
 }
 
@@ -642,26 +649,15 @@ function eventTypeOf(envelope?: { eventType?: OsEventTypeList }): OsEventTypeLis
 async function onMenu(id?: number) {
   if (id === MENU_SPEAK) {
     if (!speakOn()) { note('Voice is off'); return draw() }
-    return startListening(LISTEN_MS, '', 'command')
+    return startListening(LISTEN_MS, { kind: 'close' })
   }
   if (id === MENU_CLOSE || id === MENU_CLOSE_ALL) {
     // The position is read now: the menu was built for the page, and a swipe since may have moved ▶.
     const p = id === MENU_CLOSE ? positionForClose() : undefined
     if (id === MENU_CLOSE && !p) { note('No position to close'); return draw() }
-    return askClose(p)
+    return raiseCommand('close', p)
   }
-  if (id === MENU_PROTECT || id === MENU_LOCK) {
-    pausedUntil = 0 // you asked for these alerts: show them
-    note('One moment…', Infinity)
-    await draw()
-    try {
-      await api.command(id === MENU_PROTECT ? 'stop' : 'lock')
-      note('', 0) // the server's toast says what it queued
-    } catch (e) {
-      note(`Menu: ${(e as Error).message}`)
-    }
-    return poll()
-  }
+  if (id === MENU_PROTECT || id === MENU_LOCK) return raiseCommand(id === MENU_PROTECT ? 'stop' : 'lock')
   if (id === MENU_PAUSE) pausedUntil = pausedMin() > 0 ? 0 : Date.now() + PAUSE_MS
   return draw()
 }
@@ -713,7 +709,11 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
   }
   const gesture = [OsEventTypeList.CLICK_EVENT, OsEventTypeList.DOUBLE_CLICK_EVENT, OsEventTypeList.SCROLL_TOP_EVENT, OsEventTypeList.SCROLL_BOTTOM_EVENT].some(is)
   if (gesture && countdown) return stopCountdown() // any gesture stops a spoken yes, and does nothing else
-  if (gesture) void stopListening('') // the hand answers instead of the voice
+  if (gesture) {
+    const closeListen = listening?.kind === 'close' && mic !== 'off'
+    void stopListening('') // on a card, the hand still answers. Speak only cancels the mic.
+    if (closeListen) return
+  }
   const swipe = is(OsEventTypeList.SCROLL_TOP_EVENT) ? 0 : is(OsEventTypeList.SCROLL_BOTTOM_EVENT) ? 1 : null
   const sc = current()
   if (sc.layout === 'main' || sc.layout === 'quiet') {
@@ -747,7 +747,7 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
     if (swipe !== null) return moveFocus(swipe ? 1 : -1)
     if (is(OsEventTypeList.CLICK_EVENT)) {
       const p = positionForClose()
-      if (p) return askClose(p) // the card starts on Dismiss; this tap does not send the order
+      if (p) return raiseCommand('close', p) // the card starts on Dismiss; this tap does not send the order
     }
     return
   }
@@ -905,12 +905,13 @@ async function startGlasses() {
     page = pageKey(sc)
     pageSince = Date.now()
     if (sc.icon) await sendIcon(sc.icon)
+    enableGlassesTest() // only this WebView is on the glasses; a plain browser must not send the test there
   }
-  else page = '-' // no reply, or the host refused: every draw tries a rebuild until one lands
-  $('glasses').textContent = result === 0 ? 'Glasses connected' : result === null ? 'Glasses not answering' : `Glasses not connected (code ${result})` // a plain browser lands here too
+  // A refused host (a normal browser has no Flutter handler) stays quiet. page '' makes draw skip the bridge,
+  // so it does not rebuild once a second for the rest of the session.
+  $('glasses').textContent = result === 0 ? 'Glasses connected' : result === null ? 'Glasses not answering' : `Glasses not connected (code ${result})`
   api.countLaunch() // after the start-up page and its images: a storage write next to them can drop the link
   bridge.onEvenHubEvent(e => void onEvent(e))
-  enableGlassesTest()
   const status = (await call(() => b.getDeviceInfo()).catch(() => null))?.status
   if (status) wear.update(status)
   bridge.onDeviceStatusChanged(s => {

@@ -2,8 +2,6 @@
  * Runs inside the phone frame, before the app: it is the frame's Even app WebView. The bridge and the server live in
  * the parent page (page.ts); the app itself, app/src/main.ts, is imported unchanged.
  */
-import './editor-spotlight.css'
-
 type Sandbox = { attach(w: Window, run: number): boolean; fetch(input: RequestInfo | URL, init: RequestInit | undefined, run: number): Promise<Response> }
 
 const sandbox = (parent as unknown as { sandbox?: Sandbox }).sandbox

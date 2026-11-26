@@ -152,6 +152,7 @@ test('shortcuts: create, list as tiles, edit with the version, pause, enable, de
   const tiles = (await call('GET', '/shortcuts')).body
   assert.deepEqual(tiles.map((t: { summary: string; doSummary: string }) => [t.summary, t.doSummary]),
     [['“protect all”', 'SL at −2%'], ['“lock profits”', 'SL to entry'], ['Liq ≤ 3%', 'Close 50%']])
+  assert.deepEqual(tiles.filter((t: { voicePhrase?: string }) => t.voicePhrase).map((t: { title: string }) => t.title), ['Protect all', 'Lock profits'])
 
   const id = made.body.id
   const edit = { ...draft(6), name: 'Half off near liq', version: 1 }
@@ -282,6 +283,7 @@ test('settings: Bybit status and key rights, validated save', async () => {
   const s = (await call('GET', '/settings')).body
   assert.deepEqual(s.bybit.apiKey, { readOnly: false, trade: true, withdraw: false })
   assert.equal(s.bybit.liveTrading, false)
+  assert.equal(s.voice, false)
   assert.deepEqual(s.settings.notifications, { glasses: true, app: true })
   assert.equal((await call('PUT', '/settings', { ...s.settings, cooldownSec: 5 })).status, 400)
   assert.equal((await call('PUT', '/settings', { ...s.settings, cooldownSec: 90 })).body.cooldownSec, 90)
@@ -300,7 +302,7 @@ test('notifications lists new alerts for the phone app', async () => {
   assert.deepEqual((await call('GET', `/notifications?after=${list[0].createdAt}`)).body, [])
 })
 
-test('voice answers the alert: yes or no in any language, silence never reaches the transcriber', async () => {
+test('voice classifies yes, no, and a close phrase; silence never reaches the transcriber', async () => {
   let calls = 0
   let said = 'Да.'
   const { call } = await serve({
@@ -311,11 +313,15 @@ test('voice answers the alert: yes or no in any language, silence never reaches 
     },
   })
   const speech = (n: number) => { const b = new Uint8Array(n); for (let i = 1; i < n; i += 2) b[i] = i % 4 === 1 ? 0x10 : 0xf0; return b } // ±4096
-  assert.deepEqual((await call('POST', '/voice', speech(16_000))).body, { heard: 'Да.', answer: 'yes' })
+  assert.deepEqual((await call('POST', '/voice', speech(16_000))).body, { heard: 'Да.', answer: 'yes', close: null })
   said = 'No, cancel it'
-  assert.deepEqual((await call('POST', '/voice', speech(16_000))).body, { heard: 'No, cancel it', answer: null })
-  assert.deepEqual((await call('POST', '/voice', new Uint8Array(16_000))).body, { heard: '', answer: null })
-  assert.equal(calls, 2) // the silent one was never sent
+  assert.deepEqual((await call('POST', '/voice', speech(16_000))).body, { heard: 'No, cancel it', answer: null, close: null })
+  said = 'Close.'
+  assert.deepEqual((await call('POST', '/voice', speech(16_000))).body, { heard: 'Close.', answer: null, close: { all: false } })
+  said = 'закрой все'
+  assert.deepEqual((await call('POST', '/voice', speech(16_000))).body, { heard: 'закрой все', answer: null, close: { all: true } })
+  assert.deepEqual((await call('POST', '/voice', new Uint8Array(16_000))).body, { heard: '', answer: null, close: null })
+  assert.equal(calls, 4) // the silent one was never sent
   const failed = await call('POST', '/voice', speech(32_000))
   assert.equal(failed.status, 502)
   assert.match(failed.body.error, /quota/)

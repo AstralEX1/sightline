@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { screen, tipsShown, lensWhy, previewText, alignRight, fit, iconOf, pnlText, sizeText, INNER_PX, type Outcome, type Screen, type View } from '../src/view.ts'
+import { keepExpired, screen, tipsShown, lensWhy, previewText, alignRight, fit, iconOf, pnlText, sizeText, INNER_PX, type Outcome, type Screen, type View } from '../src/view.ts'
 import { getTextWidth } from '@evenrealities/pretext'
 import type { Execution, ExecutionStatus, Position, Proposal, ServerState, Terms } from '../../server/src/types.ts'
 import type { ConditionType } from '../../server/src/registry.ts'
@@ -458,6 +458,14 @@ test('result: the exchange status, then OK', () => {
   }
   const rejected = result({ execution: exec('REJECTED', { message: 'below 0.001 BTC' }) })
   assert.deepEqual([rejected.layout, rejected.text.terms, rejected.text.opt2], ['review', 'Rejected by Bybit\nbelow 0.001 BTC', '']) // the reason in the frame
+})
+
+test('an expired card stays up only while nothing newer is waiting', () => {
+  const was = { id: 'old', expiresAt: 1_000 }
+  assert.equal(keepExpired(was, null, 1_000, 0, ''), true)
+  assert.equal(keepExpired(was, { id: 'new' }, 1_000, 0, ''), false)
+  assert.equal(keepExpired(was, null, 1_000, 0, 'old'), false)
+  assert.equal(keepExpired(was, null, 999, 0, ''), false)
 })
 
 test('result: Expired, nothing sent, and Dismiss is the only choice', () => {

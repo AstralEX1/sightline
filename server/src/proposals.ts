@@ -97,10 +97,11 @@ export function resolve(action: Action, t: TargetRef, m: Market, authorized?: Te
       // never split into several orders, never qty "0" with closeOnTrigger (§6)
       if (Number(qty) > maxMktOrderQty) return skip('above_max', `more than ${maxMktOrderQty} ${name} in one market order`)
       const terms: Terms = { type: 'order', symbol: t.symbol, side: p.side === 'Buy' ? 'Sell' : 'Buy', qty, positionIdx: p.positionIdx, reduceOnly: true, orderLinkId: linkId }
-      // Rounded down to qtyStep the qty can be less than asked (50% of 0.003 BTC is 0.001): say the percent that is sent
+      // Rounded down to qtyStep the qty can be less than asked (50% of 0.003 is 0.001).
+      // The choice keeps the rule's percent; the note says the smaller quantity that will actually be sent.
       const sent = (Number(qty) / p.size) * 100
       const exact = Math.abs(sent - pct) < 1e-6
-      return { ok: true, terms, question: `Close ${exact ? pct : Math.round(sent)}% · ${qty} ${name}?`, note: exact ? 'market, reduce-only' : `market, reduce-only · ${pct}% rounds down to ${qty} ${name}` }
+      return { ok: true, terms, question: `Close ${pct}% · ${qty} ${name}?`, note: exact ? 'market, reduce-only' : `market, reduce-only · ${pct}% rounds down to ${qty} ${name}` }
     }
     case 'MOVE_SL':
     case 'SET_SL': {

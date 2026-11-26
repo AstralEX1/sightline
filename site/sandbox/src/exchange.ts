@@ -52,6 +52,7 @@ export function mountExchange(root: HTMLElement, m: Market) {
   // ── Charts ──
   const last = el('strong', { class: 'ex-last' })
   const canvas = el('canvas', { class: 'ex-canvas', tabindex: '0', 'aria-label': 'BTC chart. Drag up or down, or use the arrow keys, to move the price.' })
+  const hint = el('div', { class: 'ex-drag' }, '⇕ Drag the price')
   const slot = el('div', { class: 'ex-slot' })
   const ctas = (['Buy', 'Sell'] as const).map(s => {
     const b = el('button', { type: 'button', class: `ex-btn ex-btn-${s.toLowerCase()}` }, s)
@@ -61,7 +62,7 @@ export function mountExchange(root: HTMLElement, m: Market) {
   const charts = el('div', { class: 'ex-view ex-charts' },
     last,
     el('div', { class: 'ex-tf' }, el('b', {}, '1m')),
-    el('div', { class: 'ex-plot' }, canvas),
+    el('div', { class: 'ex-plot' }, canvas, hint),
     slot,
     el('div', { class: 'ex-cta' }, ...ctas))
 
@@ -468,6 +469,7 @@ export function mountExchange(root: HTMLElement, m: Market) {
     drag = { pointerId: e.pointerId, y: e.clientY, price: m.price, perPx: (hi - lo) / (size.h - TIME_H) }
     canvas.setPointerCapture(e.pointerId)
     canvas.classList.add('is-grabbing')
+    hint.hidden = true
   })
   canvas.addEventListener('pointermove', e => {
     if (drag?.pointerId === e.pointerId) m.setPrice(drag.price + (drag.y - e.clientY) * drag.perPx)
@@ -486,6 +488,7 @@ export function mountExchange(root: HTMLElement, m: Market) {
   canvas.addEventListener('keydown', e => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
     e.preventDefault()
+    hint.hidden = true
     m.setPrice(m.price * (e.key === 'ArrowUp' ? 1.002 : 0.998))
   })
   setInterval(paint, 1000) // the candle countdown
@@ -521,6 +524,7 @@ export function mountExchange(root: HTMLElement, m: Market) {
     start() {
       if (drag) release(drag.pointerId)
       show('Charts')
+      hint.hidden = false
       seen = null
       changedAt.clear()
       leverage = 10

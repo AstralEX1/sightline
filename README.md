@@ -30,9 +30,9 @@ Paper trade shown on the Even Hub Simulator. [27-second simulator clip](assets/d
 
 ## Try the paper trade
 
-1. Open the [Liquidation demo](https://trade-shortcuts-pi.vercel.app/sandbox/#liquidation) and press **Play scenario** (▶) beside the phone.
+1. Open the [Liquidation demo](https://trade-shortcuts-pi.vercel.app/sandbox/#liquidation) and press **▶ Play** under the glasses, or drag the BTC chart down.
 2. When the BTC alert appears, use **Down** to select **Close 50%**, then **Click** to confirm.
-3. The lens reports **Closed 0.025 BTC**. Use **Replay scenario** to start with a fresh position.
+3. The lens reports **Closed 0.025 BTC**. Use **Start over** to start with a fresh position.
 
 The sandbox runs with simulated positions and requires only a browser. For the actual phone app and paired glasses, follow the [G2 testing guide](docs/judge-testing.md). The desktop simulator below also shows the trade in phone History.
 

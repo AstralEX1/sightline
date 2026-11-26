@@ -7,7 +7,7 @@ import type { createNotifier } from './notify.ts'
 import { ACTION_TITLE, TEMPLATES, catalog, type Draft } from './registry.ts'
 import { validateShortcut } from './validate.ts'
 import { actionSummary, conditionSummary, executionLine } from './proposals.ts'
-import { answerOf } from './rules.ts'
+import { answerOf, closeIntent } from './rules.ts'
 import { loud } from './stt.ts'
 
 const MAX_BODY = 64 * 1024
@@ -80,7 +80,11 @@ export function createServer(d: {
   const glassesTests = new Map<string, { id: string; expiresAt: number; acknowledged: boolean }>()
   /** A tile's When and Do summaries: worded here once, for shortcuts and templates (home shows logo + title). */
   const lines = (r: Draft) => ({ summary: conditionSummary(r), doSummary: actionSummary(r.action) })
-  const tile = (r: ReturnType<Store['listShortcuts']>[number]) => ({ ...r, title: r.name ?? ACTION_TITLE[r.action.type], ...lines(r) })
+  // A voice command with no custom name is titled by its phrase, so "close all" is not a second "Close position".
+  const phraseTitle = (phrase: string) => phrase.charAt(0).toUpperCase() + phrase.slice(1)
+  const tile = (r: ReturnType<Store['listShortcuts']>[number]) => ({
+    ...r, title: r.name ?? (r.voicePhrase ? phraseTitle(r.voicePhrase) : ACTION_TITLE[r.action.type]), ...lines(r),
+  })
 
   return createHttpServer(async (req, res) => {
     // Any origin: the Even Hub WebView origin varies, and every route needs the token anyway.
@@ -158,15 +162,15 @@ export function createServer(d: {
         if (!d.transcribe) throw new HttpError(503, 'Voice is off: set OPENAI_API_KEY on the server')
         const pcm = await readBody(req, MAX_VOICE)
         if (pcm.length < MIN_VOICE) throw new HttpError(400, 'Too short')
-        if (!loud(pcm)) return send(res, 200, { heard: '', answer: null })
+        if (!loud(pcm)) return send(res, 200, { heard: '', answer: null, close: null })
         let heard: string
         try {
           heard = await d.transcribe(pcm)
         } catch (e) {
           throw new HttpError(502, `Transcription failed: ${(e as Error).message}`)
         }
-        // The lens answers its alert with this; shortcut phrases are off for now (session.voice stays for the menu).
-        return send(res, 200, { heard, answer: answerOf(heard) })
+        // yes/no answers the card. close is a phrase from the position list or a position; the card still has to be confirmed.
+        return send(res, 200, { heard, answer: answerOf(heard), close: closeIntent(heard) })
       }
       if (route === 'POST /api/command') {
         const b = await readJson(req)
@@ -258,6 +262,7 @@ export function createServer(d: {
             apiKeyError: apiKey?.error,
             liveTrading: false, // a server switch, never on: assertTestnet refuses live hosts
           },
+          voice: !!d.transcribe,
         })
       }
       if (route === 'PUT /api/settings') {
