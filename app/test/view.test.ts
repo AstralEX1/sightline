@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { screen, tipsShown, lensWhy, previewText, alignRight, fit, iconOf, pnlText, INNER_PX, type Outcome, type Screen, type View } from '../src/view.ts'
+import { screen, tipsShown, lensWhy, previewText, alignRight, fit, iconOf, pnlText, sizeText, INNER_PX, type Outcome, type Screen, type View } from '../src/view.ts'
 import { getTextWidth } from '@evenrealities/pretext'
 import type { Execution, ExecutionStatus, Position, Proposal, ServerState, Terms } from '../../server/src/types.ts'
 import type { ConditionType } from '../../server/src/registry.ts'
@@ -37,15 +37,21 @@ const exec = (status: ExecutionStatus, o: Partial<Execution> = {}): Execution =>
 
 /** Strip Main's `>` / indent so assertions read the position, not the focus mark. */
 const bare = (s: string) => s.replace(/^(▶ | {5}|> | {3})/, '').trim()
+/** "BTC long      0.05" → the name, then the size. A pager row has no side word, so it stays one cell. */
+const nameAndSize = (s: string): [string, string] => {
+  const m = bare(s).match(/^(.* (?:long|short))(?:\s+(\S+))?$/)
+  return m ? [m[1], m[2] ?? ''] : [bare(s), '']
+}
 /** The table as the eye reads it: one line per row, empty cells left out. The selected name sits in `cur`. */
 const rows = (sc: Screen) => {
   const cols = ['name', 'price', 'loss', 'gain', 'flag'].map(b => sc.text[b].split('\n'))
   const cur = (sc.text.cur ?? '').split('\n')
   cols[0] = Array.from({ length: Math.max(cols[0].length, cur.length) }, (_, i) => cur[i] || cols[0][i] || '')
-  return cols[0].map((_, i) => cols.map((c, j) => {
-    const t = (c[i] ?? '').trim()
-    return j === 0 ? bare(t) : t
-  }).filter(Boolean))
+  return cols[0].map((_, i) => {
+    const [nm, sz] = nameAndSize(cols[0][i] ?? '')
+    const rest = cols.slice(1).map(c => (c[i] ?? '').trim())
+    return [nm, sz, ...rest].filter(Boolean)
+  })
 }
 const lines = (sc: Screen) => Object.entries(sc.text).flatMap(([box, t]) => t.split('\n').map(l => [box, l] as const))
 const alertOf = (c: Partial<Proposal> = {}, s: Partial<ServerState> = {}, v: View = {}) => screen(st({ card: card(c), pending: 1, ...s }), v)
@@ -77,12 +83,18 @@ test('connection check has its own OK and never displaces an actionable alert', 
   assert.equal(screen(st({ glassesTestId }), { offline: true }).layout, 'main')
 })
 
-test('main: header-less rows of position, price, ROI and a flag only near liquidation', () => {
-  assert.deepEqual(rows(screen(st())), [['BTC long', '61,240', '▼ 4.2%', 'liq 5.9%']])
-  const calm = pos({ symbol: 'ETHUSDT', side: 'Sell', markPrice: 3198.4, liqPrice: 4000, unrealisedPnl: 89.28, positionIM: 372 })
-  assert.deepEqual(rows(screen(st({ positions: [calm] }))), [['ETH short', '3,198', '▲ 24.0%']])
-  assert.deepEqual(rows(screen(st({ positions: [pos({ symbol: 'SOLUSDT', markPrice: 182.65, liqPrice: 120, stopLoss: 0, unrealisedPnl: 4.3, positionIM: 140 })] }))),
-    [['SOL long', '182.65', '▲ 3.1%']]) // a missing stop is not trouble
+test('main: header-less rows of position, size, price, ROI and a flag only near liquidation', () => {
+  assert.deepEqual(rows(screen(st())), [['BTC long', '0.05', '61,240', '▼ 4.2%', 'liq 5.9%']])
+  const calm = pos({ symbol: 'ETHUSDT', side: 'Sell', markPrice: 3198.4, liqPrice: 4000, unrealisedPnl: 89.28, positionIM: 372, size: 1.25 })
+  assert.deepEqual(rows(screen(st({ positions: [calm] }))), [['ETH short', '1.25', '3,198', '▲ 24.0%']])
+  assert.deepEqual(rows(screen(st({ positions: [pos({ symbol: 'SOLUSDT', markPrice: 182.65, liqPrice: 120, stopLoss: 0, unrealisedPnl: 4.3, positionIM: 140, size: 12.5 })] }))),
+    [['SOL long', '12.5', '182.65', '▲ 3.1%']]) // a missing stop is not trouble
+  assert.equal(rows(screen(st({ positions: [pos({ size: 81_300_000, symbol: '1000PEPEUSDT', side: 'Sell' })] })))[0][1], '81.3M')
+  assert.equal(rows(screen(st({ positions: [pos({ size: 0.00001234 })] })))[0][1], '0.000012')
+  assert.equal(sizeText(0, 84), '')
+  const two = screen(st({ positions: [pos(), pos({ symbol: 'ETHUSDT', side: 'Sell', size: 12.5, liqPrice: 9000 })] }))
+  const ends = [two.text.cur.split('\n')[0], two.text.name.split('\n')[1]].map(l => getTextWidth(l))
+  assert.ok(Math.abs(ends[0] - ends[1]) < getTextWidth(' '), `sizes share a right edge (${ends.join(', ')})`)
 })
 
 test('main: a loss sits in the bright box, a gain in the quieter one', () => {
@@ -95,7 +107,7 @@ test('main: a loss sits in the bright box, a gain in the quieter one', () => {
 })
 
 test('main: no ROI without initial margin; a position without a stop still flags only liquidation', () => {
-  assert.deepEqual(rows(screen(st({ positions: [pos({ positionIM: 0, stopLoss: 0 })] }))), [['BTC long', '61,240', 'liq 5.9%']])
+  assert.deepEqual(rows(screen(st({ positions: [pos({ positionIM: 0, stopLoss: 0 })] }))), [['BTC long', '0.05', '61,240', 'liq 5.9%']])
 })
 
 test('main: prices and ROI are left-aligned, flags right-aligned within a space', () => {
@@ -191,11 +203,11 @@ test('main: paused, alerts wait and the table stays', () => {
 })
 
 test('main: optional tips go with the switch, double tap always stays', () => {
-  assert.equal(screen(st(), { hints: true }).text.hint, 'tap: details · double tap: exit · tap, hold: menu')
-  assert.equal(screen(st()).text.hint, 'double tap: exit')
-  assert.equal(screen(st({ positions: [] }), { hints: true }).text.hint, 'double tap: exit · tap, hold: menu')
+  assert.equal(screen(st(), { hints: true }).text.hint, 'tap: details · tap, hold: menu · double tap: exit')
+  assert.equal(screen(st()).text.hint, 'tap, hold: menu · double tap: exit')
+  assert.equal(screen(st({ positions: [] }), { hints: true }).text.hint, 'tap, hold: menu · double tap: exit')
   const many = st({ positions: Array.from({ length: 7 }, (_, i) => pos({ symbol: `C${i}USDT` })) })
-  assert.equal(screen(many, { hints: true }).text.hint, 'tap: details · double tap: exit · tap, hold: menu') // `>` shows the swipe
+  assert.equal(screen(many, { hints: true }).text.hint, 'tap: details · tap, hold: menu · double tap: exit') // `>` shows the swipe
   assert.equal(screen(null, { hints: true }).text.hint, 'double tap: exit') // connecting: only the way out
   assert.equal(screen(st(), { offline: true, hints: true }).text.hint, 'double tap: exit')
   assert.equal(screen(st(), { hints: true }).tone.hint, 2)
@@ -209,10 +221,10 @@ test('tips: on for the first launches until the switch is set', () => {
   assert.equal(tipsShown('off', 0), false)
 })
 
-test('detail: swipe tip only with tips on, double tap always', () => {
+test('detail: swipe tip only with tips on; tap close and double tap always', () => {
   const two = st({ positions: [pos(), pos({ symbol: 'ETHUSDT' })] })
-  assert.match(screen(two, { detail: true }).text.hint, /^double tap: back +1\/2$/)
-  assert.match(screen(two, { detail: true, hints: true }).text.hint, /^swipe: next position · double tap: back +1\/2$/)
+  assert.match(screen(two, { detail: true }).text.hint, /^tap: close · double tap: back +1\/2$/)
+  assert.match(screen(two, { detail: true, hints: true }).text.hint, /^swipe: next position · tap: close · double tap: back +1\/2$/)
 })
 
 test('main: no loss meter and no dollars on the lens', () => {
@@ -227,11 +239,11 @@ test('detail: big coin and side, leverage under it, PnL with stop and liq distan
   assert.equal(sc.layout, 'detail')
   assert.equal(sc.key, 'detail') // one key for every position: a swipe updates the text, never rebuilds
   assert.equal(sc.title, 'BTC long')
-  assert.equal(sc.text.lev, '10×')
+  assert.equal(sc.text.lev, '0.05 BTC · 10×')
   assert.equal(sc.pnl, 'PNL: −$13')
   assert.equal(sc.text.table, 'stop −2.7% · liq −5.9%')
   assert.deepEqual(sc.chart, { symbol: 'BTCUSDT', entry: 62000, stop: 59600, tp: 0, liq: 57623 })
-  assert.equal(sc.text.hint, 'double tap: back')
+  assert.equal(sc.text.hint, 'tap: close · double tap: back')
   assert.equal(sc.icon, '')
 })
 
@@ -243,9 +255,14 @@ test('detail: no stop says nothing; place in the queue; swipe hint with several'
   const eth = pos({ symbol: 'ETHUSDT', side: 'Sell', stopLoss: 0, markPrice: 3198, liqPrice: 4000, unrealisedPnl: 89.28, positionIM: 372, leverage: 15 })
   const sc = screen(st({ positions: [pos(), eth] }), { detail: true, focus: 1, hints: true })
   assert.equal(sc.title, 'ETH short')
+  assert.equal(sc.text.lev, '0.05 ETH · 15×')
   assert.equal(sc.text.table, 'liq +25.1%')
-  assert.match(sc.text.hint, /^swipe: next position · double tap: back +2\/2$/)
+  assert.match(sc.text.hint, /^swipe: next position · tap: close · double tap: back +2\/2$/)
   assert.equal(sc.pnl, 'PNL: +$89')
+})
+
+test('detail: a voice note takes the hint line', () => {
+  assert.equal(screen(st(), { detail: true, voice: '● Say close' }).text.hint, '● Say close')
 })
 
 test('detail: an alert still wins over an open Detail', () => {
@@ -502,8 +519,13 @@ test('every line fits its box with long tickers and 6-digit prices', () => {
     for (const [box, l] of lines(sc)) if (box !== 'frame') assert.ok(getTextWidth(l) <= INNER_PX[box], `${box} too wide: ${l} (${getTextWidth(l)} > ${INNER_PX[box]})`)
   }
   // `>` takes a few characters of the name column; the side word is never cut.
-  assert.match(rows(screen(st({ positions: [pepe] })))[0][0], /^1000P… short$/)
+  assert.match(rows(screen(st({ positions: [pepe] })))[0][0], /… short$/) // the side stays; the coin gives up the width the size took
+  assert.equal(rows(screen(st({ positions: [pepe] })))[0][1], '0.05')
   assert.match(rows(screen(st({ positions: [pos({ symbol: '1000000MOGUSDT', side: 'Sell' })] })))[0][0], /… short$/)
+  const wide = screen(st({ positions: [pos({ symbol: '1000PEPEUSDT', side: 'Sell', size: 81_300_000, leverage: 100 })] }), { detail: true })
+  assert.equal(wide.text.lev, '81,300,000 1000PEPE · 100×')
+  const longer = screen(st({ positions: [pos({ symbol: '1000000MOGUSDT', side: 'Sell', size: 81_300_000, leverage: 100 })] }), { detail: true })
+  assert.equal(longer.text.lev, '81,300,000 · 100×') // the coin is already the title; leverage stays
 })
 
 test('every string of spec §5 and §6 fits its box', () => {
@@ -520,7 +542,7 @@ test('every string of spec §5 and §6 fits its box', () => {
 // ── Phone preview ──────────────────────────────────────────
 
 test('phone preview lists the same lines', () => {
-  assert.equal(previewText(screen(st(), { hints: true })), 'Bybit Demo · 1 position\n▶ BTC long  61,240  ▼ 4.2%  liq 5.9%\n\ntap: details · double tap: exit · tap, hold: menu')
+  assert.equal(previewText(screen(st(), { hints: true })), 'Bybit Demo · 1 position\n▶ BTC long               0.05  61,240  ▼ 4.2%  liq 5.9%\n\ntap: details · tap, hold: menu · double tap: exit')
   assert.equal(previewText(alertOf({}, { pending: 2 })), 'BTC long   1/2\n3.2% to liquidation\n\n> Dismiss\n   Close 50% · 0.025 BTC\n\nswipe: choose · tap: dismiss')
   assert.equal(previewText(result({})), 'BTC long\nSent\n\nwaiting for Bybit · double tap: hide')
 })

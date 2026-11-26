@@ -547,8 +547,10 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       if (at && (t.position?.symbol !== at.symbol || t.position.positionIdx !== at.positionIdx)) continue
       if ((await raise(rule, t, { reason: `Voice: ${rule.voicePhrase}`, matched: [], voice: true }, ctxNow())).proposal) n++
     }
-    if (!n) return reply(`Heard "${rule.voicePhrase}" · nothing to change`)
-    return { ok: true, message: `Heard "${rule.voicePhrase}" · ${n} proposal${n > 1 ? 's' : ''}` }
+    // One position uses the close-all rule filtered down: the lens should not say every position is closing.
+    const heard = at && rule.voicePhrase === PHRASE.close ? 'close position' : rule.voicePhrase
+    if (!n) return reply(`Heard "${heard}" · nothing to change`)
+    return { ok: true, message: `Heard "${heard}" · ${n} proposal${n > 1 ? 's' : ''}` }
   }
 
   return {

@@ -17,6 +17,8 @@ import type { Candle, ExecutionStatus, Proposal, ServerState } from '../../serve
 import { CARD_SETTLE_MS, previewText, screen, rankPositions, clampFocus, type Layout, type Outcome, type RenderedAlert, type Screen } from './view.ts'
 import * as api from './api.ts'
 import { png, svg, chartPng, titlePng, type IconName } from './icons.ts'
+import { closeIntent } from '../../server/src/rules.ts'
+import { coin } from '../../server/src/format.ts'
 import { startPhonePage } from './phone/index.ts'
 import { enableGlassesTest } from './phone/settings.ts'
 import { LIFECYCLE, createDedupe, exitStep, type Exit } from './lifecycle.ts'
@@ -96,6 +98,8 @@ let picking = false
 let hide = ''
 let cursor = { key: '', at: 0 }
 let mic: 'off' | 'starting' | 'on' | 'stopping' | 'sending' = 'off'
+/** `command`: the mic was opened from the list or a position, and the phrase asks to close. `answer`: yes or no on a card. */
+let listenMode: 'answer' | 'command' = 'answer'
 let micAttempt = 0
 let voiceInForeground = true
 const canUseVoice = () => voiceInForeground && !document.hidden && !quit
@@ -104,8 +108,9 @@ let listenTimer: ReturnType<typeof setTimeout> | undefined
 let voiceNote = { text: '', until: 0 }
 const note = (text: string, ms = NOTE_MS) => { voiceNote = { text, until: Date.now() + ms } }
 const pausedMin = () => Math.max(0, Math.ceil((pausedUntil - Date.now()) / 60_000))
-/** The server has no speech key: the menu loses Speak (a rebuild sets the menu, so it is part of the page key). */
+/** The server has no speech key, or voice answers are off: the menu loses Speak (a rebuild sets the menu, so it is part of the page key). */
 const noVoice = () => state?.voice === false
+const speakOn = () => !noVoice() && api.voiceAnswersOn()
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 const CALL_MS = 3000 // a BLE reply can get lost; without a cap one lost reply froze the lens for good
 /** A bridge call that does not answer in time counts as failed, so the next draw can try again. */
@@ -141,12 +146,12 @@ const LAYOUTS: Record<Layout, Box[]> = {
   // A header-less table, one box per column so rows line up; losses and gains are separate boxes, so a loss can be brighter.
   main: [
     { name: 'top', x: 16, y: 16, w: 544, h: 32, capture: true },
-    { name: 'name', x: 16, y: 56, w: 144, h: 144 },
-    { name: 'cur', x: 16, y: 56, w: 144, h: 144 }, // the selected row's name, brighter, in the same column
-    { name: 'price', x: 160, y: 56, w: 128, h: 144 },
-    { name: 'loss', x: 288, y: 56, w: 104, h: 144 },
-    { name: 'gain', x: 288, y: 56, w: 104, h: 144 },
-    { name: 'flag', x: 392, y: 56, w: 168, h: 144 },
+    { name: 'name', x: 16, y: 56, w: 232, h: 144 },
+    { name: 'cur', x: 16, y: 56, w: 232, h: 144 }, // the selected row's name and size, brighter, in the same column
+    { name: 'price', x: 248, y: 56, w: 128, h: 144 },
+    { name: 'loss', x: 376, y: 56, w: 104, h: 144 },
+    { name: 'gain', x: 376, y: 56, w: 104, h: 144 },
+    { name: 'flag', x: 480, y: 56, w: 80, h: 144 },
     HINT,
   ],
   // Big coin and side left (TITLE_AT), PnL as big right (PNL_AT) with the stop and liq distances under it, the hour under them (CHART_AT): glasses-shortcuts §4.
@@ -185,7 +190,7 @@ const CHART_MS = 60_000
 const PAD = 2
 const FRAME_COLOR = 11 // brightness 3 of 4 on the border's 0–15 scale, like the text it holds
 const MENU_PAUSE = 1
-// 2 was Speak, hidden with the voice phrases
+const MENU_SPEAK = 2 // list and detail: say "close" to raise that position's card
 const MENU_PROTECT = 3
 const MENU_LOCK = 4
 const MENU_CLOSE = 5 // Detail: the position on the lens
@@ -208,7 +213,7 @@ function voiceText(): string {
     const left = countdown.ends - Date.now()
     return `Sending in ${Math.max(0, Math.ceil(left / 1000))}  ${bar(left, COUNTDOWN_MS)}  tap or say no: stop`
   }
-  if (mic === 'on') return `● Say yes or no  ${bar(listenEnds - Date.now(), listenMs)}`
+  if (mic === 'on') return `● ${listenMode === 'command' ? 'Say close' : 'Say yes or no'}  ${bar(listenEnds - Date.now(), listenMs)}`
   return Date.now() < voiceNote.until ? voiceNote.text : ''
 }
 
@@ -225,7 +230,7 @@ const current = () => screen(state, {
   quiet: api.quietModeOn(), positionsOpen,
 })
 /** A new key needs a rebuild: another layout or card, and a rebuild is the only way to set the menu. */
-const pageKey = (sc: Screen) => `${sc.layout}:${sc.key}:${pausedMin() > 0 ? 'paused' : ''}${noVoice() ? ':novoice' : ''}`
+const pageKey = (sc: Screen) => `${sc.layout}:${sc.key}:${pausedMin() > 0 ? 'paused' : ''}${speakOn() ? '' : ':novoice'}`
 
 /** Container name → content. A blank is ' ': an empty string is not a safe update. */
 function boxText(sc: Screen): Record<string, string> {
@@ -243,15 +248,15 @@ function reportRenderedAlert(sc: Screen, want: Record<string, string>) {
 }
 
 /** Tap then long press opens this menu (Even Hub docs, Contextual Menu). Labels stay under 16 characters, verbs first (Even Hub docs). */
-// Each close is a card to confirm, by tap or a spoken yes, like every other trade.
+// Each close is a card to confirm, by tap or a spoken yes, like every other trade. Nothing here sends an order.
 const menu = (on: Layout) => new MenuContainerProperty({
   menuItems: [
-    ...(on === 'detail' ? [new MenuItemProperty({ itemID: MENU_CLOSE, itemName: 'Close position' })] : []),
+    ...(on === 'detail' || on === 'main' ? [new MenuItemProperty({ itemID: MENU_CLOSE, itemName: 'Close position' })] : []),
+    ...(speakOn() && (on === 'main' || on === 'detail') ? [new MenuItemProperty({ itemID: MENU_SPEAK, itemName: 'Speak' })] : []),
     new MenuItemProperty({ itemID: MENU_PROTECT, itemName: 'Protect all' }),
     new MenuItemProperty({ itemID: MENU_LOCK, itemName: 'Lock profits' }),
     ...(on === 'main' ? [new MenuItemProperty({ itemID: MENU_CLOSE_ALL, itemName: 'Close all' })] : []),
     new MenuItemProperty({ itemID: MENU_PAUSE, itemName: pausedMin() > 0 ? 'Resume cards' : 'Pause 15 min' }),
-    // shortcut: Speak (voice phrases) is hidden while voice only answers alerts; add it back with the phrases
   ],
 })
 
@@ -463,9 +468,11 @@ async function poll(force = false) {
 
 // ── voice: the mic opens when an alert arrives; yes starts a countdown, no dismisses ──
 
-async function startListening(ms: number, cardId: string) {
+async function startListening(ms: number, cardId: string, mode: 'answer' | 'command' = 'answer') {
   if (!bridge || mic !== 'off' || !canUseVoice() || noVoice()) return
+  if (mode === 'command' && !api.voiceAnswersOn()) return
   mic = 'starting'
+  listenMode = mode
   listenMs = ms
   listenFor = cardId
   const attempt = ++micAttempt
@@ -525,12 +532,69 @@ async function sendVoice() {
     }
   }
   mic = 'off'
-  if (r && canUseVoice()) await onAnswer(cardId, r)
+  if (!canUseVoice()) return poll()
+  if (r) await onAnswer(cardId, r)
+  else if (listenMode === 'command') {
+    listenMode = 'answer'
+    if (pcm.length < MIN_AUDIO_BYTES) note('Heard nothing · say close') // a failed transcription already left its own note
+  }
   return poll()
+}
+
+/** The position under ▶, or the one named in "close btc" when several share a coin. */
+function positionForClose(coinName?: string) {
+  const ranked = state ? rankPositions(state.positions) : []
+  const focused = ranked[focusIndex()]
+  if (!coinName) return focused
+  const hits = ranked.filter(p => coin(p.symbol).toLowerCase() === coinName)
+  return hits.find(p => focused && posKey(p) === posKey(focused)) ?? hits[0]
+}
+
+/** Raises the close card. One position, or every position when `position` is omitted. The card still has to be confirmed. */
+let asking = false
+async function askClose(position?: { symbol: string; positionIdx: number }) {
+  if (asking) return
+  asking = true
+  pausedUntil = 0 // you asked for this card: show it
+  note('One moment…', Infinity)
+  await draw()
+  try {
+    await api.command('close', position)
+    note('', 0) // the server's toast says what it queued
+  } catch (e) {
+    note(`Close: ${(e as Error).message}`)
+  } finally {
+    asking = false
+  }
+  return poll()
+}
+
+/** "close" / "закрой" on the list or a position: the same card as the menu, never an order by itself. */
+function onSpokenClose(heard: string) {
+  listenMode = 'answer'
+  const intent = closeIntent(heard)
+  if (!intent) {
+    note(heard ? `Heard "${heard}" · say close` : 'Heard nothing · say close')
+    return draw()
+  }
+  if (intent.all) return askClose()
+  const p = positionForClose(intent.coin)
+  if (!p) {
+    note(intent.coin ? `No ${intent.coin.toUpperCase()} position` : 'No position to close')
+    return draw()
+  }
+  return askClose(p)
 }
 
 /** A spoken answer, for the alert the mic opened for; a gesture since then already answered it. */
 async function onAnswer(cardId: string, r: { heard: string; answer: 'yes' | 'no' | null }) {
+  if (listenMode === 'command') {
+    listenMode = 'answer'
+    const open = current()
+    // A card that arrived while the mic was open still takes a plain yes or no. Anything else is a close phrase.
+    if (open.layout === 'alert' && open.card && r.answer) cardId = open.card.id
+    else return onSpokenClose(r.heard)
+  }
   if (countdown) return r.answer === 'no' ? stopCountdown() : undefined // a yes while counting changes nothing
   const sc = current()
   if (sc.layout !== 'alert' || sc.card?.id !== cardId) return
@@ -577,15 +641,22 @@ function eventTypeOf(envelope?: { eventType?: OsEventTypeList }): OsEventTypeLis
 }
 
 async function onMenu(id?: number) {
-  if (id === MENU_PROTECT || id === MENU_LOCK || id === MENU_CLOSE || id === MENU_CLOSE_ALL) {
-    // Detail's position, read now: the menu was built for the page, a swipe since may have moved it.
-    const p = id === MENU_CLOSE && state ? rankPositions(state.positions)[focusIndex()] : undefined
-    if (id === MENU_CLOSE && !p) return draw()
+  if (id === MENU_SPEAK) {
+    if (!speakOn()) { note('Voice is off'); return draw() }
+    return startListening(LISTEN_MS, '', 'command')
+  }
+  if (id === MENU_CLOSE || id === MENU_CLOSE_ALL) {
+    // The position is read now: the menu was built for the page, and a swipe since may have moved ▶.
+    const p = id === MENU_CLOSE ? positionForClose() : undefined
+    if (id === MENU_CLOSE && !p) { note('No position to close'); return draw() }
+    return askClose(p)
+  }
+  if (id === MENU_PROTECT || id === MENU_LOCK) {
     pausedUntil = 0 // you asked for these alerts: show them
     note('One moment…', Infinity)
     await draw()
     try {
-      await api.command(id === MENU_PROTECT ? 'stop' : id === MENU_LOCK ? 'lock' : 'close', p && { symbol: p.symbol, positionIdx: p.positionIdx })
+      await api.command(id === MENU_PROTECT ? 'stop' : 'lock')
       note('', 0) // the server's toast says what it queued
     } catch (e) {
       note(`Menu: ${(e as Error).message}`)
@@ -675,6 +746,10 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
   if (sc.layout === 'detail') {
     if (is(OsEventTypeList.DOUBLE_CLICK_EVENT)) { detailOpen = false; return draw() }
     if (swipe !== null) return moveFocus(swipe ? 1 : -1)
+    if (is(OsEventTypeList.CLICK_EVENT)) {
+      const p = positionForClose()
+      if (p) return askClose(p) // the card starts on Dismiss; this tap does not send the order
+    }
     return
   }
   // Only the page on the lens, once it has settled: a tap meant for the previous alert cannot answer a new one.
