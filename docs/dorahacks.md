@@ -1,15 +1,31 @@
-# Trade Shortcuts
+# Trade Shortcuts submission brief
 
-**Track 03 · Exchanges & Stocks**
+Heads Up · **Track 03 · Exchanges & Stocks** · **Bybit V5 + Even Realities G2**
 
-**Core integration:** Bybit V5 on Even Realities G2
+| Material | Link |
+| --- | --- |
+| Public source and setup | [GitHub](https://github.com/AstralEX1/trade-shortcuts) |
+| Interactive demo | [Paper BTC liquidation scenario](https://trade-shortcuts-pi.vercel.app/sandbox/#liquidation) |
+| Physical G2 | [Beta installation and testing](judge-testing.md) |
+| Simulator clip | [27-second paper close](../assets/demo.mp4) |
+| Project site | [Trade Shortcuts](https://trade-shortcuts-pi.vercel.app/) |
 
-**Public repository:** https://github.com/AstralEX1/trade-shortcuts
+## Problem and approach
 
-[Website](https://trade-shortcuts-pi.vercel.app/) · [Try the browser sandbox](https://trade-shortcuts-pi.vercel.app/sandbox/)
+A Bybit derivatives trader can miss a position approaching liquidation while their phone is in their pocket. They set a threshold and an action on the phone. The G2 shows why the rule fired and the exact order size so the trader can dismiss or confirm it with a gesture. The glasses show the outcome and the phone records it in History.
 
-## Short description
+The Bybit integration reads positions and submits confirmed orders in Demo Trading or Testnet. The judge walkthrough uses paper positions and needs no exchange account or funds. Trade Shortcuts holds no user funds.
 
-A Bybit derivatives trader away from their phone can miss a position nearing liquidation. With Trade Shortcuts, they choose a threshold and an action on their phone. When a position crosses that threshold, their Even G2 glasses show the reason and the exact quantity to trade. They can dismiss the alert or confirm the proposal, then see the fill on the lens and in the phone’s History. Judges can try closing half a paper BTC position in the Even Hub simulator without an account or API keys. The Bybit integration supports Demo Trading and Testnet. Trade Shortcuts holds no funds and gives no financial advice.
+## Requested API improvements
 
-[Watch the simulator demo](../assets/demo.mp4) · [Run it locally](../README.md#run-the-demo) · [Phone rule editor](../assets/phone-editor.png) · [Lens alert](../assets/lens-alert.jpg) · [Execution result](../assets/lens-fill.jpg)
+- **Even Hub SDK** could report when an update finishes rendering on the glasses so input and redraws can be paced without fixed delays.
+- **Bybit V5** could expose the ROI shown in the Bybit app, including after isolated margin changes.
+- **Bybit V5** could provide a client request ID and status lookup for isolated-margin adjustments so a timed-out write can be reconciled safely.
+
+## App screenshots
+
+| Phone | Simulated G2 |
+| --- | --- |
+| [Templates](../site/landing/img/app/templates.jpg) · [Rule editor](../assets/phone-editor.png) · [History](../assets/phone-history.png) | [Position detail](../assets/lens-detail.jpg) · [Liquidation alert](../assets/lens-alert.jpg) · [Paper fill](../assets/lens-fill.jpg) |
+
+[Hackathon contribution and credits](../README.md#what-existed-before-november-23-2026) · [Official event](https://dorahacks.io/hackathon/even-realities/detail)

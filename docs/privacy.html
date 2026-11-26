@@ -17,18 +17,18 @@
     <p>This policy describes how Trade Shortcuts for Even G2 handles information on your phone, on the configured Trade Shortcuts server, and through optional services.</p>
 
     <h2>Connection and device settings</h2>
-    <p>The app uses the network to reach the Trade Shortcuts server at <strong>[BACKEND HTTPS ORIGIN]</strong>. The app stores the server address, access token and preferences, including gesture tips, voice answers and collapsed template groups, in Even Hub storage, with browser local storage as a fallback. The app uses the token to authenticate requests to the configured server.</p>
+    <p>The Even Hub Beta app connects to the hosted paper demo at <strong>https://ts-demo.31-77-204-20.sslip.io</strong>. Self-managed builds connect to the server address set by the operator. The app stores the server address, access token and preferences such as gesture tips and voice answers in Even Hub storage, with browser local storage as a fallback. The app uses the token to authenticate requests to the configured server.</p>
 
     <h2>Trading data and history</h2>
     <p>The server evaluates the rules you set and handles positions, orders and fills. It stores shortcuts, preferences, alerts, trade proposals, execution history and audit events in its local database. On a simulated server, exchange data comes from the built-in demo. If an operator configures Bybit Demo Trading or Testnet, the server sends signed requests to Bybit and reads exchange data. Bybit API credentials stay in the server configuration.</p>
 
     <h2>G2 microphone and transcription</h2>
-    <p>When the server has voice configured and the “Answer alerts by voice” setting is enabled, the G2 microphone can open automatically for up to five seconds when an actionable alert appears. After a spoken “yes,” it can listen again briefly for a cancellation during the countdown. The lens shows when it is listening. The “Answer alerts by voice” setting defaults to on in the app and can be turned off in Settings.</p>
+    <p>When the connected server has voice transcription configured and “Answer alerts by voice” is enabled, the G2 microphone can open for up to five seconds when an actionable alert appears. After a spoken “yes,” it can listen again briefly for a cancellation during the countdown. The lens shows when it is listening. “Answer alerts by voice” defaults to on and can be turned off in Settings. The judge walkthrough uses touch controls with voice answers off.</p>
     <p>Captured audio goes to the configured Trade Shortcuts server. The server forwards audio with speech to OpenAI for transcription and returns the interpreted response to the app. The Trade Shortcuts application does not save raw microphone recordings or transcription responses to its database. OpenAI handles data it receives under its own terms and data controls.</p>
 
 
     <h2>Retention and contact</h2>
-    <p>Stored server records remain in the local database until the operator removes them. <strong>[ADD HOSTED SERVICE RETENTION AND DELETION PROCESS, IF APPLICABLE]</strong> For privacy questions or to request access to or deletion of data held by the hosted service, contact <a href="mailto:astralex163@gmail.com">astralex163@gmail.com</a>. On a self-managed server, contact its operator.</p>
+    <p>Persistent server records stay in the server database until the operator removes them. For privacy questions or to request access to or deletion of data held by the hosted demo, contact <a href="mailto:astralex163@gmail.com">astralex163@gmail.com</a>. For a self-managed server, contact its operator.</p>
   </main>
 </body>
 </html>

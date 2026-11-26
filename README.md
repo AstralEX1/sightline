@@ -1,17 +1,16 @@
 <div align="center">
   <img src="site/landing/img/app-icon.svg" alt="" width="76">
   <h1>Trade Shortcuts</h1>
-  <p><strong>Bybit position alerts and trade confirmations on Even Realities G2.</strong></p>
+  <p><strong>Set a trading rule on your phone. Review and confirm it on your Even G2.</strong></p>
   <p>Heads Up Hackathon · Exchanges &amp; Stocks</p>
   <p>
-    <a href="https://trade-shortcuts-pi.vercel.app/sandbox/"><strong>Try the sandbox</strong></a> ·
-    <a href="assets/demo.mp4">Watch the 27-second demo</a> ·
-    <a href="#run-the-demo">Run in Even Hub Simulator</a> ·
-    <a href="docs/dorahacks.md">DoraHacks entry</a>
+    <a href="https://trade-shortcuts-pi.vercel.app/sandbox/#liquidation"><strong>Try the interactive demo</strong></a> ·
+    <a href="docs/judge-testing.md">Try on your G2</a> ·
+    <a href="#run-the-demo">Run in Even Hub Simulator</a>
   </p>
 </div>
 
-A trader away from their phone can miss a Bybit position approaching liquidation. Trade Shortcuts puts the alert, the proposed order size, and the exchange result in their field of view.
+A Bybit trader can miss a position nearing liquidation while their phone is in their pocket. Trade Shortcuts shows the risk and the proposed order size on the glasses, then lets the trader choose whether to act.
 
 <table>
   <tr>
@@ -27,13 +26,32 @@ A trader away from their phone can miss a Bybit position approaching liquidation
   </tr>
 </table>
 
-The video shows four stages of one paper trade captured in the Even Hub Simulator. [Position detail](assets/lens-detail.jpg) · [Rule editor](assets/phone-editor.png) · [History](assets/phone-history.png) · [Project site](https://trade-shortcuts-pi.vercel.app/)
+Paper trade shown on the Even Hub Simulator. [27-second simulator clip](assets/demo.mp4)
 
-## Try it in your browser
+## Try the paper trade
 
-Open the [paper sandbox](https://trade-shortcuts-pi.vercel.app/sandbox/), choose **BTC +10%**, **Liquidation**, or **Lock profit**, and press ▶ beside the phone. In **Liquidation**, select **Close 50%** on the simulated lens and tap to confirm. In **Free sandbox**, you can move the BTC price and use all three screens together.
+1. Open the [Liquidation demo](https://trade-shortcuts-pi.vercel.app/sandbox/#liquidation) and press **Play scenario** (▶) beside the phone.
+2. When the BTC alert appears, use **Down** to select **Close 50%**, then **Click** to confirm.
+3. The lens reports **Closed 0.025 BTC**. Use **Replay scenario** to start with a fresh position.
 
-Both demos use simulated positions. You only need a browser for the sandbox.
+The sandbox runs with simulated positions and requires only a browser. For the actual phone app and paired glasses, follow the [G2 testing guide](docs/judge-testing.md). The desktop simulator below also shows the trade in phone History.
+
+## More app screens
+
+<table>
+  <tr>
+    <th>Pick a template</th>
+    <th>Edit a rule</th>
+    <th>Review outcomes</th>
+  </tr>
+  <tr>
+    <td align="center"><a href="site/landing/img/app/templates.jpg"><img src="site/landing/img/app/templates.jpg" width="190" alt="Phone templates grouped by Protect, Take profit and Market"></a></td>
+    <td align="center"><a href="assets/phone-editor.png"><img src="assets/phone-editor.png" width="190" alt="Phone editor showing a liquidation condition and a close-position action"></a></td>
+    <td align="center"><a href="assets/phone-history.png"><img src="assets/phone-history.png" width="190" alt="Phone History showing example filled, expired and skipped proposals"></a></td>
+  </tr>
+</table>
+
+[BTC position detail on the simulated lens](assets/lens-detail.jpg)
 
 ## Run the demo
 
@@ -55,12 +73,29 @@ To start over with the original 0.050 BTC position, stop with Ctrl+C and run `np
 
 ## How it works
 
-- **Phone:** choose a scope, set the **When** conditions, and pick one **Do** action. Start with one of 12 templates or write a rule from scratch.
-- **Glasses:** read open positions and ROI at a glance. An alert shows what triggered the rule and the proposed quantity or price. Swipe from **Dismiss** to the action, then tap to confirm.
-- **Backend:** a TypeScript server polls Bybit V5, evaluates rules, and records proposals and their execution in SQLite. Confirmation rechecks the terms and deduplicates repeated taps. The lens and History show the resulting status.
-- **Optional:** With voice answers enabled, a spoken “no” dismisses an alert and a spoken “yes” can confirm an eligible proposal after a five-second cancellation window.
+```mermaid
+flowchart LR
+  Phone["Phone · set the rule"] --> Engine["Server · evaluate and propose"]
+  Engine --> Lens["G2 · dismiss or confirm"]
+  Lens -->|Confirm| Exchange["Bybit Demo/Testnet or paper exchange"]
+  Exchange --> Result["Result · G2 and phone History"]
+```
 
-The Bybit adapter accepts **Demo Trading and Testnet only**. Exchange credentials stay on the server. Trade Shortcuts holds no user funds. Test alerts run entirely in simulation. Physical G2 and R1 verification is pending. [Technical architecture](docs/shortcuts-architecture.md) · [G2 design](docs/design.md) · [Test coverage and device status](docs/handoff.md)
+- **Read:** the server polls Bybit V5 for positions and evaluates your conditions. The G2 alert shows why the rule fired and the exact quantity or price proposed.
+- **Write:** the lens starts on **Dismiss**. Swipe to the proposed action and tap. The server checks the proposed terms again, deduplicates repeated taps and records the outcome in SQLite.
+- **Voice:** with transcription configured and voice answers enabled, a spoken “no” dismisses an alert. A spoken “yes” can confirm an eligible proposal after a five-second cancellation window.
+
+The Bybit adapter accepts **Demo Trading and Testnet only**. Exchange credentials stay on the server. Trade Shortcuts holds no user funds. Test alerts simulate the outcome without changing the account.
+
+## What we verified
+
+| Environment | Evidence |
+| --- | --- |
+| Browser sandbox and Even Hub Simulator | Paper BTC alert, confirmation and fill. The simulator run recorded the fill in phone History. |
+| Bybit Testnet | Position open, reduce-only close, stop and take-profit updates, and limit-order cancellation exercised on XRPUSDT. |
+| Physical Even G2 and R1 | Device verification pending. |
+
+[Test and release evidence](docs/handoff.md) · [Server architecture](docs/shortcuts-architecture.md) · [G2 interface design](docs/design.md)
 
 ## What existed before November 23, 2026
 
@@ -73,6 +108,8 @@ The project uses the existing Even Hub SDK, simulator, and CLI, plus Pretext, By
 - **Even Hub SDK:** report when a page or image has actually rendered on the glasses so rapid updates can be paced without fixed delays.
 - **Bybit V5:** return the same ROI value displayed in the Bybit app, including after isolated margin changes.
 - **Bybit V5:** provide a client request ID and status lookup for isolated-margin adjustments, so a timed-out write can be reconciled safely.
+
+[DoraHacks submission brief](docs/dorahacks.md) · [Project site](https://trade-shortcuts-pi.vercel.app/)
 
 ## Development checks
 

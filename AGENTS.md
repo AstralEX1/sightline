@@ -1,4 +1,4 @@
-# Trade Shortcuts: notes for AI agents
+# Agent instructions for Trade Shortcuts
 
 Trading rules built on a phone page and answered on Even Realities G2 glasses, for Bybit demo/testnet only. Product overview and safety model: `README.md`. Deeper context: `docs/handoff.md`.
 
@@ -45,8 +45,10 @@ npm run typecheck && npm test && npm run build && npm run build:site
 
 ## Rules that hold everywhere
 
+- When a blocker or decision can be resolved substantially faster or more reliably by asking Alex, ask before proceeding.
+- If the repository is indexed in `.codegraph/`, use CodeGraph first to locate or understand code. Use `codegraph_explore` or `codegraph explore "<question>"`.
 - Never point `BYBIT_BASE` at a live host. `server/src/bybit.ts` refuses it on purpose; keep that guard.
 - Every exchange write goes through a proposal and `confirm` on the lens. Do not add a path that trades without lens authorization. A spoken yes can also confirm an eligible alert after the cancellable countdown. An Open with pending size or leverage choices requires manual selection.
 - The rule catalog and validator (`server/src/registry.ts`, `server/src/validate.ts`) are shared by phone and server. Change them once.
-- Never commit `.env` or `server/data/`. Never print `APP_TOKEN` or exchange keys in logs or reports.
+- Keep real `.env` files and `server/data/` out of Git and release packages. Never commit, publish, log or expose credentials, private keys, seed phrases or tokens.
 - Specs: `docs/shortcuts-architecture.md` (server), `docs/trade-shortcuts-spec.md` (phone), `docs/glasses-shortcuts.md` (lens), `docs/design.md`.
