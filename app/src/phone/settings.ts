@@ -22,7 +22,7 @@ const voiceEl = rowSwitch(api.voiceAnswersOn(), 'set-voice', (on, el) => {
 })
 const quietEl = rowSwitch(api.quietModeOn(), 'set-quiet', (on, el) => { el.setAttribute('aria-checked', String(on)); api.setQuietMode(on) })
 const testStatus = h('p', { class: 'row row--note', role: 'status' }, 'Open Trade Shortcuts in the Even app to test your G2.')
-const VOICE_ON = 'When an alert arrives the mic listens for 5 s. Say yes or no in any language. After yes, a 5 s countdown runs before anything is sent; any tap, swipe or “no” stops it. On the position list or a position, tap and hold, then Speak, and say “close” or “закрой”. A tap on the position screen does the same. The card still has to be confirmed.'
+const VOICE_ON = 'When an alert arrives the mic listens for 10 s. Say yes or no in any language. After yes, a 5 s countdown runs before anything is sent; any tap, swipe or “no” stops it. On the position list or a position, tap and hold, then Speak, and say “close” or “закрой”. A tap on the position screen does the same. The card still has to be confirmed.'
 const VOICE_OFF = 'Spoken answers are off: this server has no transcription. Close still works from the menu and from a tap on the position.'
 const voiceFoot = h('p', { class: 'footnote' }, VOICE_ON)
 const testButton = h('button', { class: 'row--btn is-accent', type: 'button', disabled: true, onclick: () => void testGlasses() }, 'Send test to G2')

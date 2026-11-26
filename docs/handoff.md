@@ -6,9 +6,9 @@ The phone editor, G2 client and Bybit adapter share one rule catalog. It has 13 
 
 The landing feed uses the brand green `#0b7a3b` for the emphasized words in each heading. Position screens are the current lens frames on the same photo background as the other alerts. Each alert section shows two lens cards. The landing does not show the phone History list.
 
-The browser sandbox shows the glasses, the phone and the paper exchange on one stage. Playing a scenario dims the devices that are not the current step and flashes the shortcut's condition, then its action, on the phone.
+The browser sandbox shows the glasses, the phone and the paper exchange on one stage. Playing a scenario dims the devices that are not the current step and flashes the shortcut's condition, then its action, on the phone. Eligible paper cards can be answered out loud: the browser recognizes yes or no, and a spoken yes still waits five seconds. Take half is the scenario that waits for the word. The other guided scenarios press Down and Click if nobody speaks. The sandbox does not call OpenAI.
 
-The phone opens a template as an unsaved rule. Save it, then enable it on Home. On the lens, an actionable alert starts on Dismiss. For Open long or Open short with alternative sizes or leverages, the user picks the terms by hand and reviews the exact order. Other eligible cards support a spoken yes or no when transcription and voice answers are enabled. A yes starts a five-second cancellation window.
+The phone opens a template as an unsaved rule. Save it, then enable it on Home. On the lens, an actionable alert starts on Dismiss. For Open long or Open short with alternative sizes or leverages, the user picks the terms by hand and reviews the exact order. Other eligible cards support a spoken yes or no when transcription and voice answers are enabled. The microphone listens for ten seconds. A yes starts a five-second cancellation window.
 
 Settings in the Even app can send a connection check to the lens in the same session. The phone reports success after a tap on the TEST card. Quiet mode shows connection status and the nearest liquidation risk between alerts. History opens each record to show the proposed terms, execution outcome, and position readback when recorded. The landing page links directly to the beta installation steps.
 
@@ -25,6 +25,7 @@ Settings in the Even app can send a connection check to the lens in the same ses
 
 ## Verification and release history
 
+- The sandbox answers eligible alerts by voice, and the glasses microphone listens for ten seconds. Typecheck passed and all 589 automated tests passed on 26 November 2026. The live browser microphone was not exercised.
 - Version 0.1.5. Speak uses the server's close reading, and closing one position says "close position". Typecheck passed and all 586 automated tests passed on 26 November 2026.
 - The position list and detail on the lens show the coin quantity (`0.05`, `1.2 ETH · 10×`). The landing gallery and position cards use those frames. The browser sandbox draws the same screen code.
 - A missed paper alert no longer stays on Expired while the next card is already waiting, and it leaves the lens on its own after five seconds. A rounded close still says the rule's percent, with the smaller quantity in the note. Paper settings no longer describe a Bybit key, and spoken answers stay off when the server has no transcription. Voice commands are titled by their phrase. A browser tab that is not the simulator does not keep calling the glasses bridge or offer Send test to G2. The sandbox is three paper scenarios. Typecheck passed and all 586 automated tests passed on 26 November 2026.

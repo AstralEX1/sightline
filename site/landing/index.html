@@ -59,7 +59,8 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
 .sl #setup-on-g2 ol{list-style:decimal}
 /* alert cards are lens screens on a photo; crop the empty photo under the text (lowest text: detail.jpg, y 463 of 576). Position screens fill the frame, so they keep the full 2:1. */
 .sl .cards img{background:#000;border-color:rgba(0,0,0,.25);aspect-ratio:1152/490;object-fit:cover;object-position:top}
-.sl .position-screens img{aspect-ratio:2/1;object-fit:cover}
+/* Voice cards keep the full lens: “Say yes or no” is the last line, and the usual crop would hide it. */
+.sl .position-screens img,.sl .cards.voice img{aspect-ratio:2/1;object-fit:cover}
 @media (max-width:760px){.sl .position-screens img{aspect-ratio:1152/490}}
 @media (min-width:761px){.sl .cards:not(.one){grid-template-columns:minmax(0,1fr);gap:18px}.sl .cards .c1{width:84%}.sl .cards .c2{width:84%;justify-self:end;margin:0}}
 /* copy starts level with the first card or shot, the way otomato's feed reads: kick 22px below its top */
@@ -98,8 +99,15 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
 .sl .build-copy{grid-area:copy;align-self:end}
 .sl .build-phone{grid-area:phone;display:grid;justify-items:center;gap:18px}
 .sl .build-phone-hint{display:flex;align-items:center;gap:8px;margin:0;padding:8px 14px;border-radius:99px;background:var(--accent);color:#fff;font-size:14px;font-weight:800}
+@keyframes hint-float{50%{transform:translateY(3px)}}
+@media (prefers-reduced-motion:no-preference){
+.sl .build-phone-hint{animation:hint-float 2.4s cubic-bezier(.77,0,.175,1) infinite}
+}
+@media (prefers-reduced-motion:reduce){
+.sl .build-phone-hint{animation:hint-arrive .2s cubic-bezier(.23,1,.32,1) both!important}
+}
+@keyframes hint-arrive{from{opacity:.72}}
 .sl .build-phone .phone{width:340px;--s:.82015}
-.sl .build-phone .phone::before{content:"";position:absolute;inset:-9px;border:2px solid var(--accent);border-radius:60px;box-shadow:0 0 28px rgb(11 122 59/.35);pointer-events:none}
 .sl .build-phone iframe{display:block;width:393px;height:877px;border:0;transform:scale(var(--s));transform-origin:0 0}
 .sl .build-result{grid-area:lens;align-self:start;width:100%;max-width:576px}
 .sl .build-result figcaption{margin-bottom:8px;font-size:14px;font-weight:600;color:var(--ink-2)}
@@ -243,12 +251,11 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
   <section class="fam">
     <div class="wrap">
       <div>
-        <span class="kick">Glasses menu</span>
-        <h2>Protect your positions. <em>Review each stop.</em></h2>
-        <p>Tap then hold to open the menu. Protect all proposes a stop for eligible positions. Lock profits proposes moving a profitable position’s stop to entry. Review each proposal on the lens.</p>
-        <div class="plist"><span>Protect all</span><span>Lock profits</span></div>
+        <span class="kick">Voice</span>
+        <h2>A shortcut fires. <em>Say yes or no.</em></h2>
+        <p>On an ordinary alert the microphone listens for 10 seconds. Yes is the trade on the card. No dismisses it.</p>
       </div>
-      <div class="cards"><img class="c1" src="img/cards/voice1.jpg" alt="Example stop proposal 1 of 3: SOL long. Set stop at 178.75" draggable="false"><img class="c2" src="img/cards/voice2.jpg" alt="Example stop proposal 2 of 3: ETH short. Set stop at 3,162" draggable="false"></div>
+      <div class="cards voice"><img class="c1" src="img/cards/yes-liq.jpg" alt="Liquidation shortcut: BTC long, 3.2% to liquidation. The lens is listening: say yes or no." width="1152" height="576" draggable="false"><img class="c2" src="img/cards/yes-loss.jpg" alt="Loss shortcut: BTC long, ROI minus 18.2%. The lens is listening: say yes or no." width="1152" height="576" draggable="false"></div>
     </div>
   </section>
 </div>

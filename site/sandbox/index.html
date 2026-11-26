@@ -11,6 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 </head>
 <body>
+  <div class="shade" aria-hidden="true"></div>
   <header class="top">
     <a href="../" class="brand"><img src="lockup.svg" alt="Trade Shortcuts" width="214" height="20" /></a>
     <span class="pill">Sandbox</span>
@@ -21,7 +22,6 @@
 
   <main id="panel" class="panel" role="tabpanel">
     <section class="device phone-col" aria-label="Phone">
-      <button type="button" id="scenario-play" class="play scenario-play" hidden disabled><span aria-hidden="true">▶</span> Play</button>
       <div class="phone"><iframe id="phone" title="Trade Shortcuts on the phone"></iframe></div>
     </section>
 
@@ -36,6 +36,30 @@
           <button type="button" data-gesture="double">Double Click</button>
           <button type="button" data-gesture="long" data-free-control>Long Press</button>
           <button type="button" data-gesture="menu" data-free-control>Menu</button>
+        </div>
+      </div>
+      <div class="story-actions" id="story-actions">
+        <div class="story-actions__slot story-actions__slot--main">
+          <button class="sl-playback" id="scenario-play" type="button" data-playing="false" aria-label="Play" disabled>
+            <span class="sl-playback__surface" aria-hidden="true">
+              <span class="sl-playback__icon">
+                <span class="sl-playback__piece sl-playback__piece--left"></span>
+                <span class="sl-playback__piece sl-playback__piece--right"></span>
+              </span>
+              <span class="sl-playback__label">Play</span>
+            </span>
+          </button>
+        </div>
+        <div class="story-actions__slot story-actions__slot--replay">
+          <button class="sl-playback" id="scenario-replay" type="button" data-playing="false" aria-label="Replay">
+            <span class="sl-playback__surface" aria-hidden="true">
+              <span class="sl-playback__icon">
+                <span class="sl-playback__piece sl-playback__piece--left"></span>
+                <span class="sl-playback__piece sl-playback__piece--right"></span>
+              </span>
+              <span class="sl-playback__label">Replay</span>
+            </span>
+          </button>
         </div>
       </div>
       <p id="note" class="sim-note" role="status" aria-live="polite"></p>

@@ -39,7 +39,7 @@ Main ──rule fires──▶ Alert ──tap action──▶ Sent ──▶ Fi
 - A rule that matches several positions raises one alert per position, each naming its own position.
 - OR rules raise one alert; the second line shows the strongest reason (liquidation beats ROI).
 - A new alert ignores taps for 1 s (`CARD_SETTLE_MS`), so a tap meant for the previous one cannot answer it. `Dismiss` is first and selected anyway.
-- Proposal expiry uses the server’s timing settings (defaults 30 s for market trades and 60 s for protection). A spoken yes shows a separate five-second cancellation countdown; a gesture or recognized no stops it.
+- Proposal expiry uses the server’s timing settings (defaults 30 s for market trades and 60 s for protection). On an eligible alert the microphone listens for ten seconds. A spoken yes shows a separate five-second cancellation countdown; a gesture or recognized no stops it.
 - Alerts only reach the lens while the plugin is open. Otherwise delivery follows the in-app notification settings; an alert that expired meanwhile goes to History, never to the lens.
 - **Send test to G2** in phone Settings brings up a separate `TEST` card once trading cards are clear. Tap **OK** on the lens to acknowledge it. The connection check expires after 90 seconds.
 

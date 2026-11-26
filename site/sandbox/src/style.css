@@ -43,7 +43,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   display: grid; gap: 24px; grid-template-columns: 320px minmax(0, 1fr) 320px; grid-template-areas: "phone glasses exchange"; align-items: start;
 }
 .device { min-width: 0; }
-.phone-col { grid-area: phone; }
+.phone-col { grid-area: phone; position: relative; }
 .glasses { grid-area: glasses; }
 .exchange-col { grid-area: exchange; }
 
@@ -67,12 +67,13 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .sim-bar button:active, .sim-bar button.pressed { background: #3d3d3d; }
 .sim-bar button.hint { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255, 177, 26, .45); animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(255, 177, 26, .15); } }
-.sim-note { min-height: 20px; margin: 4px 0 0; text-align: center; color: var(--ink); font-size: 13px; font-weight: 600; }
+.sim-note { min-height: 0; margin: 0; text-align: center; color: var(--ink); font-size: 13px; font-weight: 600; }
+.sim-note:not(:empty) { min-height: 20px; margin-top: 8px; }
 .step-note { flex-basis: 100%; font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, .7); }
 .steps li.missed .step-n { background: #ef454a; color: #fff; }
 
 /* ── what to do next ── */
-.steps { list-style: none; margin: 22px 0 0; padding: 0; display: grid; gap: 8px; }
+.steps { list-style: none; width: min(100%, 576px); margin: 12px auto 0; padding: 0; display: grid; gap: 8px; }
 .steps li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 54px; padding: 9px 14px; border-radius: 14px; background: var(--bg); color: var(--mute); font-weight: 600; transition: background-color .25s, color .25s; }
 .steps li.now { background: var(--ink); color: #fff; }
 .steps li.done { color: var(--ink); }
@@ -89,20 +90,51 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .restart { margin-top: 10px; min-height: 44px; padding: 0 10px; border: 0; background: none; color: var(--mute); font-weight: 600; }
 .restart:hover { color: var(--ink); }
 
-/* Guided scenarios keep all three screens in view. The backdrop leaves their controls usable. */
-.panel[data-spotlight] {
-  grid-template-columns: clamp(210px, 23.5vw, 320px) minmax(0, 1fr) clamp(200px, 20vw, 280px);
-  grid-template-areas: "phone glasses exchange";
-  padding-top: 60px;
+/* The story control is as wide as the lens. Pause and Replay share that width. */
+.story-actions {
+  display: flex; align-items: stretch; gap: 0;
+  width: min(100%, 576px); margin: 10px auto 0;
 }
-.phone-col { position: relative; }
-.scenario-play { position: absolute; top: -46px; left: 0; scroll-margin: 16px; }
-.panel[data-spotlight]:not([data-spotlight="phone"]) .phone-col > .phone,
-.panel[data-spotlight]:not([data-spotlight="glasses"]) .sim,
-.panel[data-spotlight]:not([data-spotlight="chart"]) .exchange-col > .phone { opacity: .68; }
-.panel[data-spotlight="phone"] .phone-col > .phone,
-.panel[data-spotlight="glasses"] .sim,
-.panel[data-spotlight="chart"] .exchange-col > .phone { outline: 1px solid #b58a46; outline-offset: 4px; }
+.story-actions .sl-playback { --playback-unit: 1.15px; --playback-ink: #111111; --playback-hover: #000000; --playback-active: #000000; width: 100%; }
+.story-actions .sl-playback__surface { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.story-actions .sl-playback__icon { position: relative; left: auto; top: auto; transform: none; flex: none; }
+.story-actions .sl-playback__label { width: auto; }
+.story-actions__slot { min-width: 0; overflow: hidden; transition: flex-basis .42s cubic-bezier(.22, 1, .36, 1), opacity .32s ease, margin .42s ease; }
+.story-actions__slot:has(.is-amber) { overflow: visible; }
+.story-actions__slot--main { flex: 1 1 auto; opacity: 1; }
+.story-actions__slot--replay { flex: 0 0 0; opacity: 0; pointer-events: none; }
+.story-actions.is-split { gap: 14px; }
+.story-actions.is-split .story-actions__slot--main,
+.story-actions.is-split .story-actions__slot--replay { flex: 1 1 0; opacity: 1; pointer-events: auto; }
+.story-actions.is-replay .story-actions__slot--main { flex: 0 0 0; opacity: 0; pointer-events: none; }
+.story-actions.is-replay .story-actions__slot--replay { flex: 1 1 auto; opacity: 1; pointer-events: auto; }
+body.is-shade :is(.story-actions, .steps) { position: relative; z-index: 22; }
+
+/* The whole page dims. The step in progress stays above the shade, and the shade does not take clicks. */
+.shade { position: fixed; inset: 0; z-index: 20; background: rgba(21, 21, 21, .52); pointer-events: none; opacity: 0; }
+body.is-shade .shade { opacity: 1; }
+body[data-spotlight="phone"] :is(.phone-col, #scenario-play),
+body[data-spotlight="chart"] .exchange-col,
+body[data-spotlight="glasses"] .sim { position: relative; z-index: 21; }
+.panel[data-spotlight] { grid-template-columns: clamp(210px, 23.5vw, 320px) minmax(0, 1fr) clamp(200px, 20vw, 280px); }
+/* Next action: one amber breath, then the ring rests until the hint ends. */
+@keyframes amber-ember {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(255, 206, 110, .9), 0 0 10px 2px rgba(255, 130, 20, .4); }
+  50% { box-shadow: 0 0 0 3px #fff1cc, 0 0 16px 6px rgba(255, 120, 20, .75); }
+}
+.is-amber { position: relative; }
+.is-amber::after {
+  content: ""; position: absolute; z-index: 5; inset: -7px; border-radius: 20px; pointer-events: none;
+  box-shadow: 0 0 0 2px rgba(255, 206, 110, .9), 0 0 10px 2px rgba(255, 130, 20, .4);
+  animation: amber-ember 2s cubic-bezier(0.77, 0, 0.175, 1) 1;
+}
+.sl-playback.is-amber::after { border-radius: 24px; }
+.exchange-col > .phone.is-amber { overflow: visible; }
+.exchange-col > .phone.is-amber::after { border-radius: 32px; }
+/* The glasses frame clips its corners. While a ring button glows, let that glow out without squaring the frame. */
+.sim:has(button.is-amber) { overflow: visible; }
+.sim:has(button.is-amber) .sim-title { border-radius: 12px 12px 0 0; overflow: hidden; }
+.sim:has(button.is-amber) .sim-bar { border-radius: 0 0 12px 12px; }
 .panel[data-spotlight] .exchange-col > .phone { aspect-ratio: 1 / 1.15; padding: 0; border-radius: 16px; box-shadow: 0 14px 32px -24px #0008; }
 .panel[data-spotlight] .exchange-col .screen { border-radius: inherit; }
 .panel[data-spotlight] .glasses { width: min(100%, 576px); justify-self: center; }
@@ -111,9 +143,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .panel[data-spotlight] [data-free-control] { display: none; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .panel[data-spotlight] :is(.phone, .sim) { transition: opacity .24s ease-out, outline-color .24s ease-out; }
+  .shade { transition: opacity .7s ease; }
 }
-@media (prefers-reduced-motion: reduce) { .sim-bar button.hint { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .sim-bar button.hint, .is-amber::after { animation: none; }
+}
 
 /* ── narrower screens: the glasses stay first ── */
 @media (max-width: 1240px) {
@@ -132,6 +166,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .tab-t b { font-size: 13.5px; }
   .panel { padding: 16px 12px 24px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "glasses" "phone" "exchange"; justify-items: center; }
   .panel[data-spotlight] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "phone" "exchange" "glasses"; }
+  .story-actions.is-split { flex-direction: column; gap: 10px; }
+  .story-actions.is-split .story-actions__slot--main,
+  .story-actions.is-split .story-actions__slot--replay { flex: none; width: 100%; }
   .panel[data-spotlight] :is(.phone-col, .exchange-col) { width: min(100%, 320px); }
   .glasses { width: 100%; }
 }

@@ -38,7 +38,7 @@ export const hintsOn = () => tipsShown(store.get('gt.hints'), launches())
 export const setHints = (on: boolean) => store.set('gt.hints', on ? 'on' : 'off')
 export const quietModeOn = () => store.get('gt.quiet') === 'on'
 export const setQuietMode = (on: boolean) => store.set('gt.quiet', on ? 'on' : 'off')
-/** The mic opens for 5 s when an alert arrives, so a spoken yes or no answers it. On unless switched off on the phone. */
+/** The mic opens for 10 s when an alert arrives, so a spoken yes or no answers it. On unless switched off on the phone. */
 export const voiceAnswersOn = () => store.get('gt.voice') !== 'off'
 export const setVoiceAnswers = (on: boolean) => store.set('gt.voice', on ? 'on' : 'off')
 /** Template categories collapsed on Shortcuts, by name; every category is open until collapsed. The key keeps its first name, so a saved choice still applies. */

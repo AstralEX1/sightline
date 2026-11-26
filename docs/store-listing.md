@@ -22,7 +22,7 @@ When a price reaches your target or a position gets close to liquidation, see th
 
 **Build a shortcut.** Pick a template or create your own rule. Get a price alert, set a stop loss or prepare to close part of a position.
 
-**Check your positions.** Swipe through open positions on G2 to see the price, profit or loss, and distance to liquidation.
+**Check your positions.** The G2 lists each open position with its size, price, return and distance to liquidation. Tap a row for PnL, leverage and the last hour of prices.
 
 **Review and respond.** See why the rule fired and the exact quantity or price of the proposed order. Swipe to choose and tap to confirm or dismiss. The result appears on G2 and in phone History.
 
@@ -47,22 +47,62 @@ Record the app and phone versions, G2 firmware, input device, and results before
 
 ## App screenshots
 
-### Simulated G2
+Current screens from the [landing](https://trade-shortcuts-pi.vercel.app/). Lens frames are the gallery files. Phone frames are the shortcut list and the template list.
+
+### G2
+
+**Open positions**
+
+![Bybit Demo list: BTC long, ETH short and SOL long, with price, return and distance to liquidation](../site/landing/img/hud/positions.png)
 
 **Position detail**
 
-![BTC long position, price chart and distance to liquidation on G2](../assets/lens-detail.jpg)
+![BTC long detail: 0.05 BTC at 10×, PnL −$10, liquidation distance and the last hour of price](../site/landing/img/hud/position-detail.png)
 
-**Liquidation alert**
+**Liquidation**
 
-![G2 alert with Dismiss and Close 50% choices for a BTC long nearing liquidation](../assets/lens-alert.jpg)
+![BTC long 3.2% from liquidation, Close 50% of 0.025 BTC selected](../site/landing/img/hud/liq.png)
 
-**Paper fill**
+**Loss**
 
-![G2 confirmation showing 0.025 BTC closed and 0.025 BTC remaining](../assets/lens-fill.jpg)
+![BTC long ROI −18.2%, Add 100 USDT margin selected](../site/landing/img/hud/loss.png)
 
-### Phone companion
+**Near the stop**
 
-| Shortcuts | Rule editor | History |
-| --- | --- | --- |
-| [![Shortcut tiles with on and off switches](../assets/phone-shortcuts.png)](../assets/phone-shortcuts.png) | [![Editor showing a liquidation threshold and a partial close action](../assets/phone-editor.png)](../assets/phone-editor.png) | [![History with example filled, expired and skipped proposals](../assets/phone-history.png)](../assets/phone-history.png) |
+![XRP long 0.9% from its stop, Dismiss selected](../site/landing/img/hud/nearstop.png)
+
+**Take profit**
+
+![ETH short 0.8% from take profit, Close 50% of 0.6 ETH selected](../site/landing/img/hud/tp.png)
+
+**Profit**
+
+![ETH short ROI +31.4%, Move stop to entry at 3,412 selected](../site/landing/img/hud/profit.png)
+
+**Price level**
+
+![BTC crossed above 90,000, OK selected](../site/landing/img/hud/plevel.png)
+
+**Price move**
+
+![ETH long up 5.1% in 15 minutes, OK selected](../site/landing/img/cards/pchange.jpg)
+
+**Order filled**
+
+![SOL long filled at 182.40, Set take profit at 191.52 selected](../site/landing/img/hud/filled.png)
+
+**Partial fill**
+
+![BTC buy order 0.010 of 0.025 filled, Cancel the rest of 0.015 BTC selected](../site/landing/img/cards/partial.jpg)
+
+**Protect all**
+
+![SOL long, set stop at 178.75, proposal 1 of 3](../site/landing/img/cards/voice1.jpg)
+
+![ETH short, set stop at 3,162, proposal 2 of 3](../site/landing/img/cards/voice2.jpg)
+
+### Phone
+
+| Shortcuts | Templates |
+| --- | --- |
+| [![Shortcut tiles: set stop, move stop, close position and notify, each with an on or off switch](../site/landing/img/app/home.jpg)](../site/landing/img/app/home.jpg) | [![Templates grouped under Protect, Take profit and Market](../site/landing/img/app/templates.jpg)](../site/landing/img/app/templates.jpg) |

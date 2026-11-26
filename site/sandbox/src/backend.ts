@@ -3,10 +3,10 @@
  * server/src/main.ts, on an in-memory SQLite and the sandbox's FakeExchange. The phone and lens call it through `fetch`.
  */
 import { Buffer } from './shims/buffer.ts'
-import { createServer } from '../../../server/src/http.ts'
+import { createServer, type Transcribe } from '../../../server/src/http.ts'
 import { createStore } from '../../../server/src/store.ts'
 import { createSession } from '../../../server/src/session.ts'
-import type { Draft } from '../../../server/src/registry.ts'
+import type { EditableShortcut } from '../../../server/src/validate.ts'
 import type { Exchange } from '../../../server/src/types.ts'
 
 const TOKEN = 'sandbox'
@@ -19,25 +19,31 @@ export type Backend = {
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>
   /** One poll now, or the one already running. */
   tick(): Promise<void>
+  /** While held, the interval does not evaluate rules. A guided story releases it when the alert should appear. */
+  hold(on: boolean): void
   stop(): void
 }
 
-export function createBackend(ex: Exchange, shortcuts: Draft[]): Backend {
+/** `startEnabled` is false for a guided scenario: the phone opens the rule off, and Play switches it on. */
+export function createBackend(ex: Exchange, shortcuts: EditableShortcut[], startEnabled = true, transcribe?: Transcribe): Backend {
   const store = createStore(':memory:')
   store.seed(shortcuts, 'sandbox')
+  if (!startEnabled) for (const rule of store.listShortcuts()) store.setEnabled(rule.id, false)
   const session = createSession(ex, store, Date.now)
-  const { handler } = createServer({ session, store, token: TOKEN, source: 'Sandbox' }) as unknown as { handler: Handler }
+  const { handler } = createServer({ session, store, token: TOKEN, source: 'Sandbox', transcribe }) as unknown as { handler: Handler }
 
   let running: Promise<void> | null = null
   let stopped = false
+  let held = false
   const requests = new Set<Promise<Response>>()
-  const tick = () => stopped ? Promise.resolve()
+  const tick = () => stopped || held ? Promise.resolve()
     : (running ??= session.tick().catch(e => console.error('tick failed', e)).finally(() => { running = null }))
   void tick()
   const timer = setInterval(tick, TICK_MS)
 
   return {
     tick,
+    hold(on: boolean) { held = on },
     stop: () => {
       if (stopped) return
       stopped = true

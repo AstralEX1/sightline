@@ -59,11 +59,21 @@ export function mountExchange(root: HTMLElement, m: Market, onChartInput: () => 
     b.onclick = () => { setSide(s); show('Trade') }
     return b
   })
+  const quick = (['Buy', 'Sell'] as const).flatMap(side => [0.01, 0.05].map(qty => {
+    const b = el('button', { type: 'button', class: `ex-quick ex-btn-${side === 'Buy' ? 'buy' : 'sell'}` }, `${side === 'Buy' ? 'Long' : 'Short'} ${qty}`)
+    b.onclick = async () => {
+      const opposite = m.positions.find(p => p.side !== side)
+      if (opposite) await m.close(opposite) // one-way: a new side replaces the open position
+      await m.open(side, qty, leverage)
+    }
+    return b
+  }))
   const charts = el('div', { class: 'ex-view ex-charts' },
     last,
     el('div', { class: 'ex-tf' }, el('b', {}, '1m')),
     el('div', { class: 'ex-plot' }, canvas, hint),
     slot,
+    el('div', { class: 'ex-quickbar' }, ...quick),
     el('div', { class: 'ex-cta' }, ...ctas))
 
   // ── Trade: the order form ──

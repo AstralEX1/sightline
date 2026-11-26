@@ -11,8 +11,8 @@ import { answerOf, closeIntent } from './rules.ts'
 import { loud } from './stt.ts'
 
 const MAX_BODY = 64 * 1024
-// 16 kHz s16le mono is 32 KB per second; the app stops listening after 5 s
-const MAX_VOICE = 320 * 1024
+// 16 kHz s16le mono is 32 KB per second. The mic stays open for 10 s; the cap is a little past that.
+const MAX_VOICE = 384 * 1024
 const MIN_VOICE = 9600 // 0.3 s
 const API_KEY_TTL_MS = 60_000
 const GLASSES_TEST_MS = 90_000
