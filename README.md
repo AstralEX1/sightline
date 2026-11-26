@@ -1,16 +1,18 @@
 # Trade Shortcuts
 
-Trading alerts and order confirmations for Even Realities G2 smart glasses. Set a rule on your phone, then see what triggered it and review the proposed order on the glasses.
+Trading alerts and order confirmations for [Even Realities G2](https://www.evenrealities.com/) smart glasses.
 
-**[Try the browser demo](https://trade-shortcuts-pi.vercel.app/sandbox/#liquidation)** · [Try on your G2](docs/judge-testing.md) · [Project site](https://trade-shortcuts-pi.vercel.app/)
+Set a shortcut on your phone. The glasses show what triggered it, and the exact order, before anything is sent.
+
+**[Website demo](https://trade-shortcuts-pi.vercel.app/sandbox/#liquidation)** · [Try on your G2](docs/judge-testing.md) · [Project site](https://trade-shortcuts-pi.vercel.app/)
 
 ## Features
 
-- Build shortcuts from templates or combine conditions and actions in the phone editor.
-- Check prices, PnL and distance to liquidation for open positions on G2.
-- Get alerts for market moves or position risk. Review the exact order quantity or price before confirming.
-- See fills on G2 and find filled, expired and skipped proposals in phone History.
-- With voice answers enabled, say “no” to dismiss. A “yes” confirms an eligible proposal after a five-second cancellation window.
+- Build shortcuts from templates, or combine conditions and actions in the phone editor.
+- Check price, PnL and distance to liquidation for open positions.
+- Get an alert for a market move or position risk. Review the quantity or price before confirming.
+- See fills on the glasses. Filled, expired and skipped proposals stay in phone History.
+- With voice on, say “no” to dismiss. “Yes” confirms after a five-second cancel window.
 
 ## Screenshots
 
@@ -23,12 +25,12 @@ Trading alerts and order confirmations for Even Realities G2 smart glasses. Set 
     <td align="center"><img src="assets/phone-shortcuts.png" width="226" alt="Phone shortcut tiles with action icons, titles and on/off switches"></td>
     <td align="center">
       <img src="assets/lens-alert.jpg" width="376" alt="G2 alert for a BTC long near liquidation, with Dismiss and Close 50% choices"><br>
-      <img src="assets/lens-fill.jpg" width="376" alt="G2 result showing 0.025 BTC closed and the paper position reduced from 0.050 to 0.025 BTC">
+      <img src="assets/lens-fill.jpg" width="376" alt="G2 result showing 0.025 BTC closed and the demo position reduced from 0.050 to 0.025 BTC">
     </td>
   </tr>
 </table>
 
-Paper trade shown in the Even Hub Simulator. [27-second simulator clip](assets/demo.mp4) · [BTC position detail on the simulated lens](assets/lens-detail.jpg)
+Lens frames are from the Even Hub Simulator. [27-second clip](assets/demo.mp4) · [BTC position on the lens](assets/lens-detail.jpg)
 
 <table>
   <tr>
@@ -39,74 +41,91 @@ Paper trade shown in the Even Hub Simulator. [27-second simulator clip](assets/d
   <tr>
     <td align="center"><a href="site/landing/img/app/templates.jpg"><img src="site/landing/img/app/templates.jpg" width="190" alt="Phone templates grouped by Protect, Take profit and Market"></a></td>
     <td align="center"><a href="assets/phone-editor.png"><img src="assets/phone-editor.png" width="190" alt="Phone editor showing a liquidation condition and a close-position action"></a></td>
-    <td align="center"><a href="assets/phone-history.png"><img src="assets/phone-history.png" width="190" alt="Phone History showing example filled, expired and skipped proposals"></a></td>
+    <td align="center"><a href="assets/phone-history.png"><img src="assets/phone-history.png" width="190" alt="Phone History showing filled, expired and skipped proposals"></a></td>
   </tr>
 </table>
 
-## Try the paper trade
+## Website demo
 
-1. Open the [liquidation demo](https://trade-shortcuts-pi.vercel.app/sandbox/#liquidation) and press **▶ Play** below the glasses, or drag the BTC chart down.
-2. When the alert appears, press **Down** to select **Close 50%**, then **Click** to confirm.
-3. The lens shows **Closed 0.025 BTC**. Select **Start over** to reset the paper position.
+1. Open the [demo](https://trade-shortcuts-pi.vercel.app/sandbox/#liquidation) and press **Play** under the glasses, or drag the BTC chart down.
+2. When the alert appears, press **Down** to select **Close 50%**, then **Click**.
+3. The lens shows **Closed 0.025 BTC**. **Start over** resets the demo.
 
-The sandbox runs in the browser with simulated positions. Use the [desktop simulator](#run-the-demo) to see the fill in phone History.
+Runs in the browser. No account and no install. The [local demo](#demo) also writes the fill into phone History.
 
-## How it works
+## Architecture
 
-```text
-[Even G2] <--BLE--> [Even app webview / phone UI] <--HTTP API--> [Rule server]
-                                                                    |
-                                               [Bybit V5 Demo/Testnet or paper exchange]
+The phone and the glasses talk to one rule server. It polls prices and positions, then checks each shortcut.
+
+<img src="assets/architecture.png" width="880" alt="Even G2 connects to the phone app over BLE. The app calls the rule server over HTTP. The server uses Bybit V5 or the demo exchange.">
+
+Exchange keys stay on the server. The app holds no funds. Bybit is Demo and Testnet only.
+
+```
+app/src/
+  main.ts           Glasses bridge and phone boot
+  api.ts            Rule server client
+  view.ts           Lens screens
+  phone/            Shortcut list, editor, history, settings
+
+server/src/
+  main.ts           API, polling, exchange choice
+  http.ts           HTTP routes
+  session.ts        Poll, evaluate, confirm
+  engine.ts         Condition checks
+  registry.ts       Shortcut catalog
+  validate.ts       Rule checks
+  proposals.ts      Exact order for one trigger
+  execute.ts        Send a confirmed order
+  bybit.ts          Bybit V5 Demo and Testnet
+  fake-exchange.ts  Built-in demo exchange
+  store.ts          SQLite alerts and history
+  notify.ts         Deliver alerts to open clients
+  stt.ts            Optional voice transcription
+
+site/sandbox/src/
+  page.ts           Website demo
+  backend.ts        Same server, in the browser
+  exchange.ts       Demo prices and positions
+  lens.ts           Simulated G2 display
+  scenarios.ts      Playable scenarios
 ```
 
-The server polls for prices and positions and evaluates each shortcut's conditions. An order proposal shows the trigger and the proposed action on the glasses with **Dismiss** selected. The server rechecks the proposal before submitting a confirmed order, deduplicates repeated confirmations and records the result in History.
+A proposal opens on the glasses with **Dismiss** selected. The server checks it again before sending the order, ignores a repeated confirm, and stores the result in History.
 
-The Bybit adapter supports Demo Trading and Testnet only. Exchange credentials stay on the server. Trade Shortcuts holds no user funds. Test alerts simulate the outcome without changing the account. [Server architecture](docs/shortcuts-architecture.md)
-
-| Entry point | Role |
-| --- | --- |
-| [`app/src/main.ts`](app/src/main.ts) | Boots the phone UI and the Even Hub glasses integration |
-| [`server/src/main.ts`](server/src/main.ts) | Starts the HTTP API, exchange polling and rule evaluation |
-| [`server/src/registry.ts`](server/src/registry.ts) and [`server/src/validate.ts`](server/src/validate.ts) | Define the shared shortcut catalog and validation rules |
-| [`site/sandbox/`](site/sandbox/) | Browser demo with a simulated lens and paper account |
-
-## Glasses controls
+## Controls
 
 | Input | Positions | Alert |
 | --- | --- | --- |
 | Swipe | Move between positions | Select **Dismiss** or the proposed action |
-| Tap | Open details. Tap again to bring up a close proposal. | Choose the selected option |
-| Double tap | Return from position details to the list | Dismiss the alert |
+| Tap | Open details. Tap again for a close proposal | Choose the selected option |
+| Double tap | Back to the list | Dismiss the alert |
 
-With voice enabled, choose **Speak** and say “close” or “закрой” to bring up a proposal for the position in focus. Opening a position with pending size or leverage choices requires manual selection. [Glasses screens and gestures](docs/glasses-shortcuts.md) · [G2 interface design](docs/design.md)
+With voice on, choose **Speak** and say “close” or “закрой” for the position in focus. Opening a position that still needs a size or leverage is manual. [Glasses screens](docs/glasses-shortcuts.md) · [Interface notes](docs/design.md)
 
 ## Setup
 
-### Run the demo
+[Node.js 22.18 or newer](https://nodejs.org/) and Git.
 
-Install [Node.js 22.18 or newer](https://nodejs.org/) and Git on a machine with a desktop session. Leave ports 5173, 8788 and 9898 free.
+### Demo
 
-```sh
+```bash
 git clone https://github.com/AstralEX1/trade-shortcuts.git
 cd trade-shortcuts
 npm run demo
 ```
 
-The runner installs the locked dependencies and opens the phone page and the Even Hub Simulator's **Glasses Display** with a fresh BTC, ETH and SOL paper account. No Bybit account, API keys or glasses are required.
+Wait for the BTC **Near liquidation · half** alert, then confirm **Close 50%** the same way as the [website demo](#website-demo). The fill shows on the lens and in phone History.
 
-1. Wait about 30 seconds for the BTC **Near liquidation · half** alert. It stays open for two minutes and can return while the condition holds.
-2. Press **Down** to select **Close 50%**, then **Click** to confirm.
-3. Check the fill on the lens and open **History** with the clock icon on the phone page.
+Ctrl+C stops it. Run `npm run demo` again for a fresh demo.
 
-To reset the paper account, stop with Ctrl+C and run `npm run demo` again.
+### On a G2
 
-### Run on glasses
+The [testing guide](docs/judge-testing.md) covers Even Hub Beta and a local QR. The [setup guide](docs/setup.md) covers a persistent server and an installable `.ehpk`.
 
-The [G2 testing guide](docs/judge-testing.md) covers Even Hub Beta and local QR preview. See the [setup guide](docs/setup.md) for a persistent server, optional integrations and packaging an installable `.ehpk`.
+### Checks
 
-### Development checks
-
-```sh
+```bash
 npm ci
 npm run typecheck
 npm test
@@ -116,35 +135,31 @@ npm run build:site
 
 ## Tech stack
 
-- **Glasses** use the Even Hub SDK and Pretext for text measurement.
-- **Phone and browser** use TypeScript and Vite. The phone UI uses [Inter](app/public/licenses/Inter.txt) and [Phosphor Icons](app/public/licenses/Phosphor.txt).
-- **Server** uses Node.js, SQLite and Bybit V5. The browser sandbox uses sql.js.
-- **Voice answers** use optional OpenAI transcription.
+- [@evenrealities/even_hub_sdk](https://www.npmjs.com/package/@evenrealities/even_hub_sdk)
+- [@evenrealities/evenhub-simulator](https://www.npmjs.com/package/@evenrealities/evenhub-simulator)
+- [TypeScript](https://www.typescriptlang.org/) + [Vite](https://vitejs.dev/)
+- [Node.js](https://nodejs.org/)
+- [OpenAI](https://platform.openai.com/docs/guides/speech-to-text)
+- [React](https://react.dev/) + [Base UI](https://base-ui.com/)
 
 ## Heads Up Hackathon
 
-Trade Shortcuts was built for the Exchanges & Stocks track. [DoraHacks submission brief](docs/dorahacks.md)
+Built for the Exchanges & Stocks track. [Submission brief](docs/dorahacks.md)
 
-| Environment | Evidence |
+| Where | What was checked |
 | --- | --- |
-| Browser sandbox and Even Hub Simulator | BTC paper alert, confirmation and fill. The simulator run recorded the fill in phone History. |
-| Bybit Testnet | Tested a position open, reduce-only close, stop and take-profit updates, and a limit-order cancellation on XRPUSDT. |
-| Physical Even G2 and R1 | Device verification pending. |
+| Website demo and Even Hub Simulator | BTC alert, confirm, fill, and History |
+| Bybit Testnet | Open, reduce-only close, stop, take-profit, and a limit cancel on XRPUSDT |
+| Physical G2 and R1 | Not checked on a device yet |
 
-[Test and release evidence](docs/handoff.md)
+[Test notes](docs/handoff.md)
 
-### What existed before November 23, 2026
+### API requests
 
-No Trade Shortcuts application code existed before kickoff. The [first project commit](https://github.com/AstralEX1/trade-shortcuts/commit/5aee0bd) is dated November 24. The phone editor, rule engine, paper exchange, Bybit V5 integration, trade confirmation flow and G2 screens were built during the hackathon.
-
-The project uses the existing Even Hub SDK, simulator and CLI. The PNG and wear-state helpers are adapted from [Market Glimpse](https://github.com/adamtorgerson/market-glimpse) with the author's permission. The simulator capture workflow also draws on that project. Its repository does not list a project license.
-
-### API feature requests
-
-- **Even Hub SDK** should report when a page or image has rendered on the glasses so rapid updates can be paced without fixed delays.
-- **Bybit V5** should return the ROI shown in the Bybit app, including after isolated margin changes.
-- **Bybit V5** should accept a client request ID and provide a status lookup for isolated-margin adjustments so the app can safely reconcile timed-out writes.
+- **Even Hub SDK** should report when a page has rendered, so updates are not paced with fixed delays.
+- **Bybit V5** should return the ROI shown in the Bybit app, including after an isolated-margin change.
+- **Bybit V5** should accept a client request id for an isolated-margin change, and a way to look up the result.
 
 ## License
 
-[MIT](LICENSE) · [Privacy policy](https://trade-shortcuts-pi.vercel.app/privacy.html) · [Even Hub store assets and QA](docs/store-listing.md)
+[MIT](LICENSE) · [Privacy policy](https://trade-shortcuts-pi.vercel.app/privacy.html) · [Even Hub listing](docs/store-listing.md)
