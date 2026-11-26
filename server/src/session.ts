@@ -29,7 +29,7 @@ export type Session = {
   pick(proposalId: string, size: number, leverage: number): Promise<Reply & { proposalId?: string }>
   /** Raises the proposals of the shortcut whose phrase was said. Nothing runs until a tap. */
   voice(text: string): Promise<Reply>
-  /** Glasses menu: the seeded "protect all", "lock profits" and "close all" shortcuts, by phrase; `at` keeps one position. */
+  /** Glasses menu: seeded protect, lock and close. `at` keeps one position and the toast says "close position". */
   command(kind: Command, at?: { symbol: string; positionIdx: number }): Promise<Reply>
   /** Editor · Options · Test: a simulated alert and proposal on the first target (§9). */
   test(shortcutId: string): Promise<Reply & { alertId?: string; proposalId?: string }>
@@ -537,7 +537,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     return store.pendingProposals().filter(p => p.expiresAt > now).sort(queueOrder)
   }
 
-  async function voice(text: string, at?: { symbol: string; positionIdx: number }): Promise<Reply> {
+  async function voice(text: string, at?: { symbol: string; positionIdx: number }, said?: string): Promise<Reply> {
     const reply = (message: string) => { say(message, { first: true }); return { ok: false, message } }
     if (!normalizePhrase(text)) return reply('Heard nothing')
     const rule = matchShortcut(text, store.listShortcuts().filter(r => r.enabled))
@@ -547,8 +547,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       if (at && (t.position?.symbol !== at.symbol || t.position.positionIdx !== at.positionIdx)) continue
       if ((await raise(rule, t, { reason: `Voice: ${rule.voicePhrase}`, matched: [], voice: true }, ctxNow())).proposal) n++
     }
-    // One position uses the close-all rule filtered down: the lens should not say every position is closing.
-    const heard = at && rule.voicePhrase === PHRASE.close ? 'close position' : rule.voicePhrase
+    const heard = said ?? rule.voicePhrase
     if (!n) return reply(`Heard "${heard}" · nothing to change`)
     return { ok: true, message: `Heard "${heard}" · ${n} proposal${n > 1 ? 's' : ''}` }
   }
@@ -636,7 +635,8 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     },
 
     voice: text => voice(text),
-    command: (kind, at) => voice(PHRASE[kind], at),
+    // Close of one position matches the "close all" seed, then keeps that position. The toast names that one position.
+    command: (kind, at) => voice(PHRASE[kind], at, kind === 'close' && at ? 'close position' : undefined),
 
     async test(shortcutId) {
       const rule = store.getShortcut(shortcutId)

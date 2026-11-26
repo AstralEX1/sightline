@@ -94,7 +94,7 @@ export const getExecution = (executionId: string) => request<Execution>('GET', `
 export const getProposalExecution = (proposalId: string) => request<Execution>('GET', `/api/proposals/${id(proposalId)}/execution`)
 /** Glasses menu: raise the seeded "protect all" (`stop`), "lock profits" (`lock`) or "close all" (`close`) shortcut; `position` keeps one. */
 export const command = (kind: Command, position?: { symbol: string; positionIdx: number }) => request<Reply>('POST', '/api/command', { command: kind, position })
-/** The lens's answer to its alert: `answer` is null for silence or anything that is not a plain yes or no. */
+/** Transcript plus the two readings the server made. `answer` is yes or no. `close` is a whole-phrase close from Speak. */
 export const voice = (pcm: Uint8Array) => request<{ heard: string; answer: 'yes' | 'no' | null; close: { all: boolean; coin?: string } | null }>('POST', '/api/voice', pcm, VOICE_TIMEOUT_MS)
 
 // ── phone: shortcuts, editor, history, settings ───────────

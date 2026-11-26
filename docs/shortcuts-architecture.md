@@ -277,7 +277,7 @@ Endpoints, by the screen that calls them. All under `/api`, behind the existing 
 | History | `GET /history?before=` | alert lines with their last status (§9), newest first |
 | Settings | `GET /settings`, `PUT /settings` | Bybit status, environment, API access and withdrawals (from `/v5/user/query-api`), live trading (read-only: a server switch, off); Notifications: alerts on glasses, in-app notifications; cooldown and expiry |
 | Phone app, any screen | `GET /notifications?after=` | new alerts for the in-app banner and badge, polled while the app is open |
-| Lens · voice | `POST /voice` | PCM audio returns `{heard, answer}`. The client handles dismissal or cancellable confirmation. |
+| Lens · voice | `POST /voice` | PCM audio returns `{heard, answer, close}`. `answer` is yes or no for the card. `close` is a whole-phrase close from Speak. The client confirms either and does not parse the transcript. |
 | Lens · menu | `POST /command` | `stop`, `lock` or `close` raises guarded proposals. Close can target one position. |
 | Lens · Detail | `GET /chart?symbol=…` | Last-price minute candles for an open position; cached for a minute. |
 | Lens · Open | `POST /proposals/:id/pick` | Select allowed size and leverage and obtain a new proposal for Review. |

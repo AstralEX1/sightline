@@ -470,11 +470,10 @@ async function poll(force = false) {
   await draw()
 }
 
-// ── voice: the mic opens when an alert arrives; yes starts a countdown, no dismisses ──
+// ── voice: a card listens for yes or no; Speak listens for a close the server already classified ──
 
 async function startListening(ms: number, target: Listen) {
   if (!bridge || mic !== 'off' || !canUseVoice() || !speakOn()) return
-  if (target.kind === 'close' && !api.voiceAnswersOn()) return
   mic = 'starting'
   listening = target
   listenMs = ms
