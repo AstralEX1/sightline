@@ -82,7 +82,7 @@ export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<un
   let bannerTimer: ReturnType<typeof setTimeout> | undefined
   /** In-app banner (§4.12): the alert and where to answer it; never a confirm button. */
   const showBanner = (a: AlertRecord, more = 0) => {
-    const where = actionOf(a) === 'NOTIFY' ? 'Shows on Even G2' : 'Confirm on Even G2'
+    const where = actionOf(a) === 'NOTIFY' ? 'OK on Even G2' : 'Confirm on Even G2'
     banner.setAttribute('aria-label', `${a.title}, ${a.target}, ${a.reason}. ${where}. Open History${more ? `, and ${more} more alert${more > 1 ? 's' : ''}` : ''}`)
     banner.replaceChildren(chip(a, 20),
       h('span', { class: 'banner__text' },

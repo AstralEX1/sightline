@@ -190,7 +190,7 @@ export function resolve(action: Action, t: TargetRef, m: Market, authorized?: Te
       return { ok: true, terms: { type: 'cancel', symbol: o.symbol, orderId: o.orderId }, question: `Cancel the rest · ${o.leavesQty} ${name}?` }
     }
     case 'NOTIFY':
-      return skip('notify', 'nothing to send')
+      return { ok: true, terms: { type: 'notify' }, question: '' }
     default:
       return skip('unknown_action', 'edit this shortcut to choose a supported action')
   }
@@ -204,8 +204,8 @@ export const sameTerms = (a: Terms, b: Terms) => JSON.stringify(a) === JSON.stri
 /** Market orders wait the short expiry; protection, margin and cancel the long one (§9). */
 export const isMarket = (a: Action) => a.type === 'CLOSE_POSITION' || a.type === 'OPEN_LONG' || a.type === 'OPEN_SHORT' || a.type === 'INCREASE_POSITION'
 
-/** Lens queue (§9): Close, stops, margin, cancel (critical first), then take profit, then Open and Increase; oldest first. */
-const group = (t: Terms) => (t.type === 'order' ? (t.reduceOnly ? 0 : 2) : t.type === 'setTakeProfit' ? 1 : 0)
+/** Lens queue (§9): Close, stops, margin, cancel (critical first), then take profit, then Notify, then Open and Increase; oldest first. */
+const group = (t: Terms) => t.type === 'notify' ? 2 : t.type === 'order' ? (t.reduceOnly ? 0 : 3) : t.type === 'setTakeProfit' ? 1 : 0
 export const queueOrder = (a: Proposal, b: Proposal) =>
   group(a.terms) - group(b.terms) || (a.priority === b.priority ? 0 : a.priority === 'CRITICAL' ? -1 : 1) || a.createdAt - b.createdAt
 
@@ -238,6 +238,7 @@ const duration = (min: number) => {
 /** History's status and the lens result for an execution (§9). */
 export function executionLine(e: Execution): string {
   const t = e.terms
+  if (t.type === 'notify') return 'Nothing to send'
   switch (e.status) {
     case 'AUTHORIZED':
     case 'VALIDATING':
@@ -259,7 +260,7 @@ export function executionLine(e: Execution): string {
  * its price moved: the distance alone drifts with every tick. Undefined for a cancel, or a target that never had a position.
  */
 export function receiptLine(t: Terms, before: Position | undefined, after: Position | undefined): string | undefined {
-  if (t.type === 'cancel') return undefined
+  if (t.type === 'cancel' || t.type === 'notify') return undefined
   const name = coin(t.symbol)
   if (!after) return before && `${before.size} → 0 ${name} · position closed`
   const pct = (p: Position) => (p.liqPrice > 0 ? `${liqDistancePct(p).toFixed(1)}%` : 'none')

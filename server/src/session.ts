@@ -251,10 +251,13 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       reason: why.reason, matched: why.matched, priority: priority(rule), simulated: !!why.simulated, delivery: rule.delivery, channels: [], status: '', createdAt: now,
     }
     let proposal: Proposal | undefined
-    if (a.type !== 'NOTIFY') {
+    {
       let r: Resolved
       try {
-        r = resolve(a, t, await market(t.symbol, opens(a), c))
+        // A notice needs no exchange read. The card is the whole action.
+        r = a.type === 'NOTIFY'
+          ? { ok: true, terms: { type: 'notify' }, question: '' }
+          : resolve(a, t, await market(t.symbol, opens(a), c))
       } catch (e) {
         error = `${coin(t.symbol)}: ${errorText(e)}`
         return { alert, proposal, error: 'Could not read Bybit, try again' } // nothing saved: the next tick tries again
@@ -276,6 +279,8 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
         }
       }
     }
+    // Phone-only notify stays in History and the app banner. It does not take the lens.
+    if (proposal?.terms.type === 'notify' && !(rule.delivery.glasses && store.settings().notifications.glasses)) proposal = undefined
     const saved = store.transaction(() => {
       const current = store.getShortcut(rule.id)
       if (!current || current.version !== rule.version || (!why.simulated && !current.enabled)) return false
@@ -291,9 +296,6 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       return true
     })
     if (!saved) return { alert, proposal: undefined, error: 'Shortcut changed' }
-    if (a.type === 'NOTIFY' && rule.delivery.glasses && store.settings().notifications.glasses) {
-      say(`${alert.title} · ${alert.target} · ${alert.reason}`, { alertId: why.simulated ? undefined : alert.id })
-    }
     return { alert, proposal }
   }
 
@@ -335,6 +337,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
   const executor = createExecutor({
     ex, store, clock,
     async revalidate(p) {
+      if (p.terms.type === 'notify') return { ok: false, message: 'Nothing to send' }
       // fresh reads, not the last poll (§9 step 2): the price too, so a level or a distance is checked as it is at the tap
       const [ps, os, bal, tk] = await Promise.all([ex.positions(), ex.openOrders(), ex.balance(), ex.ticker(p.terms.symbol)])
       const c = await check(p, { positions: ps, orders: os, balance: bal, tickers: { [p.terms.symbol]: tk } })
@@ -452,7 +455,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       const partial = e.status === 'PARTIALLY_FILLED'
       if ((partial ? !!e.receipt : e.status !== 'FILLED' && e.status !== 'APPLIED') || e.updatedAt >= now) continue
       const t = e.terms
-      const after = t.type === 'cancel' ? undefined : positions.find(p => p.symbol === t.symbol && p.positionIdx === t.positionIdx)
+      const after = t.type === 'cancel' || t.type === 'notify' ? undefined : positions.find(p => p.symbol === t.symbol && p.positionIdx === t.positionIdx)
       // Bybit updates its position timestamp on every fill, so compare the tracked lifecycle instead.
       if (after && r.before && r.epoch !== epochOf(after)) {
         receipts.delete(id)
@@ -480,11 +483,13 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     const c = ctxNow()
     for (const p of store.pendingProposals()) {
       if (p.expiresAt <= now) {
-        closeProposal(store, p, 'EXPIRED', `Expired · not confirmed within ${Math.round((p.expiresAt - p.createdAt) / 1000)} s`)
-        if (p.id === head?.id) say(`Expired, nothing sent: ${p.title}`) // the card on the lens must not vanish without a word
+        const secs = Math.round((p.expiresAt - p.createdAt) / 1000)
+        const notify = p.terms.type === 'notify'
+        closeProposal(store, p, 'EXPIRED', notify ? `Expired · not acknowledged within ${secs} s` : `Expired · not confirmed within ${secs} s`)
+        if (p.id === head?.id) say(notify ? `Expired: ${p.title}` : `Expired, nothing sent: ${p.title}`) // the card on the lens must not vanish without a word
         continue
       }
-      if (p.simulated) continue
+      if (p.simulated || p.terms.type === 'notify') continue // a notice stays until OK or expiry; the position may already be gone
       try {
         const r = await check(p, c)
         if (!r.ok && !r.replaced) closeProposal(store, p, 'SUPERSEDED', `Withdrawn · ${r.reason}`)
@@ -580,13 +585,14 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
 
     async confirm(proposalId, idempotencyKey) {
       const p = store.proposal(proposalId)
+      if (p?.terms.type === 'notify') return { ok: false, message: 'Nothing to send' }
       // Its terms hold placeholder choices: only the proposal a pick made can be confirmed
       if (p?.picks && p.status === 'PENDING') return { ok: false, message: 'Pick the size and leverage on Even G2 first' }
       const t = p?.terms
       // Only a first tap: a resend gets the old execution back, and the last poll would already be its after side.
       const first = !store.executionByKey(idempotencyKey) && !store.executionByProposal(proposalId)
       // the last poll is what the alert showed: the before side of the receipt
-      const before = t && t.type !== 'cancel' ? positions.find(p => p.symbol === t.symbol && p.positionIdx === t.positionIdx) : undefined
+      const before = t && t.type !== 'cancel' ? positions.find(x => x.symbol === t.symbol && x.positionIdx === t.positionIdx) : undefined
       const epoch = before && epochOf(before)
       const r = await executor.confirm(proposalId, idempotencyKey)
       if (first && r.execution && t?.type !== 'cancel') receipts.set(r.execution.id, { before, epoch, at: clock() })
@@ -608,8 +614,10 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     dismiss(proposalId, by) {
       const p = store.proposal(proposalId)
       if (!p || p.status !== 'PENDING') return { ok: false, message: 'Proposal is gone' }
-      closeProposal(store, p, 'DISMISSED', `Dismissed on ${by === 'glasses' ? 'Even G2' : 'the phone'}`, { dismissedBy: by })
-      return { ok: true, message: 'Dismissed, nothing sent' }
+      const where = by === 'glasses' ? 'Even G2' : 'the phone'
+      const notice = p.terms.type === 'notify'
+      closeProposal(store, p, 'DISMISSED', notice ? `OK on ${where}` : `Dismissed on ${where}`, { dismissedBy: by })
+      return { ok: true, message: notice ? 'OK' : 'Dismissed, nothing sent' }
     },
 
     async pick(proposalId, size, leverage) {

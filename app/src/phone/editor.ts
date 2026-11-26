@@ -464,7 +464,7 @@ function confirmLine() {
   const a = s.draft.action
   if (!a) return null
   const phoneOnly = a.type === 'NOTIFY' && !s.draft.delivery.glasses
-  return h('p', { class: 'confirm-line', html: icon(phoneOnly ? 'bell' : 'glasses', 16, 2) }, phoneOnly ? 'Sends to phone' : a.type === 'NOTIFY' ? 'Shows on Even G2' : 'Confirm on Even G2')
+  return h('p', { class: 'confirm-line', html: icon(phoneOnly ? 'bell' : 'glasses', 16, 2) }, phoneOnly ? 'Sends to phone' : a.type === 'NOTIFY' ? 'OK on Even G2' : 'Confirm on Even G2')
 }
 
 // ── Token editors ────────────────────────────────────────

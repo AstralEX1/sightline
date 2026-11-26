@@ -21,7 +21,7 @@ for (const tab of TABS) {
     const [alert] = store.history()
     assert.ok(alert, 'no alert')
     assert.equal(alert.title, tab.on ? tab.template.title : 'Price up 0.5%')
-    assert.match(alert.status, tab.on ? /Waiting for a tap/ : /^Shown/)
+    assert.match(alert.status, /Waiting for a tap/)
     store.close()
   })
 }

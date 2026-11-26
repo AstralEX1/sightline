@@ -311,6 +311,16 @@ test('alert: every condition wears its icon, names the position and the reason, 
   assert.equal(iconOf(card({ reasonType: undefined, simulated: true, why: 'Test alert' })), 'bell')
 })
 
+test('notify: one OK, no second choice, and a tap does not confirm', () => {
+  const sc = alertOf({ terms: { type: 'notify' }, question: '', why: 'price crossed above 90,000', reasonType: 'PRICE', who: 'BTC' })
+  assert.equal(sc.text.who, 'BTC')
+  assert.equal(sc.text.why, 'Price crossed above 90,000')
+  assert.equal(sc.text.opt1, '> OK')
+  assert.equal(sc.text.opt2, '')
+  assert.deepEqual(sc.choices, ['ok'])
+  assert.equal(sc.text.hint, 'tap: OK')
+})
+
 test('alert: Dismiss comes first and carries >, a swipe moves it and swaps the brightness', () => {
   const sc = alertOf()
   assert.equal(sc.at, 0)

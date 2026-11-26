@@ -105,7 +105,7 @@ review:          # text 5, image 1
 
 ## 5. Alert examples
 
-These examples illustrate trade proposals. Notify appears as a status message. Protect all can generate a Set Stop Loss proposal. The icon names the condition; `opt2` names the action and its size.
+These examples illustrate trade proposals. Notify uses the same frame with a single `OK` and sends nothing. Protect all can generate a Set Stop Loss proposal. The icon names the condition; `opt2` names the action and its size.
 
 | Condition | Icon | who | why | Action | `opt2` |
 |---|---|---|---|---|---|

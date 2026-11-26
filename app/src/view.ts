@@ -10,8 +10,8 @@ export const CARD_SETTLE_MS = 1000
 
 /** Which boxes main.ts LAYOUTS puts on the lens (docs/glasses-shortcuts.md §4). */
 export type Layout = 'quiet' | 'main' | 'detail' | 'alert' | 'review'
-/** What a tap on opt1 / opt2 does: dismiss the proposal, confirm it, open its Review, close a result, or pick an Open's size or leverage. */
-export type Choice = 'dismiss' | 'confirm' | 'review' | 'close' | 'pick' | 'ack-glasses-test'
+/** What a tap on opt1 / opt2 does: dismiss the proposal, confirm it, acknowledge a notice, open its Review, close a result, or pick an Open's size or leverage. */
+export type Choice = 'dismiss' | 'confirm' | 'ok' | 'review' | 'close' | 'pick' | 'ack-glasses-test'
 
 /**
  * Text for each glasses container. Table columns are separate containers, so rows line up
@@ -172,8 +172,11 @@ export const iconOf = (c: Proposal): IconName => (c.reasonType ? REASON_ICON[c.r
 /** Open and Increase add exposure: their action opens Review, never the order (spec §10). */
 const grows = (c: Proposal) => c.terms.type === 'order' && !c.terms.reduceOnly
 /** Increase acts on an open position; Open needs the symbol flat. */
-const heldBy = (s: ServerState, c: Proposal) =>
-  s.positions.find(p => p.symbol === c.terms.symbol && c.terms.type === 'order' && p.positionIdx === c.terms.positionIdx && p.size > 0)
+const heldBy = (s: ServerState, c: Proposal) => {
+  const t = c.terms
+  if (t.type !== 'order') return undefined
+  return s.positions.find(p => p.symbol === t.symbol && p.positionIdx === t.positionIdx && p.size > 0)
+}
 
 /** Grouped digits, trailing zeros cut: 0.0500 → 0.05, 81300000 → 81,300,000. */
 function plainQty(n: number, decimals: number): string {
@@ -359,7 +362,7 @@ function detail(p: Position, at: number, total: number, v: View): Screen {
 
 /** The framed pages: `head` is the text inside the frame, `labels` go in opt1 and opt2 with `>` on one. */
 /** What a tap does on the choice under `>`, said in the hint line. */
-const TAP: Record<Choice, string> = { dismiss: 'tap: dismiss', confirm: 'tap: confirm', review: 'tap: review', close: 'tap: close', pick: 'tap: pick', 'ack-glasses-test': 'tap: OK' }
+const TAP: Record<Choice, string> = { dismiss: 'tap: dismiss', confirm: 'tap: confirm', ok: 'tap: OK', review: 'tap: review', close: 'tap: close', pick: 'tap: pick', 'ack-glasses-test': 'tap: OK' }
 
 function framed(o: { layout: 'alert' | 'review'; key: string; head: Record<string, string>; labels: string[]; choices: Choice[]; icon: IconName; card: Proposal | null; hint: (at: number) => string }, v: View): Screen {
   const at = v.cursor?.key === o.key ? Math.min(v.cursor.at, o.labels.length - 1) : 0 // Dismiss first: a stray tap must not trade
@@ -386,6 +389,13 @@ export function lensWhy(why: string): string {
 
 function alert(s: ServerState, c: Proposal, v: View): Screen {
   const t = c.terms
+  if (t.type === 'notify') {
+    return framed({
+      layout: 'alert', key: `alert:${c.id}`, card: c, icon: s.error ? 'hourglass' : iconOf(c),
+      head: { who: c.who, why: s.error ? 'Bybit data is stale' : lensWhy(c.why), queue: c.simulated ? 'TEST' : c.supersedes ? 'NEW' : s.pending > 1 ? `1/${s.pending}` : '' },
+      labels: ['OK'], choices: ['ok'], hint: () => TAP.ok,
+    }, v)
+  }
   // Stale exchange data: the server cannot check the terms, so only Dismiss is offered.
   // With picks the size is not chosen yet, so the label names none
   const action = s.error ? [] : [t.type === 'order' && grows(c) ? `Review ${heldBy(s, c) ? 'add' : sideWord(t.side)}${c.picks ? '' : ` · ${usdt(t.notionalUsdt)}`}` : c.question.replace(/\?$/, '')]
@@ -442,6 +452,7 @@ function told(o: Outcome): [IconName, string, string?] {
   const e = o.execution
   if (!e) return ['clock', 'Sent']
   const t = e.terms
+  if (t.type === 'notify') return ['bell', 'Nothing to send', 'OK']
   const coinName = coin(t.symbol)
   switch (e.status) {
     case 'AUTHORIZED': case 'VALIDATING': case 'SUBMITTING': return ['clock', 'Sent']

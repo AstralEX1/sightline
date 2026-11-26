@@ -210,12 +210,19 @@ test('a test alert is simulated: confirming it never reaches the exchange', asyn
   assert.deepEqual(ex.calls, [])
 })
 
-test('a notify shortcut alerts and never touches the exchange', async () => {
+test('a notify shortcut raises an OK card and never touches the exchange', async () => {
   const { ex, store, s, ticks } = setup([btc()], [tpl(6, d => { d.action = { type: 'NOTIFY' } })])
   await ticks()
+  const card = s.state().card
+  assert.equal(card?.terms.type, 'notify')
+  assert.equal(card?.who, 'BTC long')
+  assert.equal(s.state().toast, null)
+  assert.equal(last(store).status, 'Waiting for a tap on Even G2')
+  assert.deepEqual(await s.confirm(card!.id, 'k'), { ok: false, message: 'Nothing to send' })
+  assert.equal(s.state().card?.id, card!.id)
+  assert.deepEqual(s.dismiss(card!.id, 'glasses'), { ok: true, message: 'OK' })
   assert.equal(s.state().card, null)
-  assert.equal(last(store).status, 'Shown on Even G2')
-  assert.equal(s.state().toast, 'Notify · BTC long · liquidation distance 2.5%')
+  assert.equal(last(store).status, 'OK on Even G2')
   assert.deepEqual(ex.calls, [])
 })
 

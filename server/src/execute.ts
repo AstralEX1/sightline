@@ -27,7 +27,7 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const round8 = (n: number) => Math.round(n * 1e8) / 1e8
 
 /** One lane per account / symbol / positionIdx (§10): two writes to one position never overlap. */
-export const laneOf = (t: Terms) => (t.type === 'cancel' ? `${t.symbol}:order:${t.orderId}` : `${t.symbol}:${t.positionIdx}`)
+export const laneOf = (t: Terms) => t.type === 'notify' ? 'notify' : t.type === 'cancel' ? `${t.symbol}:order:${t.orderId}` : `${t.symbol}:${t.positionIdx}`
 
 /** Ends a proposal that is still pending and writes the alert's History line, in one transaction. False when it was no longer pending. */
 export function closeProposal(store: Store, p: Proposal, status: ProposalStatus, line: string, patch: Partial<Proposal> = {}): boolean {
@@ -47,6 +47,7 @@ function send(ex: Exchange, t: Terms): Promise<{ orderId: string } | void> {
     case 'setTakeProfit': return ex.setTakeProfit(t.symbol, t.positionIdx, t.price)
     case 'addMargin': return ex.addMargin(t.symbol, t.positionIdx, t.usd)
     case 'cancel': return ex.cancelOrder(t.symbol, t.orderId)
+    case 'notify': return Promise.reject(new Error('A notification is not an order'))
   }
 }
 
@@ -66,6 +67,7 @@ export function createExecutor(o: { ex: Exchange; store: Store; clock: () => num
     if (last && clock() - last.at < LOOKUP_EVERY_MS) return undefined
     lookedAt.set(e.id, { at: clock(), misses: last?.misses ?? 0 })
     try {
+      if (e.terms.type === 'notify') return undefined
       const o = await ex.order(e.terms.symbol, ref)
       return store.execution(e.id)?.status === e.status ? o : undefined // changed meanwhile: the next tick decides
     } catch {
@@ -119,7 +121,7 @@ export function createExecutor(o: { ex: Exchange; store: Store; clock: () => num
       return save(e, 'REJECTED', `could not check the position: ${errorText(err)}`)
     }
     if (!v.ok) return save(e, 'REJECTED', v.message)
-    if (v.openLeverage !== undefined) {
+    if (v.openLeverage !== undefined && p.terms.type === 'order') {
       // Before SUBMITTING: a leverage that did not take leaves no order behind, so nothing is unknown
       try {
         await ex.setLeverage(p.terms.symbol, v.openLeverage)
@@ -147,6 +149,7 @@ export function createExecutor(o: { ex: Exchange; store: Store; clock: () => num
       if (done) return result(done)
       const p = store.proposal(proposalId)
       if (!p) return { ok: false, message: 'Proposal is gone' }
+      if (p.terms.type === 'notify') return { ok: false, message: 'Nothing to send' }
       if (p.status !== 'PENDING') return { ok: false, message: GONE[p.status as keyof typeof GONE] ?? 'Proposal is gone' }
       const now = clock()
       if (p.expiresAt <= now) {
@@ -204,7 +207,7 @@ export function createExecutor(o: { ex: Exchange; store: Store; clock: () => num
           if (o.status === 'Cancelled' || o.status === 'PartiallyFilledCanceled' || o.status === 'Deactivated') save(e, 'APPLIED')
           else if (o.status === 'Filled' || o.status === 'Rejected') save(e, 'REJECTED', `order ${o.status.toLowerCase()} before the cancel`)
           else save(e, 'REJECTED', 'order is still open on Bybit')
-        } else if (!positions.some(p => p.symbol === t.symbol && p.positionIdx === t.positionIdx)) {
+        } else if (t.type !== 'notify' && !positions.some(p => p.symbol === t.symbol && p.positionIdx === t.positionIdx)) {
           // shortcut: an unknown add margin has no record to look up, so it blocks until the position closes; compare positionIM if it happens
           save(e, 'REJECTED', 'position closed, result unknown')
         }

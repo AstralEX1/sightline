@@ -228,7 +228,7 @@ Trigger policies (TradingView-inspired):
 
 ## 9. Alert, proposal and execution lifecycles
 
-A match records the shortcut version, target, reason, matched conditions, priority, time and delivery status. Notify records the alert and can show a lens status message. A trade match creates a proposal with the resolved terms or records why the action was skipped. The lens confirms a proposal ID with an idempotency key. A simulated test produces a SIMULATED execution.
+A match records the shortcut version, target, reason, matched conditions, priority, time and delivery status. Notify records the alert and, when glasses delivery is on, a card whose only action is OK. A trade match creates a proposal with the resolved terms or records why the action was skipped. The lens confirms a proposal ID with an idempotency key. A simulated test produces a SIMULATED execution.
 
 `PENDING` proposals can become `DISMISSED`, `EXPIRED`, `SUPERSEDED` or `AUTHORIZED`. Execution separately tracks validation, submission, acknowledgement, fills, applied changes, rejection and unknown outcomes. [Record types](../server/src/types.ts)
 

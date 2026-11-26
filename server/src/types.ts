@@ -170,6 +170,7 @@ export type Terms =
   | { type: 'setTakeProfit'; symbol: string; positionIdx: number; price: number }
   | { type: 'addMargin'; symbol: string; positionIdx: number; usd: number }
   | { type: 'cancel'; symbol: string; orderId: string }
+  | { type: 'notify' }
 
 /** One matching group of one shortcut on one target: the evidence, and History's line. */
 export interface AlertRecord {

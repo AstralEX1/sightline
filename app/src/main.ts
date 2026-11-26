@@ -786,7 +786,7 @@ function act(sc: Screen, i: number) {
     return api.acknowledgeGlassesTest(state.glassesTestId).catch(() => undefined).then(() => poll(true))
   }
   if (!card) return
-  if (choice === 'dismiss') return dismissCard(card)
+  if (choice === 'ok' || choice === 'dismiss') return dismissCard(card)
   if (choice === 'review') { review = card.id; return draw() }
   if (choice === 'confirm') return confirmCard(card)
   if (choice === 'pick') return pickChoice(sc, card, i)
