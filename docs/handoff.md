@@ -6,6 +6,8 @@ The phone editor, G2 client and Bybit adapter share one rule catalog. It has 13 
 
 The landing feed uses the brand green `#0b7a3b` for the emphasized words in each heading. Position screens are the current lens frames on the same photo background as the other alerts. Each alert section shows two lens cards. The landing does not show the phone History list.
 
+The browser sandbox shows the glasses, the phone and the paper exchange on one stage. Playing a scenario dims the devices that are not the current step and flashes the shortcut's condition, then its action, on the phone.
+
 The phone opens a template as an unsaved rule. Save it, then enable it on Home. On the lens, an actionable alert starts on Dismiss. For Open long or Open short with alternative sizes or leverages, the user picks the terms by hand and reviews the exact order. Other eligible cards support a spoken yes or no when transcription and voice answers are enabled. A yes starts a five-second cancellation window.
 
 Settings in the Even app can send a connection check to the lens in the same session. The phone reports success after a tap on the TEST card. Quiet mode shows connection status and the nearest liquidation risk between alerts. History opens each record to show the proposed terms, execution outcome, and position readback when recorded. The landing page links directly to the beta installation steps.
@@ -23,9 +25,10 @@ Settings in the Even app can send a connection check to the lens in the same ses
 
 ## Verification and release history
 
+- Typecheck and all 587 automated tests passed on 26 November 2026 after the sandbox playback highlight. The landing price-level cards were refreshed in the same change.
 - The G2 connection check, Quiet mode, and History changes passed typecheck and all 593 automated tests. The app, landing page, and browser sandbox built successfully. The browser simulator confirmed the TEST card, opened the position list from Quiet mode, and recorded a simulated close from 0.050 to 0.025 BTC in History. Physical G2/R1 verification is pending.
 - Working tree based on `f5a7e38`, including local server changes, 25 November 2026. With Node 22.23.4, typecheck and all 587 automated tests passed (zero skipped). The app, landing page, browser sandbox and a test `.ehpk` built in an isolated copy with a placeholder HTTPS origin.
-- Even Hub lists `com.tradeshortcuts.g2` version `0.1.2` in Beta (26 November). It defaults to the hosted paper demo and also allowlists the private Bybit Testnet server. The portal download matches the audited package byte for byte (SHA-256 `77da62a3a46975c595a73eeb09a9a1c931297323d5b1aed3239c5095321a444b`). G2 installation requires an active tester. [Judge testing guide](judge-testing.md)
+- On 26 November, Even Hub listed `com.tradeshortcuts.g2` version `0.1.2` in Beta. It defaults to the hosted paper demo and also allowlists the private Bybit Testnet server. The portal download matches the audited package byte for byte (SHA-256 `77da62a3a46975c595a73eeb09a9a1c931297323d5b1aed3239c5095321a444b`). G2 installation requires an active tester. [Judge testing guide](judge-testing.md)
 - The private hosted API returned `Bybit testnet` over HTTPS, validated the Bybit key and recognized a synthetic spoken “No” through OpenAI. The deployed VPS API predates the phone-to-G2 connection check. The local QR workflow runs the current API.
 - Recorded on 24 November 2026 on Bybit testnet (XRPUSDT): open, duplicate `orderLinkId` refused (110072), set SL/TP each keeps the other, SL past mark rejected, limit order listed and cancelled, reduce-only half and oversize close (no flip), fills deduped by `execId`, add margin on isolated (110076 on cross, as expected).
 

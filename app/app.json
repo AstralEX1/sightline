@@ -16,7 +16,7 @@
     },
     {
       "name": "g2-microphone",
-      "desc": "With voice answers enabled, the G2 microphone listens after an alert, during the cancellation countdown, and when Speak is chosen on a position. Audio goes through your Trade Shortcuts server to OpenAI for transcription. A spoken close only raises a confirmation card."
+      "desc": "When enabled, the G2 microphone listens briefly after an actionable alert, during the cancellation countdown, or when you choose Speak on G2. Audio goes through the configured server to OpenAI for transcription."
     }
   ],
   "supported_languages": ["en"]
