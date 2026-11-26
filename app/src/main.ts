@@ -14,10 +14,10 @@ import {
   type EvenAppBridge,
 } from '@evenrealities/even_hub_sdk'
 import type { Candle, ExecutionStatus, Proposal, ServerState } from '../../server/src/types.ts'
+import type { Command } from '../../server/src/session.ts'
 import { CARD_SETTLE_MS, previewText, screen, rankPositions, clampFocus, type Layout, type Outcome, type RenderedAlert, type Screen } from './view.ts'
 import * as api from './api.ts'
 import { png, svg, chartPng, titlePng, type IconName } from './icons.ts'
-import { closeIntent } from '../../server/src/rules.ts'
 import { coin } from '../../server/src/format.ts'
 import { startPhonePage } from './phone/index.ts'
 import { enableGlassesTest } from './phone/settings.ts'
@@ -69,8 +69,9 @@ let lastSwipe = 0
 let blinked = ''
 let listenEnds = 0
 let listenMs = LISTEN_MS
-/** The alert the open mic is listening for; its answer only counts while that alert is still on the lens. */
-let listenFor = ''
+/** What the open mic is for. A card answers yes or no. Close is Speak on the list or a position. */
+type Listen = { kind: 'card'; id: string } | { kind: 'close' }
+let listening: Listen | null = null
 let countdown: { card: Proposal; ends: number } | null = null
 let countdownTimer: ReturnType<typeof setInterval> | undefined
 let bridge: EvenAppBridge | null = null
@@ -98,8 +99,6 @@ let picking = false
 let hide = ''
 let cursor = { key: '', at: 0 }
 let mic: 'off' | 'starting' | 'on' | 'stopping' | 'sending' = 'off'
-/** `command`: the mic was opened from the list or a position, and the phrase asks to close. `answer`: yes or no on a card. */
-let listenMode: 'answer' | 'command' = 'answer'
 let micAttempt = 0
 let voiceInForeground = true
 const canUseVoice = () => voiceInForeground && !document.hidden && !quit
@@ -108,8 +107,9 @@ let listenTimer: ReturnType<typeof setTimeout> | undefined
 let voiceNote = { text: '', until: 0 }
 const note = (text: string, ms = NOTE_MS) => { voiceNote = { text, until: Date.now() + ms } }
 const pausedMin = () => Math.max(0, Math.ceil((pausedUntil - Date.now()) / 60_000))
-/** The server has no speech key, or voice answers are off: the menu loses Speak (a rebuild sets the menu, so it is part of the page key). */
+/** The server has no speech key. The phone status line uses this. */
 const noVoice = () => state?.voice === false
+/** The mic may open: the server can transcribe, and voice answers are on. Speak uses the same switch. */
 const speakOn = () => !noVoice() && api.voiceAnswersOn()
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 const CALL_MS = 3000 // a BLE reply can get lost; without a cap one lost reply froze the lens for good
@@ -213,7 +213,7 @@ function voiceText(): string {
     const left = countdown.ends - Date.now()
     return `Sending in ${Math.max(0, Math.ceil(left / 1000))}  ${bar(left, COUNTDOWN_MS)}  tap or say no: stop`
   }
-  if (mic === 'on') return `● ${listenMode === 'command' ? 'Say close' : 'Say yes or no'}  ${bar(listenEnds - Date.now(), listenMs)}`
+  if (mic === 'on') return `● ${listening?.kind === 'close' ? 'Say close' : 'Say yes or no'}  ${bar(listenEnds - Date.now(), listenMs)}`
   return Date.now() < voiceNote.until ? voiceNote.text : ''
 }
 
@@ -388,7 +388,7 @@ async function draw() {
           blinked = sc.card.id // once per alert
           await blink(want.who)
           // only an alert with an action asks; an Open with picks needs its size and leverage chosen by hand
-          if (sc.choices.length > 1 && !sc.card.picks && api.voiceAnswersOn()) void startListening(LISTEN_MS, sc.card.id)
+          if (sc.choices.length > 1 && !sc.card.picks && speakOn()) void startListening(LISTEN_MS, { kind: 'card', id: sc.card.id })
         }
         continue
       }
@@ -532,8 +532,7 @@ async function sendVoice() {
     }
   }
   mic = 'off'
-  if (!canUseVoice()) return poll()
-  if (r) await onAnswer(cardId, r)
+  if (r && canUseVoice()) await onAnswer(cardId, r)
   else if (listenMode === 'command') {
     listenMode = 'answer'
     if (pcm.length < MIN_AUDIO_BYTES) note('Heard nothing · say close') // a failed transcription already left its own note
