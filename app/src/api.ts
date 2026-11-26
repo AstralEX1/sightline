@@ -83,6 +83,7 @@ export const pick = (proposalId: string, size: number, leverage: number) =>
 export const answer = (cardId: string, yes: boolean) => (yes ? confirm(cardId, `lens:${cardId}`) : dismiss(cardId, 'glasses'))
 export const getChart = (symbol: string) => request<Candle[]>('GET', `/api/chart?symbol=${encodeURIComponent(symbol)}`)
 export const getExecution = (executionId: string) => request<Execution>('GET', `/api/executions/${id(executionId)}`)
+export const getProposalExecution = (proposalId: string) => request<Execution>('GET', `/api/proposals/${id(proposalId)}/execution`)
 /** Glasses menu: raise the seeded "protect all" (`stop`), "lock profits" (`lock`) or "close all" (`close`) shortcut; `position` keeps one. */
 export const command = (kind: Command, position?: { symbol: string; positionIdx: number }) => request<Reply>('POST', '/api/command', { command: kind, position })
 /** The lens's answer to its alert: `answer` is null for silence or anything that is not a plain yes or no. */

@@ -33,7 +33,7 @@ Leave about 800 ms between inputs (the lens ignores swipes closer than 700 ms) a
 
 Paper demo state and History are available through the loopback Vite proxy at `http://localhost:5173/api/state` and `/api/history`.
 
-Expected demo story: the lens lists BTC, ETH, SOL. If a SOL alert is already open, let the card settle and click Dismiss. About 30 s after the server starts, the enabled shortcut **Near liquidation · half** raises a BTC alert with `Dismiss` first. `down` then `click` confirms **Close 50%**, and the lens shows the fill. The trade then appears in `/api/history` and in History on the phone page.
+Expected demo story: the lens lists BTC, ETH, SOL. About 30 s after the server starts, the **Near liquidation · half** shortcut raises a BTC alert with `Dismiss` first. The card stays open for 120 s and can recur while its condition holds. `down` then `click` confirms **Close 50%**, and the lens shows the fill. The trade then appears in `/api/history` and in History on the phone page.
 
 The simulator needs a desktop session. On a headless box (CI, remote shell) run the checks below. For API checks use a configured fake server on its own port and authenticate requests, and say the lens was not shown.
 

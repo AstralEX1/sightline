@@ -395,6 +395,7 @@ async function draw() {
 
 const wear = new WearTracker()
 let polling = false
+let trackingExecution = false
 /** `force`: the phone page asked, so the glasses being off does not matter. */
 async function poll(force = false) {
   await settingsReady
@@ -416,12 +417,18 @@ async function poll(force = false) {
   if (was && !outcome && state && state.card?.id !== was.id && state.card?.supersedes !== was.id && was.id !== hide &&
     was.expiresAt <= state.updatedAt + EXPIRY_SLACK_MS) outcome = { card: was, expired: true }
   const o = outcome
-  if (o && execId && !settled(o)) {
+  if (!trackingExecution && o && (execId || o.lost) && !settled(o)) {
+    trackingExecution = true
     try {
-      o.execution = await api.getExecution(execId)
+      const execution = execId ? await api.getExecution(execId) : await api.getProposalExecution(o.card.id)
+      if (outcome !== o) return
+      o.execution = execution
+      o.lost = false
+      execId = execution.id
       if (DONE.includes(o.execution.status)) doneAt ||= Date.now()
       if (settled(o) && DONE.includes(o.execution.status)) setTimeout(() => { if (outcome === o) void closeOutcome() }, NOTE_MS) // back to Main in 5 s
     } catch { /* the next poll asks again */ }
+    finally { trackingExecution = false }
   }
   // Its position closed: Detail goes back to Main, never on to the next coin.
   if (detailOpen && state && !state.positions.some(p => posKey(p) === focusKey)) detailOpen = false
@@ -719,6 +726,7 @@ async function confirmCard(card: Proposal) {
   try {
     // One key per card: a second tap after a lost reply gets the same execution back, never a second order.
     const r = await api.confirm(card.id, `lens:${card.id}`)
+    if (outcome !== o) return
     if (r.executionId) execId = r.executionId
     else o.message = r.message // "Expired, nothing sent", "Replaced by a newer proposal, nothing sent"
   } catch {

@@ -573,11 +573,16 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       const before = t && t.type !== 'cancel' ? positions.find(p => p.symbol === t.symbol && p.positionIdx === t.positionIdx) : undefined
       const r = await executor.confirm(proposalId, idempotencyKey)
       if (first && r.execution && t?.type !== 'cancel') receipts.set(r.execution.id, { before, at: clock() })
-      // Nothing was sent because a read failed: offer the card again once reads recover, not never (a Once shortcut stays fired).
-      if (p && r.execution?.status === 'REJECTED' && r.execution.message.startsWith('could not check the position')) {
-        const key = `${p.shortcutId}:${p.targetKey}`
-        const s = store.trigger(key)
-        if (s) store.saveTrigger(key, { ...s, phase: 'armed', lastAlertAt: null, latched: false })
+      // A failed fresh check did not consume the rule. A later valid sample may raise a new proposal.
+      if (first && p && r.execution?.status === 'REJECTED') {
+        const reason = r.execution.message
+        const recheckFailed = reason === 'the condition no longer holds' || reason === 'could not check the condition'
+          || reason.startsWith('could not check the position')
+        if (recheckFailed) {
+          const key = `${p.shortcutId}:${p.targetKey}`
+          const s = store.trigger(key)
+          if (s?.version === p.version) store.saveTrigger(key, { ...s, phase: 'armed', lastAlertAt: null, latched: false })
+        }
       }
       say(r.message, true)
       return r

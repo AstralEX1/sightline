@@ -45,8 +45,17 @@ if (mode === 'bybit') {
 }
 
 // One file per exchange mode, so demo shortcuts and alerts never mix with a real account's.
-const store = createStore(mode === 'fake' && env.PAPER_DEMO === '1' ? ':memory:' : fileURLToPath(new URL(`../data/${mode}.db`, import.meta.url)))
-store.seed([...STARTER_RULES, ...VOICE_SEEDS])
+const paperDemo = mode === 'fake' && env.PAPER_DEMO === '1'
+if (paperDemo) source = 'Paper'
+const store = createStore(paperDemo ? ':memory:' : fileURLToPath(new URL(`../data/${mode}.db`, import.meta.url)))
+const paperWindowSec = 120
+const starterRules = paperDemo ? STARTER_RULES.filter(rule => rule.action.type === 'CLOSE_POSITION')
+  .map(rule => ({ ...rule, trigger: { mode: 'REPEAT' as const, intervalSec: paperWindowSec } })) : STARTER_RULES
+if (paperDemo) {
+  const settings = store.settings()
+  store.saveSettings({ ...settings, expiry: { ...settings.expiry, marketSec: paperWindowSec } })
+}
+store.seed([...starterRules, ...VOICE_SEEDS])
 store.seed([CLOSE_SEED], 'seeded:close')
 const notifier = createNotifier({ store, token: telegramToken || undefined })
 const session = createSession(ex, store, Date.now, notifier.route)

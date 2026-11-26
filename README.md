@@ -6,7 +6,8 @@
   <p>
     <a href="https://trade-shortcuts-pi.vercel.app/sandbox/"><strong>Try the sandbox</strong></a> ·
     <a href="assets/demo.mp4">Watch the 27-second demo</a> ·
-    <a href="#run-the-demo">Run in Even Hub Simulator</a>
+    <a href="#run-the-demo">Run in Even Hub Simulator</a> ·
+    <a href="docs/dorahacks.md">DoraHacks entry</a>
   </p>
 </div>
 
@@ -21,12 +22,12 @@ A trader away from their phone can miss a Bybit position approaching liquidation
     <td align="center"><img src="assets/phone-shortcuts.png" width="226" alt="Phone shortcut tiles, including a rule to close half when liquidation distance is at most 3%"></td>
     <td align="center">
       <img src="assets/lens-alert.jpg" width="376" alt="G2 alert for a BTC long near liquidation, with Dismiss and Close 50% choices"><br>
-      <img src="assets/lens-fill.jpg" width="376" alt="G2 result showing 0.006 BTC closed and the position reduced from 0.013 to 0.007 BTC">
+      <img src="assets/lens-fill.jpg" width="376" alt="G2 result showing 0.025 BTC closed and the paper position reduced from 0.050 to 0.025 BTC">
     </td>
   </tr>
 </table>
 
-Screenshots and video show the Even Hub Simulator. [Position detail](assets/lens-detail.jpg) · [Rule editor](assets/phone-editor.png) · [History](assets/phone-history.png) · [Project site](https://trade-shortcuts-pi.vercel.app/)
+The video shows four stages of one paper trade captured in the Even Hub Simulator. [Position detail](assets/lens-detail.jpg) · [Rule editor](assets/phone-editor.png) · [History](assets/phone-history.png) · [Project site](https://trade-shortcuts-pi.vercel.app/)
 
 ## Try it in your browser
 
@@ -46,11 +47,11 @@ npm run demo
 
 The runner installs the locked dependencies and opens the phone page and the Even Hub Simulator's **Glasses Display**. It starts a fresh paper account with BTC, ETH, and SOL positions. It requires free local ports 5173, 8788, and 9898. No account, API keys, or glasses are required.
 
-1. If a SOL alert is already open, click **Dismiss**. The BTC **Near liquidation · half** alert appears about 30 seconds after startup.
+1. Wait for the BTC **Near liquidation · half** alert in **Glasses Display**. It appears about 30 seconds after startup and stays open for two minutes. If missed, it returns while the condition still holds.
 2. Press **Down**. When the cursor reaches **Close 50%**, press **Click** to confirm.
 3. Check the fill on the lens and open **History** on the phone page using the clock icon.
 
-Press Ctrl+C to stop the demo and clear its paper session. For a persistent server, optional integrations, QR preview, or an installable `.ehpk`, see the [setup guide](docs/setup.md).
+To start over with the original 0.050 BTC position, stop with Ctrl+C and run `npm run demo` again. For a persistent server, optional integrations, QR preview, or an installable `.ehpk`, see the [setup guide](docs/setup.md).
 
 ## How it works
 
@@ -65,7 +66,7 @@ The Bybit adapter accepts **Demo Trading and Testnet only**. Exchange credential
 
 No Trade Shortcuts application code existed before kickoff. The [first project commit](https://github.com/AstralEX1/trade-shortcuts/commit/5aee0bd) is dated November 24. The phone editor, rule engine, paper exchange, Bybit V5 integration, trade confirmation flow, and G2 screens were built during the hackathon.
 
-The project uses the existing Even Hub SDK, simulator, and CLI, plus Pretext, Bybit V5, TypeScript, Vite, Node.js, SQLite, and sql.js. Optional integrations use the Telegram Bot API and OpenAI transcription. PNG and wear-state helpers and the simulator capture workflow draw on [Market Glimpse](https://github.com/adamtorgerson/market-glimpse), whose repository does not list a project license. The phone UI uses [Inter](app/public/licenses/Inter.txt) and [Phosphor Icons](app/public/licenses/Phosphor.txt).
+The project uses the existing Even Hub SDK, simulator, and CLI, plus Pretext, Bybit V5, TypeScript, Vite, Node.js, SQLite, and sql.js. Optional integrations use the Telegram Bot API and OpenAI transcription. The PNG and wear-state helpers are adapted from [Market Glimpse](https://github.com/adamtorgerson/market-glimpse) with the author's permission. The simulator capture workflow also draws on that project. The phone UI uses [Inter](app/public/licenses/Inter.txt) and [Phosphor Icons](app/public/licenses/Phosphor.txt).
 
 ## API feature requests
 

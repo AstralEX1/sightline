@@ -150,11 +150,11 @@ export async function renderSettings() {
   const key = b.apiKey
   const access = key ? (key.readOnly || !key.trade ? 'Read only' : 'Read + Trade') : b.apiKeyError ? 'Unknown' : '—'
   dynamic.replaceChildren(
-    h('h2', { class: 'group-label' }, 'Bybit'),
+    h('h2', { class: 'group-label' }, b.source === 'Paper' ? 'Paper' : 'Bybit'),
     h('div', { class: 'group' },
       row('Status', status(up, up ? 'Connected' : 'Offline')),
       up ? null : h('p', { class: 'row row--note' }, b.status),
-      row('Environment', b.source.includes('testnet') ? 'Testnet' : 'Demo'),
+      row('Environment', b.source === 'Paper' ? 'Paper' : b.source.includes('testnet') ? 'Testnet' : 'Demo'),
       row('Account', sourceEl),
       row('API access', access),
       row('Withdrawals', key?.withdraw ? 'On' : 'Off'),

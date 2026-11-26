@@ -23,6 +23,8 @@ The phone opens a template as an unsaved When/Do rule. Save it, then enable it o
 - Even Hub lists `com.tradeshortcuts.g2` version `0.1.0` as Private on the beta channel (25 November). The working manifest now declares `0.1.1`. A byte comparison matched the portal download to the local submission package. Use the portal build record and package digest to identify this beta.
 - Recorded on 24 November 2026 on Bybit testnet (XRPUSDT): open, duplicate `orderLinkId` refused (110072), set SL/TP each keeps the other, SL past mark rejected, limit order listed and cancelled, reduce-only half and oversize close (no flip), fills deduped by `execId`, add margin on isolated (110076 on cross, as expected). A real Telegram bot linked via `/start <code>` and delivered an alert.
 
+- The hackathon paper demo starts with the BTC half-close rule only. Its card expires after 120 seconds and can recur while the rule matches. The official desktop simulator confirmed 0.025 BTC once from 0.050 BTC and showed a single fill in History. A separate run with a synthetic lost confirmation reply recovered the execution by a read-only request. The app, landing, and sandbox built successfully and 589 automated tests passed.
+
 ## Open checks
 
 Verify ROI against the Bybit app in the supported margin modes. The implementation uses `100 × unrealisedPnl / positionIM`. Physical G2/R1 input, chart readability and transfer time, background/resume, voice cancellation and installation against the intended server need device evidence. The earlier testnet and Telegram run covered the operations listed above.

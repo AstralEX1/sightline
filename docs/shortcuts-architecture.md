@@ -286,7 +286,7 @@ Endpoints, by the screen that calls them. All under `/api`, behind the existing 
 | Lens · Open | `POST /proposals/:id/pick` | Select allowed size and leverage and obtain a new proposal for Review. |
 | Lens | `GET /state` (polled, as today) | positions with ROI, liquidation distance, stop/TP, number of enabled shortcuts on each; the proposal queue head with its place; stale-since time |
 | Lens | `POST /proposals/:id/confirm`, `/dismiss` | `confirm(proposalId, idempotencyKey)` only; dismiss records the channel |
-| Lens | `GET /executions/:id` | Sent → Filled / Partly filled / Rejected / Unknown |
+| Lens | `GET /executions/:id`, `GET /proposals/:id/execution` | Sent → Filled / Partly filled / Rejected / Unknown. The proposal lookup recovers the execution if the confirmation reply was lost. |
 
 The phone page and the lens poll, as Trade Shortcuts does now; push to them (WS or SSE) is not needed for the MVP. Delivery per alert, within `delivery` and the Settings toggles: the lens if the plugin is open (it polled `/state?client=lens` in the last 10 s); an in-app notification if the phone app is open (it polled `/notifications` in the last 10 s); Telegram when linked and enabled for phone delivery, if the lens is inactive or neither other channel takes the alert, which is the Settings row "Phone when glasses are off". The Telegram text names the shortcut, target, reason and what the lens offers ("Close 50% · 0.025 BTC · confirm on Even G2 within 30 s"); nothing in Telegram can confirm. The bot token is a server env value (`TELEGRAM_BOT_TOKEN`), like the Bybit keys. Clients forward user intent and never hold exchange secrets. Rules keep monitoring whether or not any client is open.
 

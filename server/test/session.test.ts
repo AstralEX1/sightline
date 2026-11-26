@@ -846,6 +846,23 @@ test('a tap whose fresh read fails sends nothing and offers the card again once 
   assert.notEqual(s.state().card!.id, card.id)
 })
 
+test('a once-only near-liquidation rule can fire again after a rejected fresh recheck', async () => {
+  const { ex, s, ticks } = setup([btc()], [tpl(7, d => { d.trigger.mode = 'ONCE' })])
+  await ticks()
+  const original = s.state().card!
+  ex.setMark('BTCUSDT', 63000)
+  ex.prices.BTCUSDT = 63000
+  const r = await s.confirm(original.id, 'tap-1')
+  assert.equal(r.execution?.status, 'REJECTED')
+  assert.equal(ex.calls.length, 0)
+
+  ex.setMark('BTCUSDT', 61000)
+  ex.prices.BTCUSDT = 61000
+  await ticks()
+  assert.equal(s.state().card?.question, original.question)
+  assert.notEqual(s.state().card?.id, original.id)
+})
+
 test('a failed fills read does not blind the position rules', async () => {
   const { ex, s, ticks } = setup()
   ex.fillsSince = async () => { throw new Error('Bybit 10005') }

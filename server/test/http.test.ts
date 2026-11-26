@@ -185,6 +185,25 @@ test('the lens confirms with an idempotency key and dismisses; executions and hi
   assert.deepEqual((await call('GET', `/history?before=${history[0].createdAt}`)).body, [])
 })
 
+test('a lost confirmation response can be recovered by proposal without another write', async () => {
+  const { ex, store, session, call } = await serve()
+  store.createShortcut({ ...draft(7), enabled: true })
+  await session.tick()
+  const { id } = session.state().card!
+  const path = `/proposals/${id}/execution`
+  assert.equal((await call('GET', path, undefined, {})).status, 401)
+  assert.equal((await call('GET', path)).status, 404)
+  assert.equal(ex.calls.length, 0)
+
+  await call('POST', `/proposals/${id}/confirm`, { idempotencyKey: 'one-tap' })
+  const recovered = await call('GET', path)
+  assert.equal(recovered.status, 200)
+  assert.equal(recovered.body.proposalId, id)
+  assert.equal(recovered.body.status, 'APPLIED')
+  assert.equal((await call('GET', path)).body.id, recovered.body.id)
+  assert.equal(ex.calls.length, 1)
+})
+
 test('pickers list positions with their epoch and open plain orders', async () => {
   const { ex, session, call } = await serve()
   ex.orders = [

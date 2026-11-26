@@ -49,7 +49,7 @@ start('npm', ['run', 'sim', '--', '--automation-port', '9898'])
 console.log(`
 Trade Shortcuts demo is running. Two simulator windows open: "Browser" is the phone page, "Glasses Display" is the G2 lens.
   1. The lens lists demo positions BTC, ETH, SOL (a paper exchange, no real money).
-  2. If a SOL alert is open, click Dismiss. The "Near liquidation · half" BTC alert appears about 30 s after start.
+  2. Wait for the "Near liquidation · half" BTC alert. It appears about 30 s after start and is open for 120 s.
   3. Press Down. When the cursor reaches "Close 50%", click to confirm. The lens shows the fill.
   4. On the phone page, open History (clock icon, top left) to see the trade.
 Phone page in your own browser: http://localhost:5173 · Ctrl+C stops everything.
