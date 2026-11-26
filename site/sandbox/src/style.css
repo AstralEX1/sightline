@@ -21,7 +21,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .brand { display: flex; min-width: 0; min-height: 44px; align-items: center; }
 .brand img { height: 20px; width: auto; max-width: 100%; }
 .pill { border: 1px solid var(--line); border-radius: 99px; padding: 3px 10px; font-size: 13px; font-weight: 700; background: var(--card); }
-.lede { margin: 0; color: var(--mute); font-size: 14px; }
 .back { margin-left: auto; color: var(--ink); font-weight: 600; font-size: 14.5px; text-decoration: none; min-height: 44px; display: flex; align-items: center; white-space: nowrap; }
 .back:hover { text-decoration: underline; }
 
@@ -47,7 +46,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .phone-col { grid-area: phone; }
 .glasses { grid-area: glasses; }
 .exchange-col { grid-area: exchange; }
-.label { margin: 0 0 10px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--mute); }
 
 /* ── phones: the app at phone width scaled into the frame; the exchange at its own size ── */
 .phone { position: relative; width: 320px; max-width: 100%; aspect-ratio: 320 / 692; overflow: hidden; border-radius: 46px; padding: 10px; background: #111; box-shadow: 0 18px 50px -24px rgba(0, 0, 0, .55), inset 0 0 0 2px #2a2a2a; }
@@ -62,13 +60,13 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .sim-dots i:nth-child(2) { background: #febc2e; }
 .sim-dots i:nth-child(3) { background: #4d4d4d; }
 #lens { display: block; width: 576px; max-width: 100%; height: auto; aspect-ratio: 2 / 1; background: #000; cursor: pointer; }
+#lens:focus-visible { outline-offset: -2px; }
 .sim-bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 9px 10px 10px; background: #1e1e1e; border-top: 1px solid #111; }
 .sim-bar button { min-height: 34px; padding: 0 12px; border-radius: 7px; border: 1px solid #3c3c3c; background: #2b2b2b; color: #dcdcdc; font: 500 14px/1 -apple-system, system-ui, sans-serif; transition: background-color .12s, box-shadow .2s, border-color .2s; }
 .sim-bar button:hover { background: #333; }
 .sim-bar button:active, .sim-bar button.pressed { background: #3d3d3d; }
 .sim-bar button.hint { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255, 177, 26, .45); animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(255, 177, 26, .15); } }
-.keys { margin: 8px 0 0; text-align: center; color: var(--mute); font-size: 12.5px; }
 .sim-note { min-height: 20px; margin: 4px 0 0; text-align: center; color: var(--ink); font-size: 13px; font-weight: 600; }
 .step-note { flex-basis: 100%; font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, .7); }
 .steps li.missed .step-n { background: #ef454a; color: #fff; }
@@ -87,25 +85,53 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .play:hover { filter: brightness(1.05); }
 .play:active { transform: scale(.96); }
 .play:disabled { opacity: .5; cursor: default; }
+.play span { margin-right: 3px; font-size: 11px; }
 .restart { margin-top: 10px; min-height: 44px; padding: 0 10px; border: 0; background: none; color: var(--mute); font-weight: 600; }
 .restart:hover { color: var(--ink); }
 
+/* Guided scenarios keep all three screens in view. The backdrop leaves their controls usable. */
+.panel[data-spotlight] {
+  grid-template-columns: clamp(210px, 23.5vw, 320px) minmax(0, 1fr) clamp(200px, 20vw, 280px);
+  grid-template-areas: "phone glasses exchange";
+  padding-top: 60px;
+}
+.phone-col { position: relative; }
+.scenario-play { position: absolute; top: -46px; left: 0; scroll-margin: 16px; }
+.panel[data-spotlight]:not([data-spotlight="phone"]) .phone-col > .phone,
+.panel[data-spotlight]:not([data-spotlight="glasses"]) .sim,
+.panel[data-spotlight]:not([data-spotlight="chart"]) .exchange-col > .phone { opacity: .68; }
+.panel[data-spotlight="phone"] .phone-col > .phone,
+.panel[data-spotlight="glasses"] .sim,
+.panel[data-spotlight="chart"] .exchange-col > .phone { outline: 1px solid #b58a46; outline-offset: 4px; }
+.panel[data-spotlight] .exchange-col > .phone { aspect-ratio: 1 / 1.15; padding: 0; border-radius: 16px; box-shadow: 0 14px 32px -24px #0008; }
+.panel[data-spotlight] .exchange-col .screen { border-radius: inherit; }
+.panel[data-spotlight] .glasses { width: min(100%, 576px); justify-self: center; }
+.panel[data-spotlight] .sim-note:empty { min-height: 0; }
+.panel[data-spotlight] .sim-bar button.hint { animation: none; box-shadow: none; }
+.panel[data-spotlight] [data-free-control] { display: none; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .panel[data-spotlight] :is(.phone, .sim) { transition: opacity .24s ease-out, outline-color .24s ease-out; }
+}
 @media (prefers-reduced-motion: reduce) { .sim-bar button.hint { animation: none; } }
 
 /* ── narrower screens: the glasses stay first ── */
 @media (max-width: 1240px) {
-  .lede { display: none; }
   .panel { grid-template-columns: 320px 320px; justify-content: center; grid-template-areas: "glasses glasses" "phone exchange"; }
+}
+@media (max-width: 900px) {
+  .panel[data-spotlight] { grid-template-columns: 320px minmax(0, 1fr); grid-template-areas: "phone glasses" "phone exchange"; }
 }
 @media (max-width: 760px) {
   /* below its native 576 px, nearest-neighbour drops 1 px strokes: let the browser smooth the downscale */
   #lens { image-rendering: auto !important; }
   :root { --wide: calc(100% - 24px); }
   .brand img { height: 15px; }
-  .tab { gap: 8px; padding: 8px 10px; min-height: 56px; }
-  .tab-t small { display: none; }
+  .tab { padding: 8px; min-height: 56px; }
+  .tab-n, .tab-t small { display: none; }
   .tab-t b { font-size: 13.5px; }
-  .keys { display: none; }
   .panel { padding: 16px 12px 24px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "glasses" "phone" "exchange"; justify-items: center; }
+  .panel[data-spotlight] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "phone" "exchange" "glasses"; }
+  .panel[data-spotlight] :is(.phone-col, .exchange-col) { width: min(100%, 320px); }
   .glasses { width: 100%; }
 }

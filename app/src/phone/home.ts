@@ -13,8 +13,9 @@ const g2 = () => (document.getElementById('glasses')?.textContent === 'Glasses c
 function statusLine(s: api.SettingsPage | null, err: unknown) {
   const unauthorized = (err as ApiError | null)?.status === 401
   const up = s?.bybit.status === 'Connected'
+  const source = s?.bybit.source ?? ''
   const label = err ? (unauthorized ? 'Check the server token' : 'Server offline')
-    : up && s?.bybit.source === 'Paper' ? 'Paper' : `Bybit · ${up ? (s!.bybit.source.includes('testnet') ? 'Testnet' : 'Demo') : 'Offline'}`
+    : up && (source === 'Paper' || source === 'Sandbox') ? 'Paper' : `Bybit · ${up ? (source.includes('testnet') ? 'Testnet' : 'Demo') : 'Offline'}`
   return h('a', { class: 'status-line', href: '#/settings', 'aria-label': `${label}${err ? '' : `, Even ${g2()}`}. Settings` },
     h('span', { class: `dot${up && !err ? ' is-on' : err ? ' is-muted' : ''}`, 'aria-hidden': 'true' }),
     label,

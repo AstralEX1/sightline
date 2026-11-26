@@ -36,7 +36,7 @@ function swap(host: HTMLElement, kids: Node[]) {
   if (next.innerHTML !== host.innerHTML) host.replaceChildren(...next.childNodes)
 }
 
-export function mountExchange(root: HTMLElement, m: Market) {
+export function mountExchange(root: HTMLElement, m: Market, onChartInput: () => void) {
   root.classList.add('bx')
 
   // ── Charts | Trade ──
@@ -463,6 +463,7 @@ export function mountExchange(root: HTMLElement, m: Market) {
   canvas.addEventListener('mousedown', e => e.preventDefault())
   canvas.addEventListener('pointerdown', e => {
     if (!e.isPrimary || e.button !== 0) return
+    onChartInput()
     let { lo, hi } = range(visible())
     if (hi - lo > m.price * 0.08) { lo = m.price * 0.96; hi = m.price * 1.04 } // a wide view would make the hand too fast
     frozen = { lo, hi } // the scale holds still under the hand
@@ -488,6 +489,7 @@ export function mountExchange(root: HTMLElement, m: Market) {
   canvas.addEventListener('keydown', e => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
     e.preventDefault()
+    onChartInput()
     hint.hidden = true
     m.setPrice(m.price * (e.key === 'ArrowUp' ? 1.002 : 0.998))
   })

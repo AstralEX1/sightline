@@ -18,7 +18,7 @@ const STATUS = { sn: 'SANDBOX', connectType: 'connected', isWearing: true, batte
 
 /** `onExit`: the app asked the Even app to close it (double tap on its main screen). */
 export function createHost(lens: Lens, onExit: () => void = () => {}) {
-  // Lens gesture tips on for every visitor, and no microphone: the sandbox answers by tap only.
+  // No microphone: the sandbox answers by tap only.
   const storage = new Map([['gt.hints', 'on'], ['gt.voice', 'off']])
   let app: AppWindow | null = null
   const send = (method: string, data: unknown) => app?._listenEvenAppMessage?.({ type: 'listen_even_app_data', method, data })
@@ -27,7 +27,6 @@ export function createHost(lens: Lens, onExit: () => void = () => {}) {
     getUserInfo: () => ({ uid: 0, name: 'Sandbox', avatar: '', country: '' }),
     getGlassesInfo: () => ({ model: 'g2', sn: STATUS.sn, status: STATUS }),
     setLocalStorage: d => { storage.set(String(d.key), String(d.value)); return true },
-    getLocalStorage: d => storage.get(String(d.key)) ?? '',
     createStartUpPageContainer: d => { lens.setPage(d as Page); return 0 },
     rebuildPageContainer: d => { lens.setPage(d as Page); return true },
     textContainerUpgrade: d => lens.setText(String(d.containerName), String(d.content ?? ''), d.textColor as number | undefined),
@@ -39,12 +38,16 @@ export function createHost(lens: Lens, onExit: () => void = () => {}) {
 
   return {
     /** Before the app's scripts run in that window. */
-    attach(w: Window, current: () => boolean = () => true) {
+    attach(w: Window, current: () => boolean = () => true, defaults?: ReadonlyMap<string, string>) {
       app = w as AppWindow
       app.flutter_inappwebview = {
         callHandler: async (_name, message) => {
           if (!current()) return null
           const m = JSON.parse(message) as { method: string; data?: Record<string, unknown> }
+          if (m.method === 'getLocalStorage') {
+            const key = String(m.data?.key)
+            return storage.get(key) ?? defaults?.get(key) ?? ''
+          }
           return methods[m.method]?.(m.data ?? {}) ?? null
         },
       }

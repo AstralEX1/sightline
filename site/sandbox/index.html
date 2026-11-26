@@ -14,7 +14,6 @@
   <header class="top">
     <a href="../" class="brand"><img src="lockup.svg" alt="Trade Shortcuts" width="214" height="20" /></a>
     <span class="pill">Sandbox</span>
-    <p class="lede">The real app and rule engine on a paper exchange. No glasses, account or money needed.</p>
     <a href="../" class="back">Back to site</a>
   </header>
 
@@ -22,32 +21,29 @@
 
   <main id="panel" class="panel" role="tabpanel">
     <section class="device phone-col" aria-label="Phone">
-      <p class="label">Phone · Trade Shortcuts</p>
+      <button type="button" id="scenario-play" class="play scenario-play" hidden disabled><span aria-hidden="true">▶</span> Play</button>
       <div class="phone"><iframe id="phone" title="Trade Shortcuts on the phone"></iframe></div>
     </section>
 
     <section class="device glasses" aria-label="Glasses">
-      <p class="label">Glasses · Even G2</p>
       <div class="sim">
         <div class="sim-title"><span class="sim-dots" aria-hidden="true"><i></i><i></i><i></i></span>Glasses Display</div>
-        <canvas id="lens" width="576" height="288" role="img" aria-label="What the glasses show. Click to tap."></canvas>
+        <canvas id="lens" width="576" height="288" tabindex="-1" role="img" aria-label="What the glasses show. Click to tap."></canvas>
         <div class="sim-bar" role="group" aria-label="Ring and temple">
           <button type="button" data-gesture="up">Up</button>
           <button type="button" data-gesture="down">Down</button>
           <button type="button" data-gesture="tap">Click</button>
           <button type="button" data-gesture="double">Double Click</button>
-          <button type="button" data-gesture="long">Long Press</button>
-          <button type="button" data-gesture="menu">Menu</button>
+          <button type="button" data-gesture="long" data-free-control>Long Press</button>
+          <button type="button" data-gesture="menu" data-free-control>Menu</button>
         </div>
       </div>
-      <p class="keys">Keys: ↑ ↓ · Enter click · Esc double click · M menu</p>
       <p id="note" class="sim-note" role="status" aria-live="polite"></p>
       <ol id="steps" class="steps" aria-live="polite"></ol>
       <button type="button" id="restart" class="restart">↺ Start over</button>
     </section>
 
     <section class="device exchange-col" aria-label="Exchange">
-      <p class="label">Exchange · simulated</p>
       <div class="phone phone--dark"><div id="exchange" class="screen"></div></div>
     </section>
   </main>
