@@ -58,13 +58,16 @@ button:disabled { cursor: default; }
   transition: transform 260ms cubic-bezier(.22, .61, .36, 1), width 260ms cubic-bezier(.22, .61, .36, 1);
 }
 
-.panel { padding: 16px; border: 1px solid var(--line); border-radius: 18px; background: #eceff1; }
-.stage { display: grid; place-items: center; min-height: 550px; }
-.device { min-width: 0; }
-.phone-col {
-  display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: center; gap: 12px;
-  width: min(100%, 298px);
+.panel { padding: clamp(12px, 1.65vw, 24px); border: 1px solid var(--line); border-radius: 18px; background: var(--card); }
+.stage {
+  display: grid; gap: 16px; align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(245px, 310px) minmax(230px, 270px);
+  grid-template-areas: "glasses phone exchange";
 }
+.device { min-width: 0; transition: filter 180ms var(--press); }
+.device[data-dimmed] { filter: brightness(.68) saturate(.55); }
+.phone-col { position: relative; grid-area: phone; width: 100%; }
+#play { position: absolute; inset-inline-start: calc(100% + 12px); top: calc(50% - 22px); }
 .phone-frame {
   position: relative; width: 100%; padding: 6px; overflow: hidden; border-radius: 31px;
   background: #23252a; box-shadow: inset 0 0 0 1px #50535b, 0 10px 22px #1c26331f;
@@ -80,7 +83,7 @@ button:disabled { cursor: default; }
 }
 
 .chart-col {
-  width: min(100%, 570px); padding: 16px; border: 1px solid var(--line); border-radius: 15px;
+  grid-area: exchange; width: min(100%, 294px); padding: 16px; border: 1px solid var(--line); border-radius: 15px;
   background: var(--card); font-variant-numeric: tabular-nums;
 }
 .chart-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 13px; }
@@ -94,7 +97,7 @@ button:disabled { cursor: default; }
 #price-line { stroke: #2e8257; stroke-width: 3; }
 #price-line[data-falling] { stroke: #ae3d52; }
 
-.glasses { width: min(100%, 578px); }
+.glasses { grid-area: glasses; width: 100%; }
 .sim { container-type: inline-size; overflow: hidden; border: 1px solid #262829; border-radius: 14px; background: #161819; }
 #lens { display: block; width: 100%; height: auto; aspect-ratio: 2 / 1; background: #000; cursor: pointer; }
 .sim-bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 8px; border-top: 1px solid #303233; }
@@ -105,13 +108,6 @@ button:disabled { cursor: default; }
 .sim-bar button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .sim-bar button.pressed { box-shadow: inset 0 0 0 2px #777; }
 
-.panel[data-scene=free] .stage {
-  min-height: 0; gap: 16px; align-items: start; justify-items: stretch;
-  grid-template-columns: minmax(0, 1fr) minmax(225px, 290px) minmax(230px, 270px);
-  grid-template-areas: "glasses phone exchange";
-}
-.panel[data-scene=free] .phone-col { grid-area: phone; grid-template-columns: minmax(0, 1fr); width: 100%; }
-.panel[data-scene=free] .glasses { grid-area: glasses; width: 100%; }
 .exchange-col { grid-area: exchange; width: min(100%, 294px); }
 .stage .screen { height: 502px; border: 1px solid #262829; border-radius: 14px; }
 
@@ -122,10 +118,11 @@ button:disabled { cursor: default; }
   .icon-button:active:not(:disabled), .sim-bar button:active { transform: scale(.97); }
 }
 @media (max-width: 1020px) {
-  .panel[data-scene=free] .stage {
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 290px);
+  .stage {
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 310px);
     grid-template-areas: "glasses phone" "exchange phone";
   }
+  #play { inset-inline-start: auto; inset-inline-end: calc(100% + 12px); }
 }
 @media (max-width: 640px) {
   :root { --wide: calc(100% - 24px); }
@@ -133,18 +130,18 @@ button:disabled { cursor: default; }
   .brand img { height: 16px; }
   .workspace .nv-button { font-size: .75rem; }
   .panel { padding: 12px; border-radius: 15px; }
-  .stage { min-height: 495px; }
-  .phone-col { width: min(100%, 268px); gap: 8px; }
-  .panel[data-scene=free] .stage {
+  .stage {
     grid-template-columns: minmax(0, 1fr); grid-template-areas: "glasses" "phone" "exchange";
   }
-  .panel[data-scene=free] .phone-col { width: min(100%, 290px); }
+  .phone-col { width: min(100%, 310px); }
+  .panel:not([data-scene=free]) .phone-col { width: min(calc(100% - 56px), 310px); }
+  #play { inset-inline-start: calc(100% + 12px); inset-inline-end: auto; }
   .chart-col { padding: 12px; }
 }
 @container (max-width: 575px) {
   #lens { image-rendering: auto !important; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .workspace .nv-tab-indicator, .icon-button, .sim-bar button { transition: none; }
+  .workspace .nv-tab-indicator, .icon-button, .sim-bar button, .device { transition: none; }
   .icon-button:active:not(:disabled), .sim-bar button:active { transform: none; }
 }

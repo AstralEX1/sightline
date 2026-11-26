@@ -1,0 +1,13 @@
+.phone [data-shortcut-part][data-fired] {
+  border-color: #438059;
+  box-shadow: 0 0 0 3px #43805965;
+  background: color-mix(in srgb, var(--surface) 90%, #75bf8d);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .phone [data-shortcut-part][data-fired] { animation: sandbox-rule-fired 640ms ease-out; }
+  @keyframes sandbox-rule-fired {
+    from { box-shadow: 0 0 0 1px #438059; }
+    40% { box-shadow: 0 0 0 7px #43805966; }
+  }
+}

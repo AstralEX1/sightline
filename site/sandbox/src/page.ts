@@ -89,18 +89,32 @@ function renderScene(next: Scene) {
   const free = tab.target === null
   const index = scenes.indexOf(next)
   panel.dataset.scene = free ? 'free' : next
-  sceneViews.forEach((view, i) => { view.hidden = free ? i === 1 : i !== index })
+  sceneViews.forEach((view, i) => { view.hidden = free ? i === 1 : i > index })
   exchangeView.hidden = !free
   for (const button of gestures) if (button.hasAttribute('data-free-control')) button.hidden = !free
-  play.hidden = free
+  play.hidden = free || next !== 'phone' || Boolean(playback)
   play.disabled = true
-  restart.hidden = !free && next === 'phone'
+  restart.hidden = !free && next === 'phone' && !playback
   restart.setAttribute('aria-label', free ? 'Reset sandbox' : 'Replay scenario')
   progress.hidden = free
   progress.setAttribute('aria-valuenow', String(index + 1))
   progress.setAttribute('aria-valuetext', sceneNames[index])
   $('scene-status').textContent = free ? '' : sceneNames[index]
   for (const [i, bar] of Array.from(progress.children).entries()) bar.toggleAttribute('data-reached', i <= index)
+  spotlight(next, false)
+}
+
+function spotlight(device: Scene, scroll = true) {
+  const free = tab.target === null
+  sceneViews.forEach((view, index) => {
+    const dimmed = !free && !view.hidden && scenes[index] !== device
+    if (dimmed && view.contains(document.activeElement)) panel.focus({ preventScroll: true })
+    view.toggleAttribute('data-dimmed', dimmed)
+    view.inert = dimmed
+  })
+  if (scroll && matchMedia('(max-width: 640px)').matches) {
+    sceneViews[scenes.indexOf(device)].scrollIntoView({ block: 'nearest', behavior: 'instant' })
+  }
 }
 
 /** Switching or replaying discards the previous paper account and reloads the app against a fresh one. */
@@ -134,15 +148,21 @@ play.onclick = () => void playScenario()
 /** The in-frame app controls the real shortcut. Wait until its enabled tile is present before offering playback. */
 setInterval(() => {
   if (tab.target === null || scene !== 'phone' || playback || !backend) return
-  const frame = phone.contentDocument
-  const current = frame?.URL && new URL(frame.URL).searchParams.get('run') === String(run)
-  const enabled = current && frame.querySelector('main[aria-label="Shortcuts"]:not([hidden]) .tile__switch[aria-checked=true]')
-  play.disabled = !enabled
-  if (enabled && replayOnReady) {
+  const link = activeShortcut()
+  play.disabled = !link
+  if (link && replayOnReady) {
     replayOnReady = false
     void playScenario()
   }
 }, 150)
+
+function activeShortcut() {
+  const frame = phone.contentDocument
+  const current = frame?.URL && new URL(frame.URL).searchParams.get('run') === String(run)
+  if (!current) return null
+  const enabled = frame.querySelector('main[aria-label="Shortcuts"]:not([hidden]) .tile__switch[aria-checked=true]')
+  return enabled?.closest('.tile')?.querySelector<HTMLAnchorElement>('.tile__body') ?? null
+}
 
 const line = document.querySelector<SVGPolylineElement>('#price-line')!
 const clip = document.querySelector<SVGRectElement>('#plot-clip')!
@@ -150,6 +170,46 @@ const change = $('price-change')
 const prices = [0, .021, .031, .024, .114, .18, .163, .33, .48, .44, .62, .78, .74, 1]
 const cash = (price: number) => Math.round(price).toLocaleString('en-US')
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
+
+type EditorPart = 'condition' | 'action'
+const editorPart = (part: EditorPart) => phone.contentDocument?.querySelector<HTMLElement>(
+  `main[aria-label="Shortcut"]:not([hidden]) [data-shortcut-part="${part}"]`,
+)
+
+async function flashEditor(part: EditorPart, signal: AbortSignal) {
+  const row = editorPart(part)
+  if (!row || signal.aborted) return
+  spotlight('phone')
+  const view = row.ownerDocument.defaultView
+  const box = row.getBoundingClientRect()
+  if (view && (box.top < 12 || box.bottom > view.innerHeight - 12)) {
+    view.scrollTo({ top: view.scrollY + box.top - 24, behavior: 'instant' })
+  }
+  row.setAttribute('data-fired', '')
+  try { await delay(760) } finally { row.removeAttribute('data-fired') }
+}
+
+async function historyOf(server: Backend): Promise<AlertRecord[]> {
+  const response = await server.fetch('/api/history')
+  return response.ok ? response.json() : []
+}
+
+async function watchAction(server: Backend, id: string, signal: AbortSignal) {
+  while (!signal.aborted) {
+    const alert = (await historyOf(server)).find(item => item.id === id)
+    if (!alert || signal.aborted) return
+    if (/^(Shown on Even G2|Filled|Done)(?:\s|$)/.test(alert.status)) {
+      // The confirmation or notification has reached the simulated account or G2.
+      await delay(650)
+      if (signal.aborted) return
+      await flashEditor('action', signal)
+      if (!signal.aborted) spotlight('glasses')
+      return
+    }
+    if (!/^(Waiting|Sending|Submitted|Partly filled)/.test(alert.status)) return
+    await delay(400)
+  }
+}
 
 function showPrice(from: number, target: number, fraction: number) {
   const i = fraction * (prices.length - 1)
@@ -166,15 +226,20 @@ function showPrice(from: number, target: number, fraction: number) {
 async function playScenario() {
   const { target } = tab
   const server = backend
-  if (target === null || !server || play.disabled || scene !== 'phone' || playback) return
+  const link = activeShortcut()
+  if (target === null || !server || !link || play.disabled || scene !== 'phone' || playback) return
+  const shortcutId = decodeURIComponent(link.hash.slice('#/shortcut/'.length))
   const controller = new AbortController()
   const { signal } = controller
   playback = controller
   if (document.activeElement === play) panel.focus({ preventScroll: true })
-  play.disabled = true
+  renderScene('phone')
+  phone.contentWindow!.location.hash = link.hash
   try {
     await server.tick() // establish the reference price before the simulated move
-    await delay(600)
+    const editorDeadline = performance.now() + 3000
+    while (!signal.aborted && !editorPart('condition') && performance.now() < editorDeadline) await delay(50)
+    await delay(650)
     if (signal.aborted) return
     const startedAt = Date.now()
     const from = market.price
@@ -185,6 +250,7 @@ async function playScenario() {
     line.setAttribute('points', prices.map((v, i) => `${3 + 474 * i / (prices.length - 1)},${falling ? 20 + 151 * v : 171 - 151 * v}`).join(' '))
     showPrice(from, target, 0)
     renderScene('chart')
+    spotlight('chart')
     if (reduceMotion.matches) showPrice(from, target, 1)
     else await new Promise<void>(done => {
       const startedAt = performance.now()
@@ -201,15 +267,21 @@ async function playScenario() {
     await server.tick()
     await delay(reduceMotion.matches ? 900 : 300)
     if (signal.aborted) return
-    const response = await server.fetch('/api/history')
-    if (!response.ok) return
-    const alerts: AlertRecord[] = await response.json()
-    const fired = new Set(alerts.filter(a => a.createdAt >= startedAt && !a.simulated).map(a => a.id))
+    const alerts = await historyOf(server)
+    const fired = new Set(alerts.filter(a => a.shortcutId === shortcutId && a.createdAt >= startedAt && !a.simulated).map(a => a.id))
     const expires = performance.now() + 5500
+    if (fired.size) await flashEditor('condition', signal)
     while (fired.size && !signal.aborted && performance.now() < expires && !lensReady(fired)) await delay(80)
     if (signal.aborted) return
-    if (lensReady(fired)) renderScene('glasses')
-    else chartStatus.hidden = false
+    const alert = lensReady(fired) && renderedAlert
+    if (alert) {
+      renderScene('glasses')
+      spotlight('glasses')
+      await watchAction(server, alert.id, signal)
+    } else {
+      spotlight('chart')
+      chartStatus.hidden = false
+    }
   } finally {
     if (playback === controller) playback = undefined
   }

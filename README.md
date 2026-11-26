@@ -18,7 +18,7 @@ A Bybit trader can miss a position nearing liquidation while their phone is in t
     <th>Review and confirm on G2</th>
   </tr>
   <tr>
-    <td align="center"><img src="assets/phone-shortcuts.png" width="226" alt="Phone shortcut tiles, including a rule to close half when liquidation distance is at most 3%"></td>
+    <td align="center"><img src="assets/phone-shortcuts.png" width="226" alt="Phone shortcut tiles with action icons, titles and on/off switches"></td>
     <td align="center">
       <img src="assets/lens-alert.jpg" width="376" alt="G2 alert for a BTC long near liquidation, with Dismiss and Close 50% choices"><br>
       <img src="assets/lens-fill.jpg" width="376" alt="G2 result showing 0.025 BTC closed and the paper position reduced from 0.050 to 0.025 BTC">
