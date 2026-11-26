@@ -13,10 +13,10 @@
 <link rel="stylesheet" href="css/base.css">
 <link rel="stylesheet" href="css/home.css">
 <style>
-[data-theme=light]{--navigaze-green:#72ff96;--accent-orange:#0b6534;--accent-orange-deep:#0a592f;--accent-soft:#c9f2d6}
+[data-theme=light]{--accent-orange:#0b7a3b;--accent-orange-deep:#0a6b34;--accent-soft:#c9f2d6}
 body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
-.sl{--accent:#0b6534}
-.sl :is(h1,h2) em{color:var(--ink);background:linear-gradient(transparent 63%,var(--navigaze-green) 63%,var(--navigaze-green) 88%,transparent 88%);box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.sl{--accent:#0b7a3b}
+.sl :is(h1,h2,h3) em{color:var(--accent);background:none}
 /* hero: copy left; lens screens right, laid out like an Even Hub catalogue gallery (lens over a blurred street, arrows, thumbnails) */
 .sl .i-assist{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:56px;align-items:center;height:auto;padding-block:64px}
 .sl .hcopy{max-width:none;margin:0}
@@ -57,13 +57,10 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
 @media (max-width:760px){.sl .qa-t{font-size:16px;min-height:56px}}
 .sl #setup-on-g2,.sl #shortcut-builder{scroll-margin-top:88px}
 .sl #setup-on-g2 ol{list-style:decimal}
-/* alert cards are lens screens: black, stacked on desktop; crop the empty photo under the text (lowest text: detail.jpg, y 463 of 576) */
+/* alert cards are lens screens on a photo; crop the empty photo under the text (lowest text: detail.jpg, y 463 of 576). Position screens fill the frame, so they keep the full 2:1. */
 .sl .cards img{background:#000;border-color:rgba(0,0,0,.25);aspect-ratio:1152/490;object-fit:cover;object-position:top}
-.sl .position-screens img{aspect-ratio:2/1;object-fit:contain}
-.sl .alert-shots{display:grid;gap:20px;min-width:0}
-.sl .alert-history{width:min(100%,393px);justify-self:end}
-.sl .alert-history figcaption{margin-bottom:8px;color:var(--ink-2);font-size:14px;font-weight:700}
-.sl .alert-history img{display:block;width:100%;border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh-2)}
+.sl .position-screens img{aspect-ratio:2/1;object-fit:cover}
+@media (max-width:760px){.sl .position-screens img{aspect-ratio:1152/490}}
 @media (min-width:761px){.sl .cards:not(.one){grid-template-columns:minmax(0,1fr);gap:18px}.sl .cards .c1{width:84%}.sl .cards .c2{width:84%;justify-self:end;margin:0}}
 /* copy starts level with the first card or shot, the way otomato's feed reads: kick 22px below its top */
 @media (min-width:761px){.sl .fam .wrap,.sl .chan .wrap{align-items:start}.sl .fam .wrap>div:first-child,.sl .chan .wrap>div:first-child{padding-top:22px}}
@@ -100,9 +97,9 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
 .sl .proof .build-demo{grid-template-areas:"copy phone" "lens phone";row-gap:28px}
 .sl .build-copy{grid-area:copy;align-self:end}
 .sl .build-phone{grid-area:phone;display:grid;justify-items:center;gap:18px}
-.sl .build-phone-hint{display:flex;align-items:center;gap:8px;margin:0;padding:8px 14px;border-radius:99px;background:var(--navigaze-green);color:#151515;font-size:14px;font-weight:800}
+.sl .build-phone-hint{display:flex;align-items:center;gap:8px;margin:0;padding:8px 14px;border-radius:99px;background:var(--accent);color:#fff;font-size:14px;font-weight:800}
 .sl .build-phone .phone{width:340px;--s:.82015}
-.sl .build-phone .phone::before{content:"";position:absolute;inset:-9px;border:2px solid var(--navigaze-green);border-radius:60px;box-shadow:0 0 28px rgb(114 255 150/.35);pointer-events:none}
+.sl .build-phone .phone::before{content:"";position:absolute;inset:-9px;border:2px solid var(--accent);border-radius:60px;box-shadow:0 0 28px rgb(11 122 59/.35);pointer-events:none}
 .sl .build-phone iframe{display:block;width:393px;height:877px;border:0;transform:scale(var(--s));transform-origin:0 0}
 .sl .build-result{grid-area:lens;align-self:start;width:100%;max-width:576px}
 .sl .build-result figcaption{margin-bottom:8px;font-size:14px;font-weight:600;color:var(--ink-2)}
@@ -186,9 +183,8 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
         <span class="kick">Positions</span>
         <h2>Every open position. <em>Right on the lens.</em></h2>
         <p>Main shows open positions, mark price, ROI and a warning near liquidation. Tap a position for its leverage, PnL, stop and liquidation distances, and the past hour of prices.</p>
-        <div class="plist"><span><img src="img/ic/btc.svg" alt="">BTC long</span><span><img src="img/ic/eth.svg" alt="">ETH short</span><span><img src="img/ic/sol.svg" alt="">SOL long</span></div>
       </div>
-      <div class="cards position-screens"><img class="c1" src="img/hud/positions.png" alt="Main menu showing open BTC, ETH and SOL positions, their prices and returns" width="576" height="288" loading="lazy" draggable="false"><img class="c2" src="img/hud/position-detail.png" alt="BTC position detail showing PnL, leverage, liquidation distance and a price chart" width="576" height="288" loading="lazy" draggable="false"></div>
+      <div class="cards position-screens"><img class="c1" src="img/cards/positions.jpg" alt="Main menu showing open BTC, ETH and SOL positions, their prices and returns" width="1152" height="576" loading="lazy" draggable="false"><img class="c2" src="img/cards/position-detail.jpg" alt="BTC position detail showing PnL, leverage, liquidation distance and a price chart" width="1152" height="576" loading="lazy" draggable="false"></div>
     </div>
   </section>
   <section class="fam">
@@ -199,10 +195,7 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
         <p>Leveraged positions close to liquidation, while there is still time to add margin or close half.</p>
         <div class="tpls" data-tpl="6"></div>
       </div>
-      <div class="alert-shots">
-        <div class="cards"><img class="c1" src="img/cards/liq.jpg" alt="Lens alert: BTC long, 3.2% to liquidation. Close 50%, 0.025 BTC" draggable="false"><img class="c2" src="img/cards/loss.jpg" alt="Lens alert: BTC long, ROI minus 18.2%. Add 100 USDT margin" draggable="false"></div>
-        <figure class="alert-history"><figcaption>On your phone · History</figcaption><img src="img/app/history-risk.webp" width="786" height="546" alt="In-app history with a liquidation distance alert and a loss alert" loading="lazy"></figure>
-      </div>
+      <div class="cards"><img class="c1" src="img/cards/liq.jpg" alt="Lens alert: BTC long, 3.2% to liquidation. Close 50%, 0.025 BTC" draggable="false"><img class="c2" src="img/cards/loss.jpg" alt="Lens alert: BTC long, ROI minus 18.2%. Add 100 USDT margin" draggable="false"></div>
     </div>
   </section>
   <section class="fam">
@@ -212,10 +205,7 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
         <p>Close to the stop, closed by stop, take profit or liquidation: every step of your exit plan.</p>
         <div class="tpls" data-tpl="27,17"></div>
       </div>
-      <div class="alert-shots">
-        <div class="cards one"><img class="c1" src="img/cards/nearstop.jpg" alt="Lens alert: XRP long, 0.9% to stop" draggable="false"></div>
-        <figure class="alert-history"><figcaption>On your phone · History</figcaption><img src="img/app/history-stops.webp" width="786" height="718" alt="In-app history with near-stop and near-take-profit alerts and a position closed by its stop" loading="lazy"></figure>
-      </div>
+      <div class="cards"><img class="c1" src="img/cards/nearstop.jpg" alt="Lens alert: XRP long, 0.9% to stop" draggable="false"><img class="c2" src="img/cards/tp.jpg" alt="Lens alert: ETH short 0.8% to take profit. Close 50%" draggable="false"></div>
     </div>
   </section>
   <section class="fam">
@@ -226,23 +216,17 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
         <p>Limit orders, take-profit and stop-loss on Bybit perps, partial fills and orders open too long included.</p>
         <div class="tpls" data-tpl="14,24"></div>
       </div>
-      <div class="alert-shots">
-        <div class="cards"><img class="c1" src="img/cards/filled.jpg" alt="Lens alert: SOL long order filled at 182.40. Set take profit at 191.52" draggable="false"><img class="c2" src="img/cards/partial.jpg" alt="Lens alert: BTC buy order 0.010 of 0.025 filled. Cancel the rest" draggable="false"></div>
-        <figure class="alert-history"><figcaption>On your phone · History</figcaption><img src="img/app/history-orders.webp" width="786" height="718" alt="In-app history with order filled, partly filled and open over an hour alerts" loading="lazy"></figure>
-      </div>
+      <div class="cards"><img class="c1" src="img/cards/filled.jpg" alt="Lens alert: SOL long order filled at 182.40. Set take profit at 191.52" draggable="false"><img class="c2" src="img/cards/partial.jpg" alt="Lens alert: BTC buy order 0.010 of 0.025 filled. Cancel the rest" draggable="false"></div>
     </div>
   </section>
   <section class="fam">
     <div class="wrap">
       <div>
-        <h2>Price, volume <em>and funding.</em></h2>
+        <h2>Holding it got expensive. <em>Now you know.</em></h2>
         <p>See when price crosses your level, moves by your chosen percentage, volume spikes or a funding payment is coming up.</p>
         <div class="tpls" data-tpl="10,26,11,20"></div>
       </div>
-      <div class="alert-shots">
-        <div class="cards"><img class="c1" src="img/cards/pchange.jpg" alt="Lens alert: ETH long up 5.1% in 15 minutes. Review add, 200 USDT" draggable="false"><img class="c2" src="img/cards/plevel.jpg" alt="Lens alert: BTC crossed above 90,000. Review long, 500 USDT" draggable="false"></div>
-        <figure class="alert-history"><figcaption>On your phone · History</figcaption><img src="img/app/history-market.webp" width="786" height="930" alt="In-app history with price crossing, price change, volume spike and funding alerts" loading="lazy"></figure>
-      </div>
+      <div class="cards"><img class="c1" src="img/cards/pchange.jpg" alt="Lens alert: ETH long up 5.1% in 15 minutes. Review add, 200 USDT" draggable="false"><img class="c2" src="img/cards/plevel.jpg" alt="Lens alert: BTC crossed above 90,000. Review long, 500 USDT" draggable="false"></div>
     </div>
   </section>
   <section class="fam">
@@ -253,10 +237,7 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
         <p>ROI above your line: move the stop to entry or take half off the table before the move gives it back.</p>
         <div class="tpls" data-tpl="1,2"></div>
       </div>
-      <div class="alert-shots">
-        <div class="cards"><img class="c1" src="img/cards/profit.jpg" alt="Lens alert: ETH short ROI plus 31.4%. Move stop to entry" draggable="false"><img class="c2" src="img/cards/tp.jpg" alt="Lens alert: ETH short 0.8% to take profit. Close 50%" draggable="false"></div>
-        <figure class="alert-history"><figcaption>On your phone · History</figcaption><img src="img/app/history-profit.webp" width="786" height="546" alt="In-app history with profit alerts to move a stop to entry or take half off" loading="lazy"></figure>
-      </div>
+      <div class="cards"><img class="c1" src="img/cards/profit.jpg" alt="Lens alert: ETH short ROI plus 31.4%. Move stop to entry" draggable="false"><img class="c2" src="img/cards/tp.jpg" alt="Lens alert: ETH short 0.8% to take profit. Close 50%" draggable="false"></div>
     </div>
   </section>
   <section class="fam">
@@ -268,15 +249,6 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
         <div class="plist"><span>Protect all</span><span>Lock profits</span></div>
       </div>
       <div class="cards"><img class="c1" src="img/cards/voice1.jpg" alt="Example stop proposal 1 of 3: SOL long. Set stop at 178.75" draggable="false"><img class="c2" src="img/cards/voice2.jpg" alt="Example stop proposal 2 of 3: ETH short. Set stop at 3,162" draggable="false"></div>
-    </div>
-  </section>
-  <section class="fam">
-    <div class="wrap">
-      <div>
-        <span class="kick">Review</span>
-        <h2>An open adds risk. <em>Read it before it lands.</em></h2>
-        <p>To open a position, choose among the sizes and leverages in your rule, then review the quantity and estimated margin. For an increase, Review shows the additional quantity and notional.</p>      </div>
-      <div class="cards"><img class="c1" src="img/cards/review.jpg" alt="Review: Open BTC long, 0.0055 BTC, 500 USDT, 5x, stop 88,200" draggable="false"><img class="c2" src="img/cards/sent.jpg" alt="Sent, waiting for the fill from Bybit" draggable="false"></div>
     </div>
   </section>
 </div>
@@ -326,7 +298,7 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
       <h2>One feed. <em>On your glasses and phone.</em></h2>
       <div class="clist">
         <div><b>The G2 lens</b><small>Positions, alerts and trade confirmations.</small></div>
-        <div><b>The phone, in the Even app</b><small>Your shortcuts, notifications while the phone app is open, and the history of every alert.</small></div>
+        <div><b>The phone, in the Even app</b><small>Your shortcuts and notifications while the phone app is open.</small></div>
       </div>
       <div class="cta-slot" data-cta="channels"><div class="max-w-[500px]"><div class="flex flex-wrap gap-2.5"><div class="min-w-0 flex-1 md:min-w-[235px]"><div class="w-full"><a href="#setup-on-g2" class="flex h-12 w-full items-center justify-center gap-2.5 rounded-full px-4 text-[15px] font-semibold transition-colors duration-500 md:h-[52px] md:px-6 bg-ink text-white shadow-soft"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 14h4M3 14l1.5-6M21 14l-1.5-6"/></svg>Set up on G2</a></div></div><a href="sandbox/" class="hidden h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-full border border-ink/10 bg-white px-3 text-[13px] font-semibold text-ink-muted transition-colors hover:text-ink md:flex md:h-[52px] md:min-w-[235px] md:gap-2.5 md:px-5 md:text-[15px]"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>Try in browser</a></div></div></div>
     </div>
