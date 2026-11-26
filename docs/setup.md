@@ -35,6 +35,10 @@ npm run pack -- https://your-backend.example
 
 This creates `trade-shortcuts.ehpk` and allowlists the given origin in the manifest. To allowlist additional backends, append their HTTPS origins. The first is the default. The packer clears the hosted-page demo credential for device builds. For a device test, upload the package and assign it to a Beta group in Even Hub. Once installed, enter the server access token under **Settings → Connection**. [Even Hub beta testing](https://hub.evenrealities.com/docs/test/beta-testing)
 
+### Connect the Beta app to Bybit Testnet
+
+Keep the default server for paper judging. For the private Testnet account, open **Settings → Connection → Server**, enter the operator's Testnet backend address and its separate app access token, then tap **Connect**. Check for **Connected**, **Account: Bybit testnet**, and **Live trading: Off**. If the server has OpenAI transcription configured, enable **Answer alerts by voice** in Settings. Bybit and OpenAI credentials are configured on the server.
+
 ## Build the website
 
 From the repository root, run `npm ci` and `npm run build:site`. Serve `site/landing/` to open the landing page and the generated `/sandbox/` route. With Python installed, run `python3 -m http.server 8080 --bind 127.0.0.1 --directory site/landing` and open [localhost:8080](http://localhost:8080/). The sandbox also runs on [localhost:5199](http://localhost:5199/) with `npm run sandbox`. It creates a fresh paper account for each tab.
