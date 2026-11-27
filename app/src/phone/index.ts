@@ -17,7 +17,7 @@ const OFFLINE_MS = 5000
 const ALERTS_MS = 5000
 const BANNER_MS = 8000
 
-export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<unknown>; onConnect: () => void }): void {
+export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<unknown>; onConnect: () => void; onDisplayChange: () => void }): void {
   const root = o.root
   app.root = root
   root.classList.add('phone')
@@ -37,7 +37,7 @@ export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<un
   tabs.history.append(badge)
   for (const el of Object.values(screens)) { el.hidden = true; el.tabIndex = -1 } // focusable by script only: a route change moves focus here
   root.append(...Object.values(screens), nav, h('div', { class: 'toast', role: 'status', 'aria-live': 'polite' }))
-  buildSettings(screens.settings)
+  buildSettings(screens.settings, o.onDisplayChange)
   const historyPage = buildHistory(screens.history)
   document.addEventListener('touchstart', () => {}, { passive: true }) // iOS applies :active press feedback only with a touch listener
   history.scrollRestoration = 'manual'

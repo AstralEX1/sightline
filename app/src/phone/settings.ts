@@ -20,7 +20,7 @@ const voiceEl = rowSwitch(api.voiceAnswersOn(), 'set-voice', (on, el) => {
   if (el.disabled) return
   el.setAttribute('aria-checked', String(on)); api.setVoiceAnswers(on)
 })
-const quietEl = rowSwitch(api.quietModeOn(), 'set-quiet', (on, el) => { el.setAttribute('aria-checked', String(on)); api.setQuietMode(on) })
+let positionsEl: HTMLElement
 const testStatus = h('p', { class: 'row row--note', role: 'status' }, 'Open Trade Shortcuts in the Even app to test your G2.')
 const VOICE_ON = 'When an alert arrives the mic listens for 10 s. Say yes or no in any language. After yes, a 5 s countdown runs before anything is sent; any tap, swipe or “no” stops it. On the position list or a position, tap and hold, then Speak, and say “close” or “закрой”. A tap on the position screen does the same. The card still has to be confirmed.'
 const VOICE_OFF = 'Spoken answers are off: this server has no transcription. Close still works from the menu and from a tap on the position.'
@@ -34,7 +34,7 @@ export function enableGlassesTest() {
 export const syncHints = () => {
   hintsEl.setAttribute('aria-checked', String(api.hintsOn()))
   voiceEl.setAttribute('aria-checked', String(api.voiceAnswersOn()))
-  quietEl.setAttribute('aria-checked', String(api.quietModeOn()))
+  positionsEl.setAttribute('aria-checked', String(api.positionsAlwaysOn()))
 }
 
 /** No transcription on this server: the switch stays off and cannot be saved on. */
@@ -75,7 +75,12 @@ async function testGlasses() {
 }
 
 /** The fixed part: built once by startPhonePage, with the elements main.ts keeps writing to. */
-export function buildSettings(el: HTMLElement) {
+export function buildSettings(el: HTMLElement, onDisplayChange: () => void) {
+  positionsEl = rowSwitch(api.positionsAlwaysOn(), 'set-positions', (on, switchEl) => {
+    switchEl.setAttribute('aria-checked', String(on))
+    api.setPositionsAlwaysOn(on)
+    onDisplayChange()
+  })
   dynamic = h('div', {}, h('div', { class: 'group' }, row('Account', sourceEl), row('Glasses', glassesEl)))
   el.append(
     h('header', { class: 'nav' }, h('h1', { class: 'title-large' }, 'Settings')),
@@ -95,10 +100,10 @@ export function buildSettings(el: HTMLElement) {
         h('div', { class: 'row' }, h('button', { id: 'connect', class: 'row--btn is-accent', type: 'button' }, 'Connect')))),
     h('h2', { class: 'group-label' }, 'On your glasses'),
     h('div', { class: 'group' },
-      h('div', { class: 'row row--switch' }, h('span', { id: 'set-quiet' }, 'Quiet mode'), quietEl),
+      h('div', { class: 'row row--switch' }, h('span', { id: 'set-positions' }, 'Positions always on'), positionsEl),
       h('div', { class: 'row row--switch' }, h('span', { id: 'set-hints' }, 'Gesture tips'), hintsEl),
       h('div', { class: 'row row--switch' }, h('span', { id: 'set-voice' }, 'Answer alerts by voice'), voiceEl)),
-    h('p', { class: 'footnote' }, 'Quiet mode shows the status and nearest liquidation risk. Tap on G2 to see the full position list.'),
+    h('p', { class: 'footnote' }, 'When off, the display stays clear between alerts. Tap on G2 to open positions.'),
     h('p', { class: 'footnote' }, 'Tips like “tap: details”. Alerts and trades always say what a tap does, and double tap always shows.'),
     voiceFoot,
     h('h2', { class: 'group-label' }, 'Lens now'),

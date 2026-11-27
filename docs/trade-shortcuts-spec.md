@@ -101,7 +101,7 @@ Rows are grouped by local day and show the action, time, target, reason and most
 
 ### 5.12 Settings
 
-Bybit status, environment and permissions are read-only. Notifications controls delivery on the glasses and in the phone app. Timing controls the repeat cooldown (default 60 s), trade expiry (30 s) and other proposal expiry (60 s); each accepts 10–300 seconds. Under Connection, enter the server address and token. Under **Even G2**, **Send test to G2** waits for the user to tap **OK** on the lens. **On your glasses** contains Quiet mode, Gesture tips and Answer alerts by voice. Device storage keeps those preferences and the connection. **Lens now** previews the current lens text.
+Bybit status, environment and permissions are read-only. Notifications controls delivery on the glasses and in the phone app. Timing controls the repeat cooldown (default 60 s), trade expiry (30 s) and other proposal expiry (60 s); each accepts 10–300 seconds. Under Connection, enter the server address and token. Under **Even G2**, **Send test to G2** waits for the user to tap **OK** on the lens. **On your glasses** contains Positions always on, Gesture tips and Answer alerts by voice. Positions always on defaults to off on G2 and on in the browser Sandbox. Device storage keeps those preferences and the connection. **Lens now** previews the current lens text.
 
 ## 6. Text rules
 
