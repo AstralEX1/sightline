@@ -63,13 +63,14 @@ test('voice keeps separate English and Russian track-fed recognizers with a live
 })
 
 test('closing the microphone cancels a pending capture and releases the late stream', async t => {
-  const pending = Promise.withResolvers<MediaStream>()
+  let resolvePending: (stream: MediaStream) => void = () => {}
+  const pending = new Promise<MediaStream>(resolve => { resolvePending = resolve })
   let stopped = false
   const track = { stop() { stopped = true } } as MediaStreamTrack
-  const { audio, starts, frames } = setup(t, () => pending.promise)
+  const { audio, starts, frames } = setup(t, () => pending)
   const opening = audio(true)
   await audio(false)
-  pending.resolve(streamWith([track]))
+  resolvePending(streamWith([track]))
   assert.equal(await opening, false)
   assert.deepEqual(starts, [])
   assert.equal(frames(), 0)
