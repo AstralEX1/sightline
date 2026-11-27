@@ -19,13 +19,14 @@ No tab bar. Hash routes, one page:
 | `#/shortcut/new` | New Shortcut (empty editor) | NewShortcut |
 | `#/shortcut/:id` | Shortcut Editor | Editor, ApplyB (Apply to open), Incompatible |
 | `#/history` | History | History |
+| `#/history/:id` | History with one alert expanded | Alert banner |
 | `#/settings` | Settings | Settings |
 
 Overlays (not routes): token menu, bottom sheets (numeric, close amount, target, condition type, action type, pickers, options, rename), title menu, discard dialog, toast, in-app banner.
 
-- Home `+` → `#/shortcut/new`. Template tile → `#/shortcut/new?tpl=<id>` with a local editable copy. Shortcut tile → `#/shortcut/:id`.
-- Editor back button, iOS edge swipe and Android back run the save-or-discard flow (§7.1). History and Settings back → `#/`.
-- Status line on home → `#/settings`. History button on home → `#/history`; gear on History → `#/settings`.
+- **New shortcut** opens `#/shortcut/new`. A template opens `#/shortcut/new?tpl=<id>` with a local editable copy. A saved shortcut opens `#/shortcut/:id`.
+- The bottom navigation switches between Shortcuts, History and Settings with scroll restoration. The home status line also opens Settings.
+- Leaving the editor with unsaved changes offers **Keep editing** and **Discard changes** (§7.1).
 
 ## 3. Design tokens
 
@@ -76,7 +77,7 @@ Select a preset or enter a value in the displayed unit. Invalid inputs keep Done
 
 ### 5.6 New shortcut
 
-The plus opens an empty editor. Back from an untouched editor creates nothing. Add validates and saves a complete rule switched off. On Home, enable the rule to start monitoring.
+**New shortcut** opens an empty editor. **Add shortcut** validates and saves a complete rule switched off. Enable the rule in Shortcuts to start monitoring.
 
 ### 5.7 Options
 
@@ -88,15 +89,15 @@ A saved shortcut’s title opens Rename, Duplicate, Test alert and Delete. An em
 
 ### 5.9 Validation
 
-Condition, scope and action issues stay beside the affected controls. Leaving with invalid changes prompts to discard them or keep editing. The server validates again when writing the rule.
+Condition, scope and action issues stay beside the affected controls. A failed save keeps the editor open and shows the first issue near the save button. The server validates again when writing the rule.
 
 ### 5.10 Templates and drafts
 
-The phone opens a template in a new editor. Leaving it untouched creates nothing. Add (or leaving after a valid change) saves a disabled rule. For **Price crosses a level**, choose the symbol and set the threshold first. Older disabled drafts and drafts created through the server’s create-by-template API can still appear on Home with a Draft label.
+The phone opens a named template in a new editor. Its scenario name becomes the rule’s title when it is added. For **Price crosses a level**, choose the symbol and set the threshold first. Older disabled drafts and drafts created through the server’s create-by-template API can still appear on Home with a Draft label.
 
 ### 5.11 History
 
-Rows are grouped by local day and show the action, time, target, reason and most recent status from the server. Open a row for the trigger, proposed terms, execution outcome and exchange readback when recorded. History loads 50 rows by default and fetches the next page as the end comes into view. The banner and History badge lead here. The empty state reads **No alerts yet**.
+Rows are grouped by local day and show the action, time, target, reason and most recent status from the server. Open a row for the trigger, proposed terms, execution outcome and exchange readback when recorded. History loads 50 rows by default and fetches the next page as the end comes into view. The banner opens its exact alert. While History is open, the app refreshes statuses in place and keeps expanded rows open.
 
 ### 5.12 Settings
 
@@ -112,7 +113,7 @@ Bybit status, environment and permissions are read-only. Notifications controls 
 
 ### 7.1 Draft and save
 
-Back leaves an untouched editor immediately. A valid change saves on leaving. A new rule starts disabled; edits to a saved rule retain its enabled state. A failed network request keeps the editor open. A version conflict reloads the server’s rule.
+**Add shortcut** writes a new rule in the off state. **Save changes** writes edits to a saved rule and retains its enabled state. Back leaves an untouched editor immediately and asks about discarding unsaved changes in a modified editor. A failed network request keeps the editor open. A version conflict reloads the server’s rule.
 
 ### 7.2 Atomic edits
 Every token change is one draft update followed by validate. Never reset a valid number into another unit, never delete a condition or the action as a side effect, never change the scope silently.

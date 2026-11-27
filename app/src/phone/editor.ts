@@ -1,6 +1,6 @@
 /**
  * Shortcut editor (spec §5.2–§5.10, §7): Apply to, When, Do, Options on a local copy; validate on every change;
- * saved on the way out when valid (§7.1). It never trades and has no confirm button: proposals go to the lens.
+ * written only by the editor's save action (§7.1). Trade proposals are confirmed on the lens.
  */
 import * as api from '../api.ts'
 import type { ApiError, Catalog, Preview } from '../api.ts'
@@ -13,21 +13,24 @@ import {
   actionChoices, conditionChoices, emptyDraft, fitTrigger, inRange, leaveDecision, newAction, newCondition, nextId, numField,
   rangeText, scopeChoices, setCompare, setMetric, setNumber, triggerChoices, type Draft, type Range,
 } from './model.ts'
-import { actionParts, coinsText, compareMenu, conditionParts, fmt, metricWord, optionsSummary, parseDec, titleOf, type Part, type Tok } from './sentence.ts'
+import { actionParts, coinsText, compareMenu, conditionParts, fmt, metricWord, optionsSummary, parseDec, templateTitle, titleOf, type Part, type Tok } from './sentence.ts'
 import { app, dialog, getCatalog, h, isOffline, keepFocus, menu, rowSwitch, sheet, toast } from './ui.ts'
 
 type Pos = Position & { epoch: string }
 type State = {
   id?: string; version?: number
   draft: Draft; base: string
-  issues: Issue[]; ok: boolean; targets: Preview[]
+  issues: Issue[]; targets: Preview[]
   readOnly: boolean; applyOpen: boolean; done: boolean
+  enabled: boolean; saving: boolean; saveError?: string
   positions: Pos[]; orders: Order[]
 }
 
 let el: HTMLElement
 let cat: Catalog
 let s: State
+let generation = 0
+let ready = false
 let seq = 0
 let timer: ReturnType<typeof setTimeout> | undefined
 /** Marker messages already announced: a marker is read out once per new issue (spec §8). */
@@ -48,30 +51,37 @@ function toDraft(r: Draft): Draft {
 
 export async function enterEditor(section: HTMLElement, param: string) {
   el = section
+  const loading = ++generation
+  ready = false
   el.replaceChildren(h('div', { class: 'nav nav--editor' }, backBtn()))
   clearTimeout(timer)
   seq++
   shown = new Set()
   const fresh = (draft: Draft, more: Partial<State> = {}): State => ({
-    draft, base: stable(draft), issues: [], ok: false, targets: [], readOnly: false, applyOpen: false, done: false,
-    positions: [], orders: [], ...more,
+    draft, base: stable(draft), issues: [], targets: [], readOnly: false, applyOpen: false, done: false,
+    enabled: false, saving: false, positions: [], orders: [], ...more,
   })
   try {
-    cat = await getCatalog()
+    const catalog = await getCatalog()
+    if (loading !== generation) return
+    cat = catalog
     if (param === 'new') {
       s = fresh(emptyDraft())
     } else if (param.startsWith('new?tpl=')) {
-      // a template is a new shortcut prefilled: untouched it saves nothing, Add or an edit saves it
       const tpl = (await api.getTemplates()).find(x => x.id === param.slice(8))
+      if (loading !== generation) return
       if (!tpl) { toast('This template is gone'); return location.replace('#/') }
-      s = fresh(toDraft(structuredClone(tpl.draft)))
+      s = fresh(toDraft({ ...tpl.draft, name: templateTitle(tpl) }))
     } else {
-      app.tiles = await api.listShortcuts()
+      const tiles = await api.listShortcuts()
+      if (loading !== generation) return
+      app.tiles = tiles
       const t = app.tiles.find(x => x.id === param)
       if (!t) { toast('This shortcut was deleted'); return location.replace('#/') }
-      s = fresh(toDraft(t), { id: t.id, version: t.version })
+      s = fresh(toDraft(t), { id: t.id, version: t.version, enabled: t.enabled })
     }
   } catch (e) {
+    if (loading !== generation) return
     // §7.6: offline, the last data read-only, back leaves without saving
     const t = app.tiles?.find(x => x.id === param)
     if (!isOffline(e) || !app.catalog || (!param.startsWith('new') && !t)) { toast(isOffline(e) ? 'Server offline' : (e as Error).message); return location.replace('#/') }
@@ -79,70 +89,66 @@ export async function enterEditor(section: HTMLElement, param: string) {
     s = fresh(t ? toDraft(t) : emptyDraft(), { id: t?.id, version: t?.version, readOnly: true })
     toast('Server offline')
   }
+  ready = true
   render()
   if (s.readOnly) return
   validateSoon()
-  void api.getPositions().then(p => { s.positions = p; render() }, () => {})
-  void api.getOpenOrders().then(o => { s.orders = o; render() }, () => {})
+  void api.getPositions().then(p => { if (loading === generation) { s.positions = p; render() } }, () => {})
+  void api.getOpenOrders().then(o => { if (loading === generation) { s.orders = o; render() } }, () => {})
 }
 
 /** Router hook before leaving the editor: false keeps it open (spec §7.1). */
 export async function leaveEditor(): Promise<boolean> {
-  if (!s || s.readOnly || s.done || !changed()) return true
-  leaving = true
-  try { return await saveOrAsk() } finally { leaving = false }
+  if (ready && !s.done) {
+    if (app.root.querySelector('.sheet:not(.is-closing), .menu:not(.is-closing), .dialog-scrim:not(.is-closing)')) return false
+    const decision = leaveDecision(!s.readOnly && changed(), s.saving)
+    if (decision === 'stay') return false
+    if (decision === 'ask' && await dialog({
+      title: 'Discard changes?',
+      text: 'Your edits haven’t been saved.',
+      buttons: [{ label: 'Keep editing', primary: true }, { label: 'Discard changes', danger: true }],
+    }) !== 1) return false
+  }
+  ready = false
+  generation++
+  seq++
+  clearTimeout(timer)
+  return true
 }
 
-/** Back pressed again while the save is in flight would step history once more (to History, say). */
-let leaving = false
+function goToShortcuts() {
+  if (app.from === '#/') history.back()
+  else location.replace('#/')
+}
 
-async function saveOrAsk(): Promise<boolean> {
+async function save() {
+  if (s.saving || s.done || s.readOnly || (s.id && !changed())) return
   clearTimeout(timer)
   seq++
-  let ok: boolean
+  s.saving = true
+  s.saveError = undefined
+  render()
   try {
     const v = await api.validate(payload())
-    ok = v.ok
     s.issues = v.issues
-  } catch (e) {
-    toast(isOffline(e) ? 'Server offline' : (e as Error).message) // stay: nothing is lost
-    return false
-  }
-  if (leaveDecision(true, ok) === 'save') {
-    try {
-      const d = s.draft as EditableShortcut
-      const r = s.id ? await api.updateShortcut(s.id, d, s.version!) : await api.createShortcut({ ...d, enabled: false })
-      toast(r.enabled ? 'Saved' : 'Saved. Off until you turn it on in Shortcuts')
-      return true
-    } catch (e) {
-      if ((e as ApiError).status === 409) {
-        toast('Changed on another device. Reloaded.')
-        await enterEditor(el, s.id!)
-      } else toast((e as Error).message)
-      return false
+    if (!v.ok) {
+      s.saveError = v.issues[0]?.message ?? 'Check the shortcut before saving.'
+      return
     }
-  }
-  render()
-  // name the first problem, so the way to fix it is in the dialog itself
-  const why = s.issues[0]?.message
-  const pick = await dialog({
-    title: s.id ? 'Discard changes?' : 'Discard this shortcut?',
-    text: why ? `${why}. Fix it, or discard ${s.id ? 'your changes' : 'it'}.` : 'Something stops it from saving.',
-    buttons: [{ label: s.id ? 'Discard changes' : 'Discard', danger: true }, { label: 'Keep editing', primary: true }],
-  })
-  return pick === 0
-}
-
-/** Add, on a new shortcut: save now and go back (the same save as leaving). */
-async function add() {
-  if (leaving) return
-  leaving = true
-  try {
-    if (!(await saveOrAsk())) return
+    const d = s.draft as EditableShortcut
+    const r = s.id ? await api.updateShortcut(s.id, d, s.version!) : await api.createShortcut({ ...d, enabled: false })
     s.done = true
-    if (app.from === '#/') history.back()
-    else location.replace('#/')
-  } finally { leaving = false }
+    toast(r.enabled ? 'Saved' : 'Saved. Off until you turn it on in Shortcuts')
+    goToShortcuts()
+  } catch (e) {
+    if ((e as ApiError).status === 409 && s.id) {
+      toast('Changed on another device. Reloaded.')
+      await enterEditor(el, s.id)
+    } else s.saveError = isOffline(e) ? 'Server offline. Try again when it’s connected.' : (e as Error).message
+  } finally {
+    s.saving = false
+    if (ready && !s.done) render()
+  }
 }
 
 const payload = () => ({ ...(s.draft as EditableShortcut), ...(s.id && { id: s.id }) })
@@ -156,7 +162,6 @@ function validateSoon() {
       const v = await api.validate(payload())
       if (n !== seq) return
       s.issues = v.issues
-      s.ok = v.ok
       if (v.targets) s.targets = v.targets
       render()
     } catch (e) {
@@ -167,11 +172,12 @@ function validateSoon() {
 
 /** One draft update, then validate (spec §7.2). */
 function commit(mut: (d: Draft) => void) {
-  if (s.readOnly) return
+  if (s.readOnly || s.saving) return
   const d = structuredClone(s.draft)
   mut(d)
   fitTrigger(d)
   s.draft = d
+  s.saveError = undefined
   render()
   validateSoon()
 }
@@ -187,7 +193,7 @@ const LATE = new Set(['bad_action', 'no_conditions', 'bad_scope'])
 
 function marks() {
   const m = { cond: new Map<string, Issue[]>(), action: [] as Issue[], scope: [] as Issue[], when: [] as Issue[], options: [] as Issue[] }
-  const late = changed()
+  const late = changed() || !!s.saveError
   for (const i of s.issues) {
     if (SILENT.has(i.code) || (LATE.has(i.code) && !late)) continue
     if (i.conditionId) m.cond.set(i.conditionId, [...(m.cond.get(i.conditionId) ?? []), i])
@@ -212,7 +218,19 @@ function render() {
   const focused = (document.activeElement as HTMLElement | null)?.dataset?.fk
   announce = new Set()
   const m = marks()
-  el.replaceChildren(...[nav(), applyTo(m.scope), whenCard(m), doCard(m.action), optionsRow(m.options), confirmLine()].filter(x => x !== null))
+  const fields = h('div', { class: 'editor-fields', inert: s.saving }, applyTo(m.scope), whenCard(m), doCard(m.action), optionsRow(m.options))
+  const bar = el.querySelector<HTMLElement>('.editor-actions') ?? h('footer', { class: 'editor-actions' },
+    h('p', { class: 'editor-actions__note', role: 'status' }),
+    h('button', { class: 'pill-btn pill-btn--accent', type: 'button', 'data-fk': 'save', onclick: () => void save() }))
+  el.replaceChildren(nav(), fields, ...(!s.readOnly ? [bar] : []))
+  if (!s.readOnly) {
+    const note = bar.querySelector('p')!
+    const button = bar.querySelector('button')!
+    const text = s.saving ? 'Saving…' : s.saveError ?? (!s.id ? 'New shortcuts start off.' : s.enabled ? 'Changes to this active shortcut take effect when saved.' : 'This shortcut is off.')
+    if (note.textContent !== text) note.textContent = text
+    button.textContent = s.id ? 'Save changes' : 'Add shortcut'
+    button.setAttribute('aria-disabled', String(s.saving || !!s.id && !changed()))
+  }
   shown = announce
   if (focused) focusFk(focused)
 }
@@ -227,7 +245,8 @@ const back = (fk: string) => () => focusFk(fk)
 function backBtn() {
   return h('button', {
     class: 'circle-btn', type: 'button', 'aria-label': 'Back to Shortcuts', 'data-fk': 'back', html: icon('back', 20, 2.4),
-    onclick: () => leaving || (app.from === '#/' ? history.back() : location.replace('#/')),
+    'aria-disabled': ready && s.saving ? 'true' : undefined,
+    onclick: () => { if (!ready || !s.saving) goToShortcuts() },
   })
 }
 
@@ -238,14 +257,11 @@ function nav() {
     ? h('span', { class: 'chip chip--lg', style: `--c: ${a.color}`, html: icon(a.icon, 15, 2.4) })
     : h('span', { class: 'chip chip--new chip--lg', html: icon('plus', 14, 3) })
   const title = h('span', { class: 'title-pill__text' }, titleOf(d))
-  const pill = s.id && !s.readOnly
+  const pill = s.id && !s.readOnly && !s.saving
     ? h('button', { class: 'title-pill', type: 'button', 'aria-label': `${titleOf(d)}, rename or show details`, 'data-fk': 'title', onclick: (e: Event) => titleMenu(e.currentTarget as HTMLElement) },
       chip, title, h('span', { class: 'title-pill__chev', html: icon('down', 10, 3.6) }))
-    : h('span', { class: 'title-pill' }, chip, title)
-  const right = !s.id && !s.readOnly
-    ? h('button', { class: 'pill-btn pill-btn--accent', type: 'button', 'data-fk': 'add', onclick: () => void add() }, 'Add')
-    : h('span')
-  return h('div', { class: 'nav nav--editor' }, backBtn(), pill, right)
+    : h('h1', { class: 'title-pill' }, chip, title)
+  return h('div', { class: 'nav nav--editor' }, backBtn(), pill)
 }
 
 function scopeValue(sc: Scope): { text: string; missing?: boolean } {
@@ -448,7 +464,7 @@ function doCard(issues: Issue[]) {
       h('p', {}, h('span', { class: 'chip', style: `--c: ${ic.color}`, html: icon(ic.icon, 14, 2.4) }),
         h('span', { class: issues.length ? 'word is-error' : 'word' }, 'Do'), ' ', ...sentence(actionParts(a), undefined, issues.length > 0)),
       marker(issues)),
-    s.readOnly ? null : h('button', { class: 'remove', type: 'button', 'aria-label': 'Remove action', 'data-fk': 'rm:action', html: REMOVE, onclick: () => commit(d => { delete d.action }) })))
+    s.readOnly ? null : h('button', { class: 'remove', type: 'button', 'aria-label': 'Remove action', 'data-fk': 'rm:action', html: REMOVE, onclick: () => commit(d => { delete d.action }) })), confirmLine())
 }
 
 function optionsRow(issues: Issue[]) {
@@ -802,7 +818,7 @@ function optionsSheet() {
 function titleMenu(anchor: HTMLElement) {
   menu(anchor, [
     { label: 'Rename', onPick: renameSheet },
-    { label: 'Duplicate', onPick: () => void duplicate() },
+    { label: 'Duplicate', disabled: changed(), onPick: () => void duplicate() },
     { label: 'Test alert', onPick: () => void testAlert() },
     { label: 'Delete', danger: true, onPick: () => void remove() },
   ], 'Shortcut', back('title'))

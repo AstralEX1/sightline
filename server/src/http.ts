@@ -237,6 +237,7 @@ export function createServer(d: {
         const p = store.latestProposalForAlert(alert.id)
         const e = p && store.executionByProposal(p.id)
         const details: AlertDetails = {
+          alert,
           proposed: p?.picks ? 'Quantity and leverage awaiting selection' : p?.question.replace(/\?$/, ''),
           outcome: e ? executionLine(e) : p?.status === 'PENDING' && !alert.simulated ? 'Waiting for a tap on Even G2' : alert.status,
           receipt: e?.receipt,

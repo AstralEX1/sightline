@@ -10,11 +10,11 @@ const roi30: Condition = { id: 'c1', type: 'PROFIT', unit: 'ROI_PERCENT', thresh
 const liq5: Condition = { id: 'c2', type: 'NEAR_LIQUIDATION', distancePct: '5' }
 const draft = (over: Partial<Draft>): Draft => ({ ...emptyDraft(), ...over })
 
-test('save or discard on back (spec §7.1, P05, P13)', () => {
-  assert.equal(leaveDecision(false, false), 'leave') // + then back at once: nothing is created
-  assert.equal(leaveDecision(true, true), 'save')
+test('leaving the editor never saves a draft and waits for a save in progress', () => {
+  assert.equal(leaveDecision(false, false), 'leave')
   assert.equal(leaveDecision(true, false), 'ask')
-  assert.equal(leaveDecision(false, true), 'leave')
+  assert.equal(leaveDecision(true, true), 'stay')
+  assert.equal(leaveDecision(false, true), 'stay')
 })
 
 test('ROI above ↔ below drops the old value (P08, arch §4)', () => {

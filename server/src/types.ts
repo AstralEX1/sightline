@@ -203,6 +203,7 @@ export interface AlertRecord {
 }
 
 export interface AlertDetails {
+  alert?: AlertRecord
   proposed?: string
   outcome?: string
   receipt?: string

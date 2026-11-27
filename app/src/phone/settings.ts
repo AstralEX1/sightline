@@ -7,7 +7,7 @@ import type { SettingsPage } from '../api.ts'
 import type { Settings } from '../../../server/src/types.ts'
 import { parseDec } from './sentence.ts'
 import { icon } from './icons.ts'
-import { h, rowSwitch, sheet, subNav, toast } from './ui.ts'
+import { h, rowSwitch, sheet, toast } from './ui.ts'
 
 let page: SettingsPage | null = null
 let dynamic: HTMLElement
@@ -78,7 +78,7 @@ async function testGlasses() {
 export function buildSettings(el: HTMLElement) {
   dynamic = h('div', {}, h('div', { class: 'group' }, row('Account', sourceEl), row('Glasses', glassesEl)))
   el.append(
-    subNav('Settings'),
+    h('header', { class: 'nav' }, h('h1', { class: 'title-large' }, 'Settings')),
     dynamic,
     h('h2', { class: 'group-label' }, 'Connection'),
     h('div', { class: 'group' },

@@ -60,15 +60,26 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 
 /* Nav rows */
 .phone .nav { display: flex; align-items: center; justify-content: space-between; min-height: 52px; }
-.phone .nav--editor { display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr); align-items: center; min-height: 56px; }
-.phone .nav--editor > :last-child { justify-self: end; }
-.phone .nav--sub { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); min-height: 44px; margin: 0 -8px; }
-.phone .nav-title { font-size: 1.125rem; line-height: 1.5rem; font-weight: 500; letter-spacing: -.01em; text-align: center; }
-.phone .back-link { justify-self: start; display: flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 8px 0 4px; color: var(--accent-text); font-weight: 500; }
-.phone .icon-link { justify-self: end; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; color: var(--accent-text); }
+.phone .nav--home { flex-wrap: wrap; gap: 8px; }
+.phone .nav--editor { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 4px; min-height: 56px; }
+
+.phone--tabs { display: flex; flex-direction: column; padding-bottom: 0; }
+.phone .phone-tabs { position: sticky; z-index: 8; bottom: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: auto calc(-20px - env(safe-area-inset-right)) 0 calc(-20px - env(safe-area-inset-left));
+  padding: 4px calc(8px + env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));
+  gap: 4px; background: var(--surface); border-top: 1px solid var(--border); }
+.phone .phone-tabs[hidden] { display: none; }
+.phone .phone-tabs a { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; min-height: 48px; padding: 4px; border-radius: 12px; color: var(--text-2);
+  font-size: .6875rem; line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
+.phone .phone-tabs a[aria-current='page'] { background: var(--chip); color: var(--text); font-weight: 650; }
+.phone .phone-tabs a:focus-visible { outline-offset: -2px; }
 
 .phone .circle-btn { position: relative; display: flex; flex: none; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%;
   background: var(--surface); color: var(--text); }
+.phone .new-shortcut { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border-radius: 999px;
+  background: var(--surface); font-size: .875rem; font-weight: 650; }
+.phone .new-shortcut svg { flex: none; }
 .phone .circle-btn--glass {
   background: radial-gradient(ellipse at 30% 0%, rgb(255 255 255 / .48), transparent 68%),
     color-mix(in srgb, var(--surface) 55%, transparent);
@@ -78,17 +89,17 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
     inset 0 -3px 6px rgb(0 0 0 / .1), 0 4px 12px rgb(0 0 0 / .15);
 }
 @media (prefers-reduced-motion: no-preference) {
-  .phone .circle-btn--glass { transition: transform .18s ease-out, opacity .18s ease-out; }
-  .phone .circle-btn--glass:active { transform: scale(.94); opacity: .8; }
+  .phone .circle-btn--glass { transition: transform .16s cubic-bezier(.23, 1, .32, 1); }
+  .phone .circle-btn--glass:active { transform: scale(.97); opacity: .8; }
 }
-@media (prefers-reduced-transparency: reduce) {
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .phone .circle-btn--glass { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 @media (prefers-contrast: more) {
   .phone .circle-btn--glass { box-shadow: inset 0 0 0 2px var(--text); }
 }
-.phone .badge { position: absolute; top: -2px; right: -2px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--error);
-  color: #FFFFFF; font-size: .6875rem; line-height: 18px; font-weight: 500; text-align: center; box-shadow: 0 0 0 2px var(--bg); }
+.phone .badge { position: absolute; top: 0; left: calc(50% + 7px); min-width: 18px; padding: 2px 4px; border-radius: 12px;
+  background: #B72432; color: #FFFFFF; font-size: .6875rem; line-height: 1.15; font-weight: 650; box-shadow: 0 0 0 2px var(--surface); }
 
 /* Home */
 .phone .title-large { margin-top: 4px; font-size: 2.125rem; line-height: 2.5rem; font-weight: 700; letter-spacing: -.02em; }
@@ -109,7 +120,6 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .empty-state__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
 .phone .pill-btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border-radius: 22px; background: var(--surface); font-weight: 500; }
 .phone .pill-btn--accent { background: var(--accent); color: var(--on-accent); }
-.phone .nav--editor .pill-btn { justify-content: center; min-width: 64px; padding-inline: 16px; font-weight: 650; }
 
 /* Two columns; one once 10rem no longer fits twice (root ≥ 22 px). */
 .phone .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, max(10rem, calc((100% - 12px) / 2))), 1fr)); gap: 12px; } /* min(100%): at 320 px and 200% text, 10rem is wider than the screen */
@@ -121,8 +131,8 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .tpl-group__chev { display: flex; flex: none; color: var(--text-2); transition: transform .2s ease-out; } /* reduced motion: the global rule drops transform, so it snaps */
 .phone .tpl-group__toggle[aria-expanded='true'] .tpl-group__chev { transform: rotate(90deg); }
 
-/* Logo (action glyph) + title. Fixed height so every tile in a row matches. */
-.phone .tile { position: relative; display: flex; flex-direction: column; height: 7rem; border-radius: 20px; }
+/* Equal heights per row, with room for longer names when text size increases. */
+.phone .tile { position: relative; display: flex; flex-direction: column; min-height: 7rem; border-radius: 20px; }
 .phone :is(.tile, .chip) { background: var(--c); }
 .phone .tile { color: #FFFFFF; }
 .phone .chip { color: #FFFFFF; } /* every action glyph is white on its color */
@@ -138,8 +148,7 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .tile__glyph svg { width: 2rem; height: 2rem; }
 .phone .tile__top { display: flex; justify-content: space-between; align-items: flex-start; }
 .phone .tile__badge { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: rgb(255 255 255 / .25); color: #FFFFFF; }
-/* Title at the bottom: 2 lines reserved so one- and two-line names share the same tile height; wrap on spaces, break only if a 40-char name has none. */
-.phone .tile__title { display: -webkit-box; min-height: 2.375rem; overflow: hidden; font-size: .9375rem; line-height: 1.1875rem; font-weight: 500; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: break-word; word-break: break-word; }
+.phone .tile__title { min-height: 2.375rem; font-size: .9375rem; line-height: 1.1875rem; font-weight: 500; overflow-wrap: anywhere; }
 .phone .tile__switch { position: absolute; z-index: 1; top: 4px; right: 4px; display: flex; align-items: center; justify-content: center; width: 50px; height: 44px; }
 .phone .tile__track { position: relative; width: 40px; height: 24px; border-radius: 12px; background: rgb(255 255 255 / .26); }
 .phone .tile__knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #FFFFFF; transition: transform .15s ease-out; }
@@ -152,9 +161,16 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 }
 
 /* Editor */
+.phone .screen--editor:not([hidden]) { display: flex; flex-direction: column;
+  min-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+.phone .editor-fields { container-type: inline-size; padding-bottom: 16px; }
+.phone .editor-actions { position: sticky; z-index: 2; bottom: 0; display: grid; gap: 8px; margin-top: auto;
+  padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); background: var(--bg); }
+.phone .editor-actions .pill-btn { justify-content: center; font-weight: 650; text-align: center; }
+.phone .editor-actions__note { color: var(--text-2); font-size: .8125rem; line-height: 1.125rem; text-align: center; }
 .phone .title-pill { justify-self: center; display: flex; align-items: center; gap: 8px; max-width: 100%; min-height: 44px; padding: 0 8px;
   font-size: 1.125rem; line-height: 1.5rem; font-weight: 500; letter-spacing: -.01em; }
-.phone .title-pill__text { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.phone .title-pill__text { min-width: 0; overflow-wrap: anywhere; }
 .phone .title-pill__chev { display: flex; flex: none; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--chip); color: var(--text-2); }
 .phone .chip { --c: var(--chip-neutral); display: inline-flex; flex: none; align-items: center; justify-content: center; width: 24px; height: 24px; margin-right: 8px; border-radius: 6px; vertical-align: -5px; }
 .phone .chip--new { --c: var(--accent); color: var(--on-accent); }
@@ -165,7 +181,7 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .card { display: block; width: 100%; margin-top: 24px; padding: 16px; border-radius: 20px; background: var(--surface); }
 .phone .disclosure { margin-top: 12px; padding: 0; overflow: hidden; }
 .phone .card--when { padding-bottom: 4px; }
-.phone .sentence { font-size: 1.125rem; line-height: 2.25rem; font-weight: 500; letter-spacing: -.01em; }
+.phone .sentence { font-size: 1.125rem; line-height: 1.6; font-weight: 500; letter-spacing: -.01em; }
 .phone .sentence p { overflow-wrap: anywhere; }
 .phone .row-line { display: flex; align-items: flex-start; gap: 4px; }
 .phone .row-line + .row-line { margin-top: 4px; }
@@ -174,15 +190,12 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .word.is-error { color: var(--error); }
 .phone .phrase { font-style: italic; }
 
-/* Tokens: 36 px line, 28 px pill, 8 px side padding, a whole token wraps as one (§8). The ::after pad makes the hit area 36 px tall:
-   44 does not fit in running text without doubling the line gap. */
-/* tokens read as plain text on a tinted fill, weight 500 sets them apart from the sentence */
-.phone .token { display: inline-block; padding: 0 8px; font-weight: 500; border-radius: 6px; background: var(--token-bg); color: var(--accent-text); line-height: 1.75rem;
-  white-space: nowrap; font-variant-numeric: tabular-nums; position: relative; }
-.phone .token::after { content: ''; position: absolute; inset: -4px -3px; }
+.phone .token { display: inline-block; min-width: 44px; min-height: 44px; max-width: 100%; margin-block: 2px; padding: 4px 8px;
+  border-radius: 8px; background: var(--token-bg); color: var(--accent-text); line-height: 1.35; text-align: center;
+  overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .phone .token:active { opacity: 1; background: var(--token-press); }
 .phone .token--error { background: var(--error-bg); color: var(--error); }
-.phone .token--placeholder { padding: 0 7px; border: 1px dashed var(--accent-text); background: transparent; line-height: calc(1.75rem - 2px); }
+.phone .token--placeholder { border: 1px dashed var(--accent-text); background: transparent; }
 .phone .token:disabled { opacity: 1; }
 
 .phone .add-btn { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 1rem; line-height: 1.375rem; font-weight: 500; color: var(--accent-text); }
@@ -191,10 +204,10 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .marker span { display: flex; }
 @keyframes fade { from { opacity: 0; } }
 
-.phone .disclosure__head { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 0 16px; }
+.phone .disclosure__head { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 16px; }
 .phone .disclosure__head .chip { margin: 0; }
 .phone .disclosure__label { font-weight: 500; }
-.phone .disclosure__value { flex: 1; min-width: 0; overflow: hidden; color: var(--accent-text); font-weight: 500; text-align: right; white-space: nowrap; text-overflow: ellipsis; }
+.phone .disclosure__value { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--accent-text); font-weight: 500; text-align: right; }
 .phone .disclosure__value.is-error { color: var(--error); font-weight: 500; }
 .phone .disclosure__chev { display: flex; color: var(--text-2); transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
 .phone .disclosure[data-open] .disclosure__chev { transform: rotate(180deg); }
@@ -203,18 +216,27 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .disclosure__list { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility .3s; }
 .phone .disclosure[data-open] .disclosure__list { visibility: visible; border-top: 1px solid var(--border); }
 
-.phone .options-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; text-align: left; }
+.phone .options-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 16px; text-align: left; }
 .phone .options-row__label { flex: none; font-weight: 500; }
-.phone .options-row__value { flex: 1; min-width: 0; overflow: hidden; color: var(--text-2); text-align: right; white-space: nowrap; text-overflow: ellipsis; }
+.phone .options-row__value { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--text-2); text-align: right; }
 .phone .options-row__chev, .phone .radio-row__detail svg { display: flex; color: var(--text-2); }
 .phone .confirm-line { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; font-size: .8125rem; line-height: 1.125rem; color: var(--text-2); }
+.phone .confirm-line svg { flex: none; }
+@container (max-width: 20rem) {
+  .phone .token { display: block; width: 100%; text-align: start; }
+  .phone .disclosure__head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; row-gap: 2px; }
+  .phone .options-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
+  .phone .disclosure__value { grid-column: 2; grid-row: 2; text-align: start; }
+  .phone .options-row__value { grid-column: 1; grid-row: 2; text-align: start; }
+  .phone :is(.disclosure__chev, .options-row__chev) { grid-column: -2; grid-row: 1 / span 2; }
+}
 
 /* Lists (History, Settings, sheets) */
 .phone .group { overflow: hidden; border-radius: 12px; background: var(--surface); list-style: none; }
 .phone .group > * { position: relative; }
 .phone .group > * + *::before { content: ''; position: absolute; top: 0; right: 0; left: var(--sep, 16px); border-top: 1px solid var(--border); }
 .phone .group-label { margin: 24px 0 0; padding: 0 16px 8px; font-size: .75rem; line-height: 1rem; font-weight: 500; letter-spacing: .04em; color: var(--text-2); text-transform: uppercase; }
-.phone .screen > .group-label:first-of-type, .phone .nav--sub + * > .group-label:first-child, .phone .sheet__body > .group-label:first-child { margin-top: 12px; }
+.phone .screen > .group-label:first-of-type, .phone .nav + * > .group-label:first-child, .phone .sheet__body > .group-label:first-child { margin-top: 12px; }
 .phone .footnote { padding: 8px 16px 0; font-size: .8125rem; line-height: 1.125rem; color: var(--text-2); }
 .phone .footnote.is-error { color: var(--error); }
 .phone .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; padding: 8px 16px; text-align: left; }
@@ -240,7 +262,8 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 
 .phone .hist { --sep: 56px; }
 .phone .group:has(> .hist) { --sep: 56px; }
-.phone .hist__summary { display: flex; gap: 12px; padding: 12px 16px; cursor: pointer; list-style: none; }
+.phone .hist__summary { display: flex; gap: 12px; padding: 12px 16px; cursor: pointer; list-style: none; scroll-margin-block: 8px 4rem; }
+.phone .hist__summary:focus-visible { outline-offset: -2px; }
 .phone .hist__summary::-webkit-details-marker { display: none; }
 .phone .hist__summary::after { content: '›'; align-self: center; color: var(--text-2); }
 .phone .hist details[open] .hist__summary::after { transform: rotate(90deg); }
@@ -339,6 +362,7 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
   border-radius: 20px; background: var(--text); color: var(--bg); font-size: 1rem; line-height: 1.375rem; opacity: 0; pointer-events: none;
   transform: translate(-50%, 8px); transition: opacity .2s, transform .2s; }
 .phone .toast.is-on { opacity: 1; transform: translate(-50%, 0); }
+.phone--tabs .toast { bottom: calc(env(safe-area-inset-bottom) + max(64px, 3.25rem)); }
 
 .phone .banner { position: fixed; z-index: 9; top: calc(env(safe-area-inset-top) + 8px); right: 8px; left: 8px; max-width: 584px; margin: 0 auto;
   display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 20px; background: var(--surface);
@@ -347,7 +371,7 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .banner.is-on { opacity: 1; visibility: visible; transform: none; }
 .phone .banner .chip { width: 36px; height: 36px; border-radius: 9px; }
 .phone .banner__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.phone .banner__title { overflow: hidden; font-size: 1rem; line-height: 1.375rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.phone .banner__title { font-size: 1rem; line-height: 1.375rem; font-weight: 600; overflow-wrap: anywhere; }
 .phone .banner__sub { font-size: .8125rem; line-height: 1.125rem; color: var(--text-2); }
 .phone .banner__where { display: flex; align-items: center; gap: 4px; font-size: .8125rem; line-height: 1.125rem; font-weight: 500; color: var(--accent-text); }
 .phone .banner__time { flex: none; align-self: flex-start; font-size: .8125rem; color: var(--text-2); }

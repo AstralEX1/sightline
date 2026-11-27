@@ -17,6 +17,6 @@ See the [lens specification](glasses-shortcuts.md) for gestures and screen layou
 
 ## Phone
 
-Each shortcut is a tile with the **action logo and title**. The tile color follows the action. Tapping the tile opens the editor. A separate switch enables or pauses the rule. Templates open as unsaved rules for the user to review and add.
+Each shortcut tile shows an action icon and title. Templates use their scenario names. New rules use the action name by default. Tapping a tile opens the editor. A separate switch enables or pauses a saved rule.
 
-The phone uses Inter, Phosphor icons and neutral primary controls. The Liquid Glass `+` opens a new shortcut, and the solid **Add** button saves it. [Phone specification](trade-shortcuts-spec.md) · [Stylesheet](../app/src/phone/phone.css) · [Apple Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/)
+The bottom navigation keeps Shortcuts, History and Settings within reach and restores their scroll positions. The editor saves via **Add shortcut** or **Save changes**. An alert banner opens its History row, which updates as the server records a response on Even G2 and any exchange outcome. [Phone specification](trade-shortcuts-spec.md) · [Stylesheet](../app/src/phone/phone.css) · [Apple Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/)

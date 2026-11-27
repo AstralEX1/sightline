@@ -101,6 +101,7 @@ test('History retrieves proposed terms and recorded partial execution for an exi
   store.saveExecution({ id: 'partial', proposalId: p.id, idempotencyKey: 'partial', terms: p.terms, status: 'PARTIALLY_FILLED',
     message: '', filledQty: 0.015, avgPrice: 61000, receipt: '0.05 → 0.035 BTC', createdAt: 1, updatedAt: 2 })
   assert.deepEqual((await call('GET', path)).body, {
+    alert: store.alert(r.alertId!),
     proposed: 'Close 50% · 0.025 BTC', outcome: 'Partly filled · 0.015 of 0.025 BTC', receipt: '0.05 → 0.035 BTC',
   })
   assert.equal((await call('GET', '/history/unknown')).status, 404)
@@ -120,6 +121,7 @@ test('History keeps the replacement proposal separate from the rejected executio
   const alert = store.alert(old.alertId)!
   assert.equal(alert.status, 'Refreshed · the terms changed')
   assert.deepEqual((await call('GET', path)).body, {
+    alert,
     proposed: 'Close 50% · 0.02 BTC', outcome: 'Waiting for a tap on Even G2',
   })
   // A server upgrade can find a pending replacement with the old execution's status still on the alert.

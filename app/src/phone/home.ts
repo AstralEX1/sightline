@@ -1,7 +1,8 @@
-/** Shortcuts, the home screen (spec §5.1): your shortcuts and the templates as 2-column tiles, status line, History and +. */
+/** Shortcuts, the home screen (spec §5.1): your shortcuts, templates and connection status. */
 import * as api from '../api.ts'
 import type { ApiError, TemplateTile, Tile } from '../api.ts'
 import { ACTION_ICON, WARN, icon } from './icons.ts'
+import { templateTitle } from './sentence.ts'
 import { app, h, isOffline, toast } from './ui.ts'
 
 let templates: TemplateTile[] | null = null
@@ -43,23 +44,22 @@ function unreachable(err: unknown, retry: () => void) {
  */
 function tile(t: Tile) {
   const { icon: name, color } = ACTION_ICON[t.action.type]
-  const label = t.draft ? `${t.title}, draft` : t.title
+  const title = t.draft ? `${t.title} · Draft` : t.title
   const sw = h('button', {
     class: 'tile__switch', type: 'button', role: 'switch', 'aria-checked': String(t.enabled), 'aria-label': `${t.title}, ${t.summary}`, // two tiles can share a title: the rule tells them apart
     'aria-disabled': offline || t.draft ? 'true' : undefined,
   }, h('span', { class: 'tile__track' }, h('span', { class: 'tile__knob' })))
   sw.addEventListener('click', () => void toggle(t, sw))
   return h('div', { class: 'tile', 'data-state': t.draft ? 'draft' : t.enabled ? 'on' : 'off', style: `--c: ${color}` },
-    h('a', { class: 'tile__body', href: `#/shortcut/${encodeURIComponent(t.id)}`, 'aria-label': `${label}. Edit` },
+    h('a', { class: 'tile__body', href: `#/shortcut/${encodeURIComponent(t.id)}`, 'aria-label': `${title}. ${t.summary}. ${t.doSummary}. Edit` },
       h('span', { class: 'tile__glyph', html: icon(name, 32, 2.6) }),
-      h('span', { class: 'tile__title' }, t.title)),
+      h('span', { class: 'tile__title' }, title)),
     sw)
 }
 
 /** Optimistic: the switch moves at 60% until the server answers, and springs back on an error (P02). */
 async function toggle(t: Tile, sw: HTMLButtonElement) {
-  if (offline || sw.dataset.busy) return
-  if (t.draft) { location.hash = `#/shortcut/${encodeURIComponent(t.id)}`; return }
+  if (offline || t.draft || sw.dataset.busy) return
   const on = !t.enabled
   sw.dataset.busy = '1'
   sw.setAttribute('aria-checked', String(on))
@@ -82,15 +82,16 @@ async function toggle(t: Tile, sw: HTMLButtonElement) {
 }
 
 function templateTile(t: TemplateTile) {
+  const title = templateTitle(t)
   const { icon: name, color } = ACTION_ICON[t.draft.action.type]
   return h('button', {
-    class: 'tile tile--template', type: 'button', style: `--c: ${color}`, 'aria-label': `Template: ${t.title}. Add`,
+    class: 'tile tile--template', type: 'button', style: `--c: ${color}`, 'aria-label': `Template: ${title}. Open editor`,
     'aria-disabled': offline ? 'true' : undefined, onclick: () => useTemplate(t),
   },
   h('span', { class: 'tile__top' },
     h('span', { class: 'tile__glyph', html: icon(name, 32, 2.6) }),
     h('span', { class: 'tile__badge', 'aria-hidden': 'true', html: icon('plus', 12, 3.4) })),
-  h('span', { class: 'tile__title' }, t.title))
+  h('span', { class: 'tile__title' }, title))
 }
 
 /**
@@ -126,16 +127,15 @@ function useTemplate(t: TemplateTile) {
 
 /** Renders into `el`; called on route enter and every 10 s while home is shown. */
 export async function renderHome(el: HTMLElement, first: boolean) {
-  const nav = () => h('div', { class: 'nav' },
-    h('a', { class: 'circle-btn circle-btn--history', href: '#/history', 'aria-label': app.unseen ? `History, ${app.unseen} new` : 'History', html: icon('clock', 22, 2) },
-      app.unseen ? h('span', { class: 'badge', 'aria-hidden': 'true' }, String(app.unseen)) : null),
+  const nav = () => h('div', { class: 'nav nav--home' },
+    h('h1', { class: 'title-large' }, 'Shortcuts'),
     h('a', {
-      class: 'circle-btn circle-btn--glass', href: '#/shortcut/new', html: icon('plus', 20, 2.4),
+      class: 'new-shortcut circle-btn--glass', href: '#/shortcut/new', html: icon('plus', 16, 2.4),
       'aria-label': offline ? 'New shortcut, unavailable while the server is offline' : 'New shortcut',
       'aria-disabled': offline ? 'true' : undefined, onclick: (e: Event) => { if (offline) e.preventDefault() },
-    }))
+    }, 'New shortcut'))
   if (first && !app.tiles) {
-    el.replaceChildren(nav(), h('h1', { class: 'title-large' }, 'Shortcuts'), h('div', { class: 'status-line' }),
+    el.replaceChildren(nav(), h('div', { class: 'status-line' }),
       h('div', { class: 'grid' }, h('div', { class: 'tile is-loading' }), h('div', { class: 'tile is-loading' })))
   }
   const [tiles, tpl, settings] = await Promise.allSettled([api.listShortcuts(), templates ? Promise.resolve(templates) : api.getTemplates(), api.getAccountSettings()])
@@ -146,7 +146,7 @@ export async function renderHome(el: HTMLElement, first: boolean) {
   const mine = app.tiles
   const st = settings.status === 'fulfilled' ? settings.value : null
   // the 10 s refresh replaces nothing when nothing changed, so focus and VoiceOver's place stay
-  const key = JSON.stringify([mine, templates?.length, st?.bybit, err && String(err), app.unseen, g2()])
+  const key = JSON.stringify([mine, templates?.length, st?.bybit, err && String(err), g2()])
   if (!first && key === lastKey) return offline
   lastKey = key
   // a toggle leaves lastKey stale, so the next refresh rebuilds: keep focus on the same control (a category heading by the grid it controls)
@@ -154,10 +154,9 @@ export async function renderHome(el: HTMLElement, first: boolean) {
   const f = a && ['aria-label', 'aria-labelledby', 'aria-controls'].map(k => a.getAttribute(k) && `[${k}="${CSS.escape(a.getAttribute(k)!)}"]`).find(Boolean)
   el.replaceChildren(
     nav(),
-    h('h1', { class: 'title-large' }, 'Shortcuts'),
     statusLine(st, err),
     mine?.length ? h('div', { class: 'grid' }, ...mine.map(tile))
-      : mine ? h('p', { class: 'empty empty--hero' }, 'No shortcuts yet. Start from a template below, or tap +.')
+      : mine ? h('p', { class: 'empty empty--hero' }, 'No shortcuts yet. Choose New shortcut or start from a template.')
       : unreachable(err, () => void renderHome(el, true)),
     ...(templates?.length ? [h('h2', { class: 'title-section' }, 'Templates'), ...templateGroups(templates)] : []))
   if (f) el.querySelector<HTMLElement>(f)?.focus({ preventScroll: true })

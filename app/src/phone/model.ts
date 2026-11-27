@@ -10,8 +10,8 @@ import { metricWord } from './sentence.ts'
 /** What the editor holds: a new shortcut may have no action yet. */
 export type Draft = Omit<EditableShortcut, 'action'> & { action?: Action }
 
-/** Back from the editor: nothing changed → leave; changed and valid → save; else ask (discard dialog). */
-export const leaveDecision = (changed: boolean, ok: boolean): 'leave' | 'save' | 'ask' => (!changed ? 'leave' : ok ? 'save' : 'ask')
+export const leaveDecision = (changed: boolean, saving: boolean): 'leave' | 'stay' | 'ask' =>
+  saving ? 'stay' : changed ? 'ask' : 'leave'
 
 export const emptyDraft = (): Draft => ({
   scope: { type: 'ALL_POSITIONS' }, conditions: { logic: 'ALL', items: [] },

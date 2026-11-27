@@ -27,8 +27,6 @@ export const app = {
   root: null as unknown as HTMLElement,
   catalog: null as Catalog | null,
   tiles: null as Tile[] | null,
-  /** New alerts since History was last open: the badge on the History button. */
-  unseen: 0,
   /** The route before this one: the editor's back button pops to it when it is home. */
   from: '',
 }
@@ -230,25 +228,6 @@ export const rowSwitch = (on: boolean, labelledBy: string, onToggle: (on: boolea
     h('span', { class: 'switch__track' }, h('span', { class: 'switch__knob' })))
   el.addEventListener('click', () => onToggle(el.getAttribute('aria-checked') !== 'true', el))
   return el
-}
-
-/** History and Settings nav: back link, centered title, optional right button. The router names the link after the screen before (`setBack`). */
-export const subNav = (title: string, right?: Node) => h('div', { class: 'nav nav--sub' },
-  h('a', {
-    class: 'back-link', href: '#/', html: `${icon('back', 20, 2.6)}<span>Shortcuts</span>`,
-    // back pops history when it goes where we came from, so the system back does not return here afterwards
-    onclick: (e: Event) => { if (app.from === (e.currentTarget as HTMLAnchorElement).getAttribute('href')) { e.preventDefault(); history.back() } },
-  }),
-  h('h1', { class: 'nav-title' }, title),
-  right ?? h('span'))
-
-/** Back goes to History when the screen was opened from there, else to Shortcuts. */
-export function setBack(screen: HTMLElement) {
-  const a = screen.querySelector<HTMLAnchorElement>('.back-link')
-  if (!a) return
-  const toHistory = app.from === '#/history'
-  a.setAttribute('href', toHistory ? '#/history' : '#/')
-  a.querySelector('span')!.textContent = toHistory ? 'History' : 'Shortcuts'
 }
 
 /** Re-renders `el` and puts focus back on the button with the same text, which a replaceChildren would drop to <body>. */

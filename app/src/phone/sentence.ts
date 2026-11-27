@@ -2,7 +2,7 @@
  * Rule → the editor's sentence (spec §5.2, arch §4 table) and the short strings around it. Pure, no DOM.
  * shortcut: the sentence words live here because GET /catalog sends labels only, move them to the catalog when it sends words.
  */
-import { ACTION_TITLE, SCOPE_LABEL, type Action, type Condition, type Scope, type ShortcutRule, type Target } from '../../../server/src/registry.ts'
+import { ACTION_TITLE, SCOPE_LABEL, type Action, type Condition, type Scope, type ShortcutRule, type Target, type Template } from '../../../server/src/registry.ts'
 import { coin, fmt } from '../../../server/src/format.ts'
 
 export { fmt }
@@ -148,6 +148,7 @@ export function optionsSummary(o: Opts): string {
 }
 
 export const titleOf = (r: { name?: string; action?: Action }) => r.name || (r.action ? ACTION_TITLE[r.action.type] : 'New Shortcut')
+export const templateTitle = (t: Pick<Template, 'title' | 'sub'>) => t.sub || t.title
 
 /** "BTC, ETH longs", "SOL": the coins of Positions by coin and the side it keeps. */
 export const coinsText = (sc: Extract<Scope, { type: 'COIN_POSITIONS' }>) =>

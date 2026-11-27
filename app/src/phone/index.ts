@@ -7,10 +7,10 @@ import * as api from '../api.ts'
 import type { AlertRecord } from '../../../server/src/types.ts'
 import { renderHome } from './home.ts'
 import { enterEditor, leaveEditor } from './editor.ts'
-import { actionOf, chip, renderHistory } from './history.ts'
+import { actionOf, buildHistory, chip } from './history.ts'
 import { buildSettings, renderSettings, syncHints } from './settings.ts'
 import { icon } from './icons.ts'
-import { app, h, isOffline, setBack, toast } from './ui.ts'
+import { app, h, isOffline, toast } from './ui.ts'
 
 const HOME_MS = 10_000
 const OFFLINE_MS = 5000
@@ -23,18 +23,29 @@ export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<un
   root.classList.add('phone')
   const screens = {
     home: h('main', { class: 'screen', 'aria-label': 'Shortcuts' }),
-    editor: h('main', { class: 'screen', 'aria-label': 'Shortcut' }),
+    editor: h('main', { class: 'screen screen--editor', 'aria-label': 'Shortcut' }),
     history: h('main', { class: 'screen', 'aria-label': 'History' }),
     settings: h('main', { class: 'screen', 'aria-label': 'Settings' }),
   }
+  const tabs = {
+    home: h('a', { href: '#/', html: icon('scope', 22) }, 'Shortcuts'),
+    history: h('a', { href: '#/history', html: icon('clock', 22) }, 'History'),
+    settings: h('a', { href: '#/settings', html: icon('gear', 22) }, 'Settings'),
+  }
+  const nav = h('nav', { class: 'phone-tabs', 'aria-label': 'Main navigation', hidden: true }, ...Object.values(tabs))
+  const badge = h('span', { class: 'badge', 'aria-hidden': 'true', hidden: true })
+  tabs.history.append(badge)
   for (const el of Object.values(screens)) { el.hidden = true; el.tabIndex = -1 } // focusable by script only: a route change moves focus here
-  root.append(...Object.values(screens), h('div', { class: 'toast', role: 'status', 'aria-live': 'polite' }))
+  root.append(...Object.values(screens), nav, h('div', { class: 'toast', role: 'status', 'aria-live': 'polite' }))
   buildSettings(screens.settings)
+  const historyPage = buildHistory(screens.history)
   document.addEventListener('touchstart', () => {}, { passive: true }) // iOS applies :active press feedback only with a touch listener
+  history.scrollRestoration = 'manual'
 
   let current: { name: keyof typeof screens; hash: string } | null = null
-  let restoring = false
-  let routed = false
+  let resolvingRoute = false
+  const scroll = { home: 0, history: 0, settings: 0 }
+  let unseen = 0
   let homeTimer: ReturnType<typeof setTimeout> | undefined
 
   const refreshHome = async (first: boolean) => {
@@ -45,36 +56,56 @@ export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<un
   }
 
   async function route() {
-    if (restoring) { restoring = false; return }
-    const hash = location.hash || '#/'
-    if (current?.name === 'editor' && hash !== current.hash && !(await leaveEditor())) {
-      restoring = true // put the editor's hash back without entering it again
-      location.hash = current.hash
-      return
+    if (resolvingRoute) return
+    let hash = location.hash || '#/'
+    if (current?.hash === hash) return
+    if (current?.name === 'editor') {
+      resolvingRoute = true
+      try {
+        if (!(await leaveEditor())) {
+          location.hash = current.hash
+          return
+        }
+        hash = location.hash || '#/'
+      } finally {
+        resolvingRoute = false
+      }
     }
     const m = hash.match(/^#\/shortcut\/(.+)$/)
-    const name = m ? 'editor' : hash === '#/history' ? 'history' : hash === '#/settings' ? 'settings' : 'home'
-    app.from = current?.hash ?? ''
+    const alert = hash.match(/^#\/history\/([\w-]+)$/)
+    const name = m ? 'editor' : hash === '#/history' || alert ? 'history' : hash === '#/settings' ? 'settings' : 'home'
+    const previous = current
+    if (previous && previous.name !== 'editor') scroll[previous.name] = window.scrollY
+    app.from = previous?.hash ?? ''
     current = { name, hash }
     for (const [k, el] of Object.entries(screens)) el.hidden = k !== name
-    scrollTo(0, 0)
-    // the pressed link is hidden now: name the screen and move focus to it, or a screen reader stays on the old one
+    nav.hidden = name === 'editor'
+    root.classList.toggle('phone--tabs', !nav.hidden)
+    for (const [key, tab] of Object.entries(tabs)) {
+      if (key === name) tab.setAttribute('aria-current', 'page')
+      else tab.removeAttribute('aria-current')
+    }
+    scrollTo(0, name === 'editor' ? 0 : scroll[name])
     document.title = `${screens[name].getAttribute('aria-label')} · Trade Shortcuts`
-    if (routed) screens[name].focus({ preventScroll: true })
-    routed = true
+    if (previous && previous.name !== name) screens[name].focus({ preventScroll: true })
     if (name === 'home') void refreshHome(true)
     if (name === 'editor') void enterEditor(screens.editor, decodeURIComponent(m![1]))
-    if (name === 'history') { setBadge(); void renderHistory(screens.history); setBack(screens.history) }
-    if (name === 'settings') { void renderSettings(); setBack(screens.settings) }
+    if (name === 'history') {
+      unseen = 0
+      setBadge()
+      const refreshed = historyPage.refresh()
+      if (alert) void refreshed.then(() => {
+        const stillHere = () => current?.hash === hash
+        if (stillHere()) return historyPage.openAlert(alert[1], stillHere)
+      })
+    }
+    if (name === 'settings') void renderSettings()
   }
 
-  /** The badge on the home History button, kept in place between home refreshes. */
   const setBadge = () => {
-    const btn = screens.home.querySelector('.circle-btn--history')
-    if (!btn) return
-    btn.querySelector('.badge')?.remove()
-    btn.setAttribute('aria-label', app.unseen ? `History, ${app.unseen} new` : 'History')
-    if (app.unseen) btn.append(h('span', { class: 'badge', 'aria-hidden': 'true' }, String(app.unseen)))
+    badge.hidden = !unseen
+    badge.textContent = unseen > 99 ? '99+' : String(unseen)
+    tabs.history.setAttribute('aria-label', unseen ? `History, ${unseen} new` : 'History')
   }
 
   const banner = h('a', { class: 'banner', href: '#/history', 'aria-live': 'polite' }) // role=status would hide that it is a link
@@ -85,7 +116,8 @@ export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<un
     const notify = actionOf(a) === 'NOTIFY'
     const phone = notify && a.status !== 'Waiting for a tap on Even G2'
     const where = phone ? 'Shown in the app' : notify ? 'OK on Even G2' : 'Confirm on Even G2'
-    banner.setAttribute('aria-label', `${a.title}, ${a.target}, ${a.reason}. ${where}. Open History${more ? `, and ${more} more alert${more > 1 ? 's' : ''}` : ''}`)
+    banner.href = `#/history/${encodeURIComponent(a.id)}`
+    banner.setAttribute('aria-label', `${a.title}, ${a.target}, ${a.reason}. ${where}. Open alert in History${more ? `, and ${more} more alert${more > 1 ? 's' : ''}` : ''}`)
     banner.replaceChildren(chip(a, 20),
       h('span', { class: 'banner__text' },
         h('span', { class: 'banner__title' }, [a.title, a.target].filter(Boolean).join(' · ')),
@@ -102,12 +134,13 @@ export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<un
   let after: number | null = null
   const pollAlerts = async () => {
     if (document.visibilityState !== 'visible') return
+    if (current?.name === 'history') void historyPage.refresh()
     try {
       after ??= (await api.getHistory())[0]?.createdAt ?? 0 // start after the newest known alert, by the server's clock
       const fresh = await api.getNotifications(after)
       if (!fresh.length) return
       after = fresh[fresh.length - 1].createdAt
-      if (current?.name !== 'history') { app.unseen += fresh.length; setBadge() }
+      if (current?.name !== 'history') { unseen += fresh.length; setBadge() }
       showBanner(fresh[fresh.length - 1], fresh.length - 1)
     } catch (e) {
       if (!isOffline(e)) console.warn('alerts', e)

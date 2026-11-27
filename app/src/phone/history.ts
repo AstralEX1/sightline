@@ -1,9 +1,9 @@
 /** History (spec §5.11): one line per alert, grouped by local day, statuses exactly as the server sends them. */
 import * as api from '../api.ts'
-import type { AlertRecord } from '../../../server/src/types.ts'
+import type { AlertDetails, AlertRecord } from '../../../server/src/types.ts'
 import { ACTION_TITLE, type ActionType } from '../../../server/src/registry.ts'
 import { ACTION_ICON, icon } from './icons.ts'
-import { app, h, subNav, toast } from './ui.ts'
+import { app, h, toast } from './ui.ts'
 
 /** Action of an alert: from its shortcut when known, else from the action title it carries. */
 export function actionOf(a: Pick<AlertRecord, 'shortcutId' | 'title' | 'actionType'>): ActionType {
@@ -31,71 +31,153 @@ export function chip(a: Pick<AlertRecord, 'shortcutId' | 'title' | 'actionType'>
 
 function row(a: AlertRecord) {
   const body = h('div', { class: 'hist__details', 'aria-live': 'polite' })
-  const disclosure = h('details', {},
-    h('summary', { class: 'hist__summary' }, chip(a, 18),
-      h('span', { class: 'hist__text' },
-        h('span', { class: 'hist__top' }, h('span', {}, a.title), h('span', { class: 'hist__time' }, time(a.createdAt))),
-        h('span', { class: 'hist__sub' }, [a.target, a.reason].filter(Boolean).join(' · ')),
-        h('span', { class: 'hist__status' }, a.status))), body)
+  const status = h('span', { class: 'hist__status' }, a.status)
+  const summary = h('summary', { class: 'hist__summary' }, chip(a, 18),
+    h('span', { class: 'hist__text' },
+      h('span', { class: 'hist__top' }, h('span', {}, a.title), h('span', { class: 'hist__time' }, time(a.createdAt))),
+      h('span', { class: 'hist__sub' }, [a.target, a.reason].filter(Boolean).join(' · ')), status))
+  const disclosure = h('details', {}, summary, body)
+  const el = h('li', { class: 'hist', 'data-alert-id': a.id }, disclosure)
+
   const field = (label: string, value: string) => h('div', {}, h('dt', {}, label), h('dd', {}, value))
-  disclosure.addEventListener('toggle', async () => {
-    if (!disclosure.open) return
-    body.textContent = 'Loading details…'
+  let request = 0
+  const paint = ({ proposed, outcome, receipt }: AlertDetails) => {
+    body.replaceChildren(h('dl', {},
+      field('Trigger', a.reason),
+      proposed ? field('Proposed', proposed) : null,
+      outcome ? field('Outcome', outcome) : null,
+      receipt ? field('Position readback', receipt) : null))
+  }
+  async function refreshDetails() {
+    const version = ++request
+    if (disclosure.open && !body.textContent) body.textContent = 'Loading details…'
     try {
-      const { proposed, outcome, receipt } = await api.getAlertDetails(a.id)
-      body.replaceChildren(h('dl', {},
-        field('Trigger', a.reason),
-        proposed ? field('Proposed', proposed) : null,
-        outcome ? field('Outcome', outcome) : null,
-        receipt ? field('Position readback', receipt) : null))
+      const details = await api.getAlertDetails(a.id)
+      if (version !== request) return
+      if (details.alert) status.textContent = details.alert.status
+      if (disclosure.open) paint(details)
     } catch {
-      body.textContent = 'Details unavailable. Reopen to try again.'
+      if (version === request && disclosure.open) body.textContent = 'Details unavailable. Reopen to try again.'
     }
+  }
+  disclosure.addEventListener('toggle', () => {
+    if (disclosure.open && !body.querySelector('dl')) void refreshDetails()
   })
-  return h('li', { class: 'hist' }, disclosure)
+  return {
+    el, disclosure, summary, createdAt: a.createdAt, refreshDetails,
+    get status() { return status.textContent ?? '' },
+    update(next: AlertRecord) {
+      if (status.textContent === next.status) return
+      status.textContent = next.status
+      request++ // an older details response must not undo the newer status
+      if (disclosure.open) void refreshDetails()
+      else body.replaceChildren()
+    },
+    open(details?: AlertDetails) {
+      if (details) paint(details)
+      disclosure.open = true
+      summary.scrollIntoView({ block: 'nearest' })
+      summary.focus({ preventScroll: true })
+    },
+  }
 }
 
-export async function renderHistory(el: HTMLElement) {
-  app.unseen = 0
+/** Keep rows mounted when the user switches tabs or the server returns a newer status. */
+export function buildHistory(el: HTMLElement) {
   const list = h('div', {})
-  const end = h('div', { class: 'sentinel', 'aria-hidden': 'true' })
-  el.replaceChildren(subNav('History', h('a', { class: 'icon-link', href: '#/settings', 'aria-label': 'Settings', html: icon('gear', 22, 1.8) })), list, end)
-  let last = Infinity
-  let busy = false
-  let done = false
-  let group: { label: string; ul: HTMLElement } | null = null
-  const more = async () => {
-    if (busy || done) return
-    busy = true
-    try {
-      const page = await api.getHistory(Number.isFinite(last) ? last : undefined)
-      if (!page.length) done = true
-      for (const a of page) {
-        const label = dayLabel(a.createdAt)
-        if (group?.label !== label) {
-          group = { label, ul: h('ul', { class: 'group' }) }
-          list.append(h('h2', { class: 'group-label' }, label), group.ul)
+  const message = h('div', { role: 'status' })
+  const end = h('div', { class: 'sentinel', 'aria-hidden': 'true', hidden: true })
+  el.replaceChildren(h('header', { class: 'nav' }, h('h1', { class: 'title-large' }, 'History')), message, list, end)
+  const entries = new Map<string, ReturnType<typeof row>>()
+  const groups = new Map<number, { section: HTMLElement; title: HTMLElement; ul: HTMLUListElement }>()
+  let cursor: number | undefined
+  let latest: Promise<void> | undefined
+  let older: Promise<void> | undefined
+
+  function upsert(alert: AlertRecord, update = true) {
+    const entry = entries.get(alert.id)
+    if (entry) {
+      if (update) entry.update(alert)
+      return entry
+    }
+    const day = new Date(alert.createdAt).setHours(0, 0, 0, 0)
+    let group = groups.get(day)
+    if (!group) {
+      const title = h('h2', { class: 'group-label' }, dayLabel(day))
+      const ul = h('ul', { class: 'group' })
+      const section = h('section', {}, title, ul)
+      const before = [...groups].filter(([key]) => key < day).sort(([a], [b]) => b - a)[0]?.[1]
+      list.insertBefore(section, before?.section ?? null)
+      groups.set(day, group = { section, title, ul })
+    }
+    const next = row(alert)
+    const before = [...group.ul.children].find(child => entries.get((child as HTMLElement).dataset.alertId!)!.createdAt < alert.createdAt)
+    group.ul.insertBefore(next.el, before ?? null)
+    entries.set(alert.id, next)
+    message.replaceChildren()
+    return next
+  }
+
+  function refresh(): Promise<void> {
+    if (latest) return latest
+    if (!entries.size && !message.childElementCount) message.textContent = 'Loading alerts…'
+    latest = (async () => {
+      try {
+        const page = await api.getHistory()
+        for (const alert of page) upsert(alert)
+        for (const [day, group] of groups) group.title.textContent = dayLabel(day)
+        if (cursor === undefined && page.length) {
+          cursor = page.at(-1)!.createdAt
+          end.hidden = false
         }
-        group.ul.append(row(a))
-        last = a.createdAt
-      }
-      if (!list.childElementCount) {
-        list.append(h('div', { class: 'empty-state' },
+        if (!entries.size) message.replaceChildren(h('div', { class: 'empty-state' },
           h('span', { class: 'empty-state__icon', html: icon('bell', 32, 1.8) }),
           h('h2', { class: 'empty-state__title' }, 'No alerts yet'),
           h('p', { class: 'empty-state__text' }, 'When one of your shortcuts fires, its alert lands here. Try one with Test alert in its menu.'),
           h('div', { class: 'empty-state__actions' }, h('a', { class: 'pill-btn', href: '#/' }, 'Your shortcuts'))))
+
+        const oldest = page.at(-1)?.createdAt ?? Infinity
+        // A still-changing alert can move below the first page if a burst of new events arrives.
+        const active = /^(Waiting for a tap|Refreshed|Sending|Submitted|Partly filled|Unknown result)/
+        await Promise.all([...entries.values()].filter(item => item.createdAt < oldest && active.test(item.status))
+          .map(item => item.refreshDetails()))
+      } catch {
+        if (!entries.size) message.textContent = 'Couldn’t load alerts. Retrying…'
       }
-    } catch (e) {
-      toast((e as Error).message)
-    } finally {
-      busy = false
-    }
+    })().finally(() => { latest = undefined })
+    return latest
   }
-  await more()
-  // next page when the end of the list comes into view
-  new IntersectionObserver((seen, obs) => {
-    if (!el.contains(end)) return obs.disconnect()
-    if (seen.some(x => x.isIntersecting)) void more()
-  }, { rootMargin: '200px' }).observe(end)
+
+  function more() {
+    if (older || cursor === undefined || end.hidden || el.hidden) return
+    older = (async () => {
+      try {
+        const page = await api.getHistory(cursor)
+        for (const alert of page) upsert(alert, false)
+        if (page.length) cursor = page.at(-1)!.createdAt
+        else end.hidden = true
+      } catch {
+        toast('Couldn’t load older alerts. Scroll back to try again.')
+      }
+    })().finally(() => { older = undefined })
+  }
+  new IntersectionObserver(seen => {
+    if (seen.some(item => item.isIntersecting)) more()
+  }, { rootMargin: '120px' }).observe(end)
+
+  async function openAlert(id: string, stillHere: () => boolean) {
+    let entry = entries.get(id)
+    if (entry) return entry.open()
+    try {
+      const details = await api.getAlertDetails(id)
+      if (!stillHere()) return
+      if (details.alert) entry = upsert(details.alert, false)
+      else entry = entries.get(id)
+      if (entry) return entry.open(details)
+    } catch {
+      if (!stillHere()) return
+    }
+    toast('This alert couldn’t be opened.')
+  }
+  return { refresh, openAlert }
 }

@@ -24,7 +24,7 @@ Shared server: several testers run at once. Prefix every shortcut you create wit
 | P01 | 4 own shortcuts, one off | open home | 2-column equal-height tiles in creation order, each action logo + title; off tile darker, knob left; status line `Bybit · Demo`, `G2` / `G2 off` |
 | P02 | an own shortcut | tap its switch on, off; then make enable fail (incomplete draft) | API call, switch moves; failure springs back + toast / editor with issues; body does not open on switch tap |
 | P03 | | tap tile body | editor of that shortcut |
-| P04 | note the saved shortcuts | open Price crosses a level, go back untouched, reload; then supply a symbol and threshold and tap Add | the first visit creates nothing; the completed rule persists disabled and can be enabled on Home |
+| P04 | note the saved shortcuts | open Price crosses a level, go back untouched, reload; then supply a symbol and threshold and tap Add shortcut | the first visit creates nothing. The completed rule keeps its template title and persists disabled |
 | P05 | note tiles | `+`, then back at once | nothing created |
 | P06 | ROI condition | tap `above` | menu under token, check on `Above`; `is` not tappable |
 | P07 | ROI 30% | tap `30%` | numeric sheet, `30` prefilled, `Now …` line; Cancel restores; `0` → red bounds line, Done disabled |
@@ -33,24 +33,24 @@ Shared server: several testers run at once. Prefix every shortcut you create wit
 | P10 | | add 2nd condition, remove it | `or` token on line 2, remove buttons on both; after removal one line, no remove button |
 | P11 | 2 conditions | operator → `and` | every operator token shows `and`; saved rule `logic: ALL` (check via API) |
 | P12 | empty editor | open Apply to, then pick an action | six scopes before filtering; Positions by coin accepts multiple coins and a side; One position binds a specific open position |
-| P13 | conflicting conditions and action | choose an action under Needs changes | affected row shows the validator’s explanation; leaving invalid changes prompts to discard or keep editing |
+| P13 | conflicting conditions and action | choose an action under Needs changes | affected row shows the validator’s explanation; saving reports the issue. Leaving any unsaved changes prompts to discard or keep editing |
 | P14 | | Profit AND Loss | a line marked; cannot save |
 | P15 | All positions | open action sheet, then compare One symbol | Open long and Open short require a symbol scope |
 | P16 | Increase Position | Options | only `Once` selectable, others disabled with a reason |
 | P17 | editor open | change the same shortcut via `PUT /api/shortcuts/:id`, then save in UI | toast `Changed on another device. Reloaded.` |
 | P18 | history with 60 alerts | open History and scroll | grouped by local day; pages of 50 then 10, latest status on each row; a fresh database shows No alerts yet |
 | P19 | | Settings: toggle switches, reload | persisted (`GET /api/settings`); read-only rows not tappable; timing sheets bounded 10–300 |
-| P20 | | root font 200% (`document.documentElement.style.fontSize`) | one-column tiles, no clipped text, no overlapping targets |
+| P20 | | root font 200% (`document.documentElement.style.fontSize`) | one-column tiles, wrapping scope and options, and parameter rows with 44 × 44 CSS px targets |
 | P21 | | `prefers-color-scheme: dark` | dark tokens; text readable |
 | P22 | | `prefers-reduced-motion: reduce` | no transforms on sheets/switches, fades only |
 | P23 | | accessibility tree | switches `role=switch` + `aria-checked`; disclosure `aria-expanded`; menus `role=menu`; sheets `role=dialog aria-modal`; focus trapped in sheet; switch hit area ≥ 44 × 44 CSS px; click inside the target above the painted track and verify the state toggles |
 | P24 | | stop the server | status `Server offline`; switches/templates `aria-disabled`; editor read-only, back works; recovers when server is back |
 | P25 | saved rule | title menu → Test alert, confirm the simulated proposal | History records the simulation and the exchange receives no order |
-| P26 | app open | an own enabled shortcut fires | banner appears; tap → History; no confirm button anywhere on the phone |
+| P26 | app open | an enabled shortcut fires. Tap the banner and answer on the lens | the exact History row expands and its status updates in place |
 | P27 | | Rename to empty, Duplicate, Delete (dialog Cancel then Delete) | empty name restores action label; duplicate opens disabled copy; delete removes tile |
 | P28 | | numeric input `1.50`, `abc`, `-5`, huge number | sent as `1.5`; invalid → bounds line, Done disabled |
 | P29 | Settings open | turn Answer alerts by voice off, restart, open an eligible alert | preference persists and the microphone stays closed; editor Options offers trigger and delivery controls |
-| P30 | | break-ui: 40-char name, many conditions (10) | title truncates with ellipsis, `Add condition` hides at 10, nothing overlaps |
+| P30 | | break-ui: 40-char name, many conditions (10) | titles wrap, `Add condition` hides at 10, nothing overlaps |
 
 ## Lens (simulator, 576 × 288)
 
