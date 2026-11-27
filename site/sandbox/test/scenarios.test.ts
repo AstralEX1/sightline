@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import { createStore } from '../../../server/src/store.ts'
 import { createSession } from '../../../server/src/session.ts'
 import { Market } from '../src/market.ts'
-import { BUILD_WATCHES, TABS } from '../src/scenarios.ts'
+import { BUILD_WATCHES, TABS, scenarioPhase } from '../src/scenarios.ts'
 
 for (const tab of TABS) {
   const name = tab.on ? `${tab.template.title} · ${tab.template.sub}` : 'price up 0.5%'
@@ -22,6 +22,13 @@ for (const tab of TABS) {
     assert.ok(alert, 'no alert')
     assert.equal(alert.title, tab.on ? tab.template.title : 'Price up 0.5%')
     assert.match(alert.status, /Waiting for a tap/)
+    if (!tab.on) {
+      const card = session.state().card
+      assert.equal(card?.terms.type, 'notify')
+      assert.equal(scenarioPhase(true, alert.status), 'answer')
+      assert.deepEqual(session.dismiss(card!.id, 'glasses'), { ok: true, message: 'OK' })
+      assert.equal(scenarioPhase(true, store.history()[0].status), 'done')
+    }
     store.close()
   })
 }

@@ -8,6 +8,16 @@ import { liqOf, START_PRICE as P, type Market } from './market.ts'
 const QTY = 0.05 // 4,800 USDT at 96,000; 480 USDT margin at 10×
 const LEV = 10
 
+export type Phase = 'add' | 'move' | 'answer' | 'executing' | 'done' | 'missed'
+
+export function scenarioPhase(enabled: boolean, status?: string): Phase {
+  if (status === undefined) return enabled ? 'move' : 'add'
+  if (/^Waiting/.test(status)) return 'answer'
+  if (/^(Sending|Submitted|Partly filled)/.test(status)) return 'executing'
+  if (/^(Filled|Done|Shown|Logged|OK on )/.test(status)) return 'done'
+  return 'missed'
+}
+
 export type Tab = {
   /** The URL hash that opens it */
   id: string

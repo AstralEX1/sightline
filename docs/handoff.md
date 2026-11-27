@@ -25,6 +25,8 @@ Settings in the Even app can send a connection check to the lens in the same ses
 
 ## Verification and release history
 
+- Notify completes the sandbox walkthrough after OK. Manual steps follow the alert state, and Play acknowledges the rendered card when the scenario action is Notify. The scenario test covers acknowledgement on the paper exchange.
+
 - The sandbox treats a spoken answer as a short command. The first final yes, no, or close is kept, a quiet mic cannot confirm, and “йес” or “da” still count. Typecheck passed and the sandbox voice tests passed on 27 November 2026. The live browser microphone was not exercised.
 - Play no longer shifts the sandbox. A notify alert stores its action, and a simulated Notify card does not block the real one. Typecheck passed and all 593 automated tests passed on 26 November 2026. The app, landing page, and browser sandbox built.
 - The sandbox answers eligible alerts by voice, and the glasses microphone listens for ten seconds. Typecheck passed and all 589 automated tests passed on 26 November 2026. The live browser microphone was not exercised.
