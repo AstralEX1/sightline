@@ -10,7 +10,7 @@ The browser sandbox shows the glasses, the phone and the paper exchange on one s
 
 The phone opens a template as an unsaved rule. Save it, then enable it on Home. On the lens, an actionable alert starts on Dismiss. For Open long or Open short with alternative sizes or leverages, the user picks the terms by hand and reviews the exact order. Other eligible cards support a spoken yes or no when transcription and voice answers are enabled. The microphone listens for ten seconds. A yes starts a five-second cancellation window.
 
-Settings in the Even app can send a connection check to the lens in the same session. The phone reports success after a tap on the TEST card. Quiet mode shows connection status and the nearest liquidation risk between alerts. History opens each record to show the proposed terms, execution outcome, and position readback when recorded. The landing page links directly to the beta installation steps.
+Settings in the Even app can send a connection check to the lens in the same session. The phone reports success after a tap on the TEST card. On G2, Positions always on is off by default: the lens is blank between alerts and a tap opens positions. The browser Sandbox defaults this setting on. History opens each record to show the proposed terms, execution outcome, and position readback when recorded. The landing page links directly to the beta installation steps.
 
 ## Running each version
 
@@ -41,6 +41,7 @@ Settings in the Even app can send a connection check to the lens in the same ses
 - Recorded on 24 November 2026 on Bybit testnet (XRPUSDT): open, duplicate `orderLinkId` refused (110072), set SL/TP each keeps the other, SL past mark rejected, limit order listed and cancelled, reduce-only half and oversize close (no flip), fills deduped by `execId`, add margin on isolated (110076 on cross, as expected).
 
 - The hackathon paper demo starts with the BTC half-close rule only. Its card expires after 120 seconds and can recur while the rule matches. The official desktop simulator confirmed 0.025 BTC once from 0.050 BTC and showed a single fill in History. A separate run with a synthetic lost confirmation reply recovered the execution by a read-only request. The app, landing, and sandbox built successfully and 589 automated tests passed.
+- Positions always on now defaults off in G2 and on in Sandbox. Typecheck, all 602 automated tests, and app and Sandbox builds passed on 27 November 2026. The browser bridge check covered the blank default, tap to open, alert display, saved setting and Sandbox default.
 
 ## Open checks
 

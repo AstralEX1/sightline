@@ -104,13 +104,13 @@ const SIZE_GAP = 8
 export const INNER_PX: Record<string, number> = {
   top: 540, name: 228, cur: 228, price: 124, loss: 100, gain: 100, flag: 76, hint: 540,
   who: 380, why: 380, queue: 68, ask: 452, terms: 452, opt1: 540, opt2: 540,
-  table: 236, lev: 268, risk: 540,
+  table: 236, lev: 268,
 }
 /** Brightness of each box unless a state says otherwise (§4). */
 const TONE: Record<string, number> = {
   top: 3, name: 3, cur: 4, price: 3, loss: 4, gain: 2, flag: 4, hint: 2,
   frame: 3, who: 4, why: 3, queue: 2, ask: 4, terms: 3, opt1: 3, opt2: 3,
-  table: 3, lev: 3, risk: 3,
+  table: 3, lev: 3,
 }
 const SPACE_PX = getTextWidth(' ')
 /** As wide as '> ' (15 px), so an unselected choice lines up with the selected one. */
@@ -261,18 +261,12 @@ const sourceName = (s: ServerState | null) =>
   s?.source === 'Demo data' || s?.source === 'Bybit demo' ? 'Bybit Demo' : s?.source || 'Bybit'
 
 function quiet(s: ServerState | null, v: View): Screen {
-  const issue = problemLine(s, v) || (s && !s.updatedAt ? 'Waiting for market data…' : '')
-  const override = issue || v.voice
-  const status = override || s?.toast || pauseLine(s, v.pausedMin ?? 0) || `Monitoring · ${sourceName(s)}`
-  const nearest = issue || !s ? undefined : rankPositions(s.positions)[0]
-  const dist = nearest && liqDistancePct(nearest)
-  const risk = nearest && dist !== undefined && Number.isFinite(dist)
-    ? `${name(nearest)} · ${dist.toFixed(dist < 1 ? 2 : 1)}% to liq` : ''
+  const toast = v.offline || v.needToken ? null : s?.toast
+  const status = v.voice || toast || ''
   return { layout: 'quiet', key: 'quiet', icon: '', choices: [], at: 0, card: null,
-    toastAlertId: override ? undefined : s?.toastAlertId,
-    text: { top: fit(status, INNER_PX.top), risk: risk && alignRight(fit(risk, INNER_PX.risk), INNER_PX.risk),
-      hint: issue ? 'double tap: exit' : 'tap: positions · double tap: exit' },
-    tone: { ...TONE, top: issue || s?.toast ? 4 : TONE.top },
+    toastAlertId: toast && !v.voice ? s?.toastAlertId : undefined,
+    text: { top: fit(status, INNER_PX.top) },
+    tone: { top: 4 },
   }
 }
 
@@ -527,7 +521,7 @@ export function screen(s: ServerState | null, v: View = {}): Screen {
 /** The same screen as plain lines, for the phone page. */
 export function previewText(sc: Screen): string {
   const t = sc.text
-  if (sc.layout === 'quiet') return [t.top, t.risk.trim(), t.hint].filter(Boolean).join('\n')
+  if (sc.layout === 'quiet') return t.top
   if (sc.layout === 'detail') {
     return [[sc.title, sc.pnl].filter(Boolean).join('   '), [t.lev, t.table].filter(Boolean).join('   '), '', t.hint].filter((l, i, a) => l || a[i - 1]).join('\n').replace(/\n{3,}/g, '\n\n').trim()
   }
