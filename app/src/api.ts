@@ -36,8 +36,12 @@ const launches = () => Number(store.get('gt.launches')) || 0
 /** Optional gesture tips on the lens: the phone switch, or on for the first launches. */
 export const hintsOn = () => tipsShown(store.get('gt.hints'), launches())
 export const setHints = (on: boolean) => store.set('gt.hints', on ? 'on' : 'off')
-export const quietModeOn = () => store.get('gt.quiet') === 'on'
-export const setQuietMode = (on: boolean) => store.set('gt.quiet', on ? 'on' : 'off')
+export const positionsAlwaysOn = () => {
+  const quiet = store.get('gt.quiet')
+  if (quiet) return quiet === 'off'
+  return import.meta.env.TRADE_SHORTCUTS_SANDBOX === true
+}
+export const setPositionsAlwaysOn = (on: boolean) => store.set('gt.quiet', on ? 'off' : 'on')
 /** The mic opens for 10 s when an alert arrives, so a spoken yes or no answers it. On unless switched off on the phone. */
 export const voiceAnswersOn = () => store.get('gt.voice') !== 'off'
 export const setVoiceAnswers = (on: boolean) => store.set('gt.voice', on ? 'on' : 'off')

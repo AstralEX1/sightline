@@ -8,11 +8,12 @@ Status: built in `app/src/view.ts` + `app/src/main.ts` (Main with `▶`, Detail 
 
 ## 1. What each screen answers
 
-Enable **Quiet mode** under Settings → On your glasses to make the status and nearest liquidation risk the root screen. Tap to open the position list. Double-tap from the list to return to Quiet mode, or from Quiet mode to open the host exit dialog. The quiet screen shows connection and freshness problems in place of the risk figure. Proposals and results appear above either root screen.
+The glasses start with a clear display between alerts. Tap to open positions and check connection or data freshness. Double-tap from the list to return to the clear display, or from the clear display to open the host exit dialog. Enable **Positions always on** under Settings → On your glasses to keep the position list visible. The browser Sandbox defaults to **Positions always on**. Proposals and results appear in both modes.
 
 | Screen | The one question | Answer on the lens | Next |
 |---|---|---|---|
-| Main | How are my positions? | header-less table: position, price, ROI, a flag only when in trouble | swipe, tap |
+| Clear | Has anything triggered? | empty display between alerts | tap to open positions, double tap to exit |
+| Main | How are my positions? | header-less table: position, price, ROI, a flag only when in trouble | swipe, tap, double tap |
 | Detail | How is this position doing? | coin and side big, leverage under; PnL as big; stop and liquidation distance; the last hour with entry and stop named on it | swipe, tap, double tap |
 | Alert | What fired, and what will a tap do? | framed notification with an icon, choices below the frame | swipe, tap |
 | Review | What exactly am I opening? | qty, notional, leverage, margin, stop | swipe, tap |
@@ -23,7 +24,8 @@ The contextual menu offers Protect all, Lock profits and Pause/Resume cards. Mai
 ## 2. Flow
 
 ```text
-Main ──tap──▶ Detail ──swipe──▶ next position's Detail
+Clear ──tap──▶ Main ──tap──▶ Detail ──swipe──▶ next position's Detail
+  ▲             └─double tap──▶ Clear
  ▲              ├─tap──▶ close card, Dismiss first, then the same path as an alert
  ▲              └─double tap──▶ Main, cursor on the same position
 Main ──rule fires──▶ Alert ──tap action──▶ Sent ──▶ Filled / Rejected / Unknown ──OK──▶ next Alert or Main
@@ -142,8 +144,8 @@ Review hint: `swipe: choose · tap: dismiss · double tap: back`, `tap: confirm`
 | Unavailable | hourglass | `Bybit data is stale` | `> Dismiss` |
 | Refreshed | same icon | queue shows `NEW`; size in `opt2` updated | the tap that saw the old size does nothing |
 | Test alert | same icon | queue shows `TEST` | the tap ends in `Test only · nothing was sent` |
-| Stale exchange data | — | Main top line bright: `Bybit data stale since 14:02 · retrying` | table stays, every column at brightness 2 |
-| Server unreachable | — | Main top line bright: `No connection to your server · retrying` | table hidden, no alert drawn |
+| Stale exchange data | — | Main top line bright: `Bybit data stale since 14:02 · retrying` | table stays, every column at brightness 2; clear mode stays blank |
+| Server unreachable | — | Main top line bright: `No connection to your server · retrying` | table hidden, no alert drawn; clear mode stays blank |
 | No positions | — | Main top line: `Bybit Demo · no open positions` | table empty |
 
 The result follows the server execution. Stop, margin and cancel operations can report Applied, while orders progress through acknowledgement and fill states. `Sent` is never shown as `Filled`.

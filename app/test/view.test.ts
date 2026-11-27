@@ -59,18 +59,20 @@ const result = (o: Partial<Outcome>, c: Partial<Proposal> = {}) => screen(st({ c
 
 // ── Main ───────────────────────────────────────────────────
 
-test('quiet mode shows only the nearest risk and hides stale numbers', () => {
-  const eth = pos({ symbol: 'ETHUSDT', markPrice: 3000, liqPrice: 2940 })
-  const state = st({ positions: [pos(), eth] })
+test('quiet mode is blank between alerts and opens positions on demand', () => {
+  const state = st()
   const sc = screen(state, { quiet: true })
   assert.equal(sc.layout, 'quiet')
-  assert.match(previewText(sc), /Monitoring · Bybit Demo[\s\S]*ETH long · 2\.0% to liq/)
+  assert.equal(previewText(sc), '')
+  assert.equal(previewText(screen(null, { quiet: true, offline: true })), '')
+  assert.equal(screen(state).layout, 'main')
   assert.equal(screen(state, { quiet: true, positionsOpen: true }).layout, 'main')
   assert.equal(screen(st({ card: card() }), { quiet: true }).layout, 'alert')
-  assert.match(previewText(screen({ ...state, toast: 'BTC price reached' }, { quiet: true })), /BTC price reached/)
-  const stale = previewText(screen({ ...state, error: 'timeout' }, { quiet: true }))
-  assert.match(stale, /Bybit data stale since/)
-  assert.doesNotMatch(stale, /ETH long|Monitoring/)
+  const notice = { ...state, toast: 'BTC price reached', toastAlertId: 'notice-1' }
+  assert.equal(previewText(screen(notice, { quiet: true })), notice.toast)
+  assert.equal(screen(notice, { quiet: true }).toastAlertId, notice.toastAlertId)
+  assert.equal(previewText(screen(notice, { quiet: true, offline: true })), '')
+  assert.equal(previewText(screen(state, { quiet: true })), '')
 })
 
 test('connection check has its own OK and never displaces an actionable alert', () => {

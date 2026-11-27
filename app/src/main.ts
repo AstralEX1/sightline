@@ -140,8 +140,6 @@ const HINT: Box = { name: 'hint', x: 16, y: 248, w: 544, h: 32 }
 const LAYOUTS: Record<Layout, Box[]> = {
   quiet: [
     { name: 'top', x: 16, y: 16, w: 544, h: 32, capture: true },
-    { name: 'risk', x: 16, y: 210, w: 544, h: 32 },
-    HINT,
   ],
   // A header-less table, one box per column so rows line up; losses and gains are separate boxes, so a loss can be brighter.
   main: [
@@ -227,7 +225,7 @@ function focusIndex(): number {
 const current = () => screen(state, {
   offline, voice: voiceText(), pausedMin: pausedMin(), focus: focusIndex(), detail: detailOpen, needToken, hints: api.hintsOn(), now: Date.now(),
   outcome: outcome ?? undefined, review, pick, hide, cursor,
-  quiet: api.quietModeOn(), positionsOpen,
+  quiet: !api.positionsAlwaysOn(), positionsOpen,
 })
 /** A new key needs a rebuild: another layout or card, and a rebuild is the only way to set the menu. */
 const pageKey = (sc: Screen) => `${sc.layout}:${sc.key}:${pausedMin() > 0 ? 'paused' : ''}${speakOn() ? '' : ':novoice'}`
@@ -425,7 +423,6 @@ let trackingExecution = false
 async function poll(force = false) {
   await settingsReady
   if (polling || quit || (!force && !wear.inUse)) return // off or in the case: nobody sees the lens
-  if (!api.quietModeOn()) positionsOpen = false
   if (cursor.at && Date.now() - lastSwipe > CURSOR_IDLE_MS) cursor = { key: '', at: 0 }
   polling = true
   const was = current().card // the alert on the lens before this state
@@ -708,9 +705,10 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
   const swipe = is(OsEventTypeList.SCROLL_TOP_EVENT) ? 0 : is(OsEventTypeList.SCROLL_BOTTOM_EVENT) ? 1 : null
   const sc = current()
   if (sc.layout === 'main' || sc.layout === 'quiet') {
-    if (api.quietModeOn() && page !== pageKey(sc)) return
+    const quiet = !api.positionsAlwaysOn()
+    if (quiet && page !== pageKey(sc)) return
     if (is(OsEventTypeList.DOUBLE_CLICK_EVENT)) {
-      if (sc.layout === 'main' && api.quietModeOn()) { positionsOpen = false; return draw() }
+      if (sc.layout === 'main' && quiet) { positionsOpen = false; return draw() }
       // A root-page double tap must open the host's exit dialogue (Even Hub review).
       if (exiting === 'asked') return // the dialogue is already on its way
       exiting = 'asked'
@@ -718,11 +716,11 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
       if (bridge) call(() => bridge!.shutDownPageContainer(1)).then(ok => { if (!ok) exiting = 'none' }, () => { exiting = 'none' })
       return
     }
-    if (offline || needToken) return // only the problem line is on screen: a tap or swipe must not move the hidden table
     if (sc.layout === 'quiet') {
-      if (state?.updatedAt && !state.error && is(OsEventTypeList.CLICK_EVENT)) { positionsOpen = true; return draw() }
+      if (is(OsEventTypeList.CLICK_EVENT)) { positionsOpen = true; return draw() }
       return
     }
+    if (offline || needToken) return // only the problem line is on screen: a tap or swipe must not move the hidden table
     if (is(OsEventTypeList.CLICK_EVENT)) {
       const n = state?.positions.length ?? 0
       if (!n) return // nothing to open; Speak is on the menu
@@ -934,7 +932,10 @@ async function startGlasses() {
 
 document.addEventListener('visibilitychange', () => { if (document.hidden) void interruptVoice() })
 window.addEventListener('pagehide', () => void interruptVoice())
-startPhonePage({ root: $('phone'), settingsReady, onConnect: () => void poll(true) })
+startPhonePage({
+  root: $('phone'), settingsReady, onConnect: () => void poll(true),
+  onDisplayChange: () => { positionsOpen = false; detailOpen = false; void draw() },
+})
 void startGlasses()
 void poll()
 setInterval(() => void poll(), POLL_MS)
