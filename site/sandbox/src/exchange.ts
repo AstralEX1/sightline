@@ -39,7 +39,6 @@ function swap(host: HTMLElement, kids: Node[]) {
 export function mountExchange(root: HTMLElement, m: Market, onChartInput: () => void) {
   root.classList.add('bx')
 
-  // ── Charts | Trade ──
   const viewTabs = (['Charts', 'Trade'] as const).map(v => {
     const b = el('button', { type: 'button', role: 'tab' }, v)
     b.onclick = () => show(v)
@@ -49,7 +48,6 @@ export function mountExchange(root: HTMLElement, m: Market, onChartInput: () => 
   const lastSmall = el('b', { class: 'ex-pair-last' })
   const pair = el('div', { class: 'ex-pair' }, el('b', {}, SYMBOL), el('span', { class: 'ex-tag' }, 'Perp'), badge, lastSmall)
 
-  // ── Charts ──
   const last = el('strong', { class: 'ex-last' })
   const canvas = el('canvas', { class: 'ex-canvas', tabindex: '0', 'aria-label': 'BTC chart. Drag up or down, or use the arrow keys, to move the price.' })
   const hint = el('div', { class: 'ex-drag' }, '⇕ Drag the price')
@@ -76,7 +74,6 @@ export function mountExchange(root: HTMLElement, m: Market, onChartInput: () => 
     el('div', { class: 'ex-quickbar' }, ...quick),
     el('div', { class: 'ex-cta' }, ...ctas))
 
-  // ── Trade: the order form ──
   let side: Side = 'Buy'
   let leverage = 10
   let pending = leverage
@@ -201,7 +198,6 @@ export function mountExchange(root: HTMLElement, m: Market, onChartInput: () => 
     }
   })
 
-  // ── Trade: positions and orders ──
   let tab: 'positions' | 'orders' = 'positions'
   let editing: Position | null = null
   const listTabs = (['positions', 'orders'] as const).map(t => {
@@ -214,7 +210,6 @@ export function mountExchange(root: HTMLElement, m: Market, onChartInput: () => 
 
   root.append(el('div', { class: 'ex-views', role: 'tablist' }, ...viewTabs), pair, charts, trade)
 
-  // ── what just changed: an answer on the glasses, a fill or a stop lights its numbers here for a moment ──
   const changedAt = new Map<string, number>()
   let seen: Map<string, string> | null = null
   const ageOf = (...keys: string[]) => Date.now() - Math.max(...keys.map(k => changedAt.get(k) ?? -Infinity))
@@ -318,7 +313,6 @@ export function mountExchange(root: HTMLElement, m: Market, onChartInput: () => 
     viewTabs.forEach(b => b.setAttribute('aria-selected', String(b.textContent === v)))
   }
 
-  // ── chart ──
   const g = canvas.getContext('2d')!
   let size = { w: 0, h: 0 }
   let frozen: { lo: number; hi: number } | null = null
@@ -504,7 +498,6 @@ export function mountExchange(root: HTMLElement, m: Market, onChartInput: () => 
   })
   setInterval(paint, 1000) // the candle countdown
 
-  // ── everything that follows the market ──
   let queued = false
   const render = () => {
     if (queued) return

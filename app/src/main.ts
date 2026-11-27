@@ -37,8 +37,6 @@ const PAUSE_MS = 15 * 60_000
 const BLINK_MS = 400 // one on/off step of the new-alert blink (matic-even H1 used 400 ms)
 const SWIPE_GATE_MS = 700 // one long swipe arrives as several scroll events (matic-even H12)
 const CURSOR_IDLE_MS = 8000 // `>` left on an action goes back to Dismiss: a stray swipe must not arm the next tap
-// shortcut: the state has no status for a card that left the queue, so one that leaves this close to its expiry counts as expired
-// (server tick 2 s + lens poll 1 s); ask the server for the card's last status if a withdrawn card must say why
 const EXPIRY_SLACK_MS = 3000
 /** Results that no longer change: polling the execution stops. */
 const FINAL: ExecutionStatus[] = ['FILLED', 'APPLIED', 'PARTIALLY_FILLED_CANCELLED', 'REJECTED', 'SIMULATED']
@@ -117,11 +115,7 @@ const CALL_MS = 3000 // a BLE reply can get lost; without a cap one lost reply f
 const timed = <T>(call: Promise<T>, ms = CALL_MS) =>
   Promise.race([call, sleep(ms).then((): never => { throw new Error('No reply from the glasses') })])
 let queue: Promise<unknown> = Promise.resolve()
-/**
- * Every bridge call goes through here, one at a time (glasses-ui: concurrent render and storage calls can drop the link).
- * The cap counts from when the call starts, not from when it was queued.
- * shortcut: a timed-out call is not cancelled, so the next one may overlap a late reply; the SDK has no cancel
- */
+
 function call<T>(f: () => Promise<T>, ms = CALL_MS): Promise<T> {
   const run = queue.then(() => timed(f(), ms))
   queue = run.catch(() => {})
@@ -129,8 +123,6 @@ function call<T>(f: () => Promise<T>, ms = CALL_MS): Promise<T> {
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
-
-// ── glasses ────────────────────────────────────────────────
 
 /** `capture`: the one box that takes input; it holds one line, so a swipe has nothing to scroll. */
 type Box = { name: string; x: number; y: number; w: number; h: number; capture?: true }
@@ -246,7 +238,6 @@ function reportRenderedAlert(sc: Screen, want: Record<string, string>) {
 }
 
 /** Tap then long press opens this menu (Even Hub docs, Contextual Menu). Labels stay under 16 characters, verbs first (Even Hub docs). */
-// Each close is a card to confirm, by tap or a spoken yes, like every other trade. Nothing here sends an order.
 const menu = (on: Layout) => new MenuContainerProperty({
   menuItems: [
     ...(on === 'detail' || on === 'main' ? [new MenuItemProperty({ itemID: MENU_CLOSE, itemName: 'Close position' })] : []),
@@ -467,8 +458,6 @@ async function poll(force = false) {
   await draw()
 }
 
-// ── voice: a card listens for yes or no; Speak listens for a close the server already classified ──
-
 async function startListening(ms: number, target: Listen) {
   if (!bridge || mic !== 'off' || !canUseVoice() || !speakOn()) return
   mic = 'starting'
@@ -605,7 +594,6 @@ async function onAnswer(cardId: string, r: VoiceReply) {
   note(r.heard ? `Heard "${r.heard}" · tap to answer` : 'Heard nothing · tap to answer')
 }
 
-/** Spoken yes: every action waits COUNTDOWN_MS on the lens before the confirm goes out, as a misheard word is likelier than a stray tap. */
 function startCountdown(card: Proposal) {
   countdown = { card, ends: Date.now() + COUNTDOWN_MS }
   clearInterval(countdownTimer)

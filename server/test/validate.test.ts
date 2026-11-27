@@ -125,8 +125,6 @@ const accepts = (input: unknown, ctx?: { phrasesInUse?: string[] }) => {
   return v.value!
 }
 
-// ---- Matrices (§7) ----
-
 test('STACKING is symmetric', () => {
   for (const x of C) for (const y of C) assert.equal(STACKING[x][y], STACKING[y][x], `${x} × ${y}`)
 })
@@ -147,8 +145,6 @@ test('catalog numbers conditions C1–C13 and actions A1–A9 as §5 and §6, an
   assert.deepEqual(cat.stacking, DOC_ST)
 })
 
-// ---- Every condition × action cell ----
-
 for (const c of C) {
   for (const a of A) {
     const cell = DOC_CA[c][a]
@@ -166,8 +162,6 @@ for (const c of C) {
     })
   }
 }
-
-// ---- Every stacking pair, action Notify, both logics, both orders ----
 
 for (let i = 0; i < C.length; i++) {
   for (let j = i + 1; j < C.length; j++) {
@@ -209,8 +203,6 @@ test('a Notify with Glasses and Phone both off goes nowhere and is refused', () 
   assert.deepEqual(codes(rule({ items: [COND.PROFIT], delivery: { glasses: false, phone: false } })), ['no_delivery'])
   accepts(rule({ items: [COND.PROFIT], delivery: { glasses: false, phone: true } }))
 })
-
-// ---- Same metric (V) ----
 
 test('price range under ALL: low < high is fine, low >= high is never true', () => {
   accepts(rule({ items: [price('GTE', '100'), price('LTE', '200')] }))
@@ -261,8 +253,6 @@ test('price change up and down: never true with and, fine with or', () => {
   accepts(rule({ logic: 'ANY', items: [change('UP', '3'), change('DOWN', '3')] }))
 })
 
-// ---- Crossings (§7 rules beyond the matrix) ----
-
 test('a crossing or-ed with a level or a state is rejected', () => {
   const states: [ScopeType, object][] = [['SYMBOL', price('GTE', '200')], ['SYMBOL', change('UP', '3')], ['POSITION', COND.PROFIT]]
   for (const [s, other] of states) {
@@ -295,8 +285,6 @@ test('mixed price sources are rejected', () => {
   accepts(rule({ items: [price('GTE', '100', 'MARK'), change('UP', '3', 'MARK')] }))
 })
 
-// ---- Trigger policies (§8) ----
-
 test('a crossing or a fill outside On event / Once needs On event', () => {
   for (const trigger of [ON_ENTRY, { mode: 'REPEAT' }]) {
     assert.deepEqual(codes(rule({ scope: SCOPE.SYMBOL, items: [price('UP_CROSS', '100')], trigger })), ['needs_on_event'])
@@ -320,8 +308,6 @@ test('Repeat without an interval gets 5 minutes; a given interval is kept', () =
   assert.deepEqual(accepts(rule({ items: [COND.PROFIT], trigger: { mode: 'REPEAT' } })).trigger, { mode: 'REPEAT', intervalSec: 300 })
   assert.deepEqual(accepts(rule({ items: [COND.PROFIT], trigger: { mode: 'REPEAT', intervalSec: 600 } })).trigger, { mode: 'REPEAT', intervalSec: 600 })
 })
-
-// ---- Scopes (§4, §6, §7) ----
 
 test('an absolute price level on All positions is rejected; a relative price change is fine', () => {
   const v = check(rule({ scope: SCOPE.ALL_POSITIONS, items: [price('GTE', '100')] }))
@@ -390,8 +376,6 @@ test('a voice-only shortcut still passes the scope rules', () => {
   assert.equal(check(rule({ scope: SCOPE.POSITION, action: ACT.CANCEL_ORDER, voicePhrase: 'cancel it' })).ok, false)
 })
 
-// ---- Voice (§4) ----
-
 test('no conditions and no phrase is rejected', () => {
   assert.deepEqual(codes(rule({ items: [] })), ['no_conditions'])
   assert.deepEqual(codes(rule({ items: [], voicePhrase: '' })), ['no_conditions'])
@@ -431,8 +415,6 @@ test('both voice seeds validate and match §12', () => {
     ['lock profits', 0, 'ALL_POSITIONS', JSON.stringify(ACT.MOVE_SL)],
   ])
 })
-
-// ---- Templates (§12) ----
 
 const words = (o: object): string => Object.entries(o).filter(([k]) => k !== 'id')
   .map(([, v]) => (v !== null && typeof v === 'object' ? words(v) : v === '' ? '_' : String(v))).join(' ')
@@ -506,16 +488,12 @@ for (const n of [10, 12, 13, 15, 22]) {
   })
 }
 
-// ---- Delivery ----
-
 test('a trade action with glasses off is rejected; Notify with glasses off is fine', () => {
   for (const a of A) {
     const input = rule({ scope: SCOPE[scopeFor(['PRICE_CHANGE'], a)!], items: [change('UP', '3')], action: ACT[a], trigger: triggerFor(['PRICE_CHANGE'], a), delivery: { glasses: false, phone: true } })
     assert.deepEqual(codes(input), a === 'NOTIFY' ? [] : ['needs_glasses'], a)
   }
 })
-
-// ---- Trust boundary ----
 
 test('unknown fields are dropped from value', () => {
   const base = rule({
@@ -663,8 +641,6 @@ test('condition ids must be present and unique', () => {
   assert.equal(check(rule({ items: [{ ...COND.PROFIT, id: '' }] })).ok, false)
   assert.equal(check(rule({ items: [{ ...COND.PROFIT, id: 7 }] })).ok, false)
 })
-
-// ---- The Incompatible screen (§7) ----
 
 test('ROI above 30% or liquidation distance below 5% with Increase position flags the liquidation row', () => {
   const v = check(rule({ scope: SCOPE.ALL_POSITIONS, logic: 'ANY', items: [COND.PROFIT, COND.NEAR_LIQUIDATION], action: ACT.INCREASE_POSITION, trigger: ONCE }))

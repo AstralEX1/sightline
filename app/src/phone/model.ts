@@ -18,8 +18,6 @@ export const emptyDraft = (): Draft => ({
   trigger: { mode: 'ON_ENTRY' }, delivery: { glasses: true, phone: true },
 })
 
-// ── Choice filtering ─────────────────────────────────────
-
 export type ConditionChoice = { group: string; label: string; type: ConditionType; unit?: 'ROI_PERCENT' | 'USDT' }
 const CONDITION_CHOICES: ConditionChoice[] = [
   { group: 'Price', label: 'Price', type: 'PRICE' },
@@ -85,8 +83,6 @@ export function fitTrigger(d: Draft): void {
   d.trigger = { mode }
 }
 
-// ── Atomic edits ─────────────────────────────────────────
-
 export const nextId = (items: Condition[]) => `c${Math.max(0, ...items.map(c => Number(c.id.slice(1)) || 0)) + 1}`
 
 /** A fresh condition of a type; numbers start empty so nothing is carried into a new unit. */
@@ -144,8 +140,6 @@ export function newAction(type: ActionType): Action {
     default: return { type } as Action
   }
 }
-
-// ── Numbers ──────────────────────────────────────────────
 
 /** gt/ge and lt/le bounds, as validate.ts has them. */
 export type Range = { gt?: number; ge?: number; lt?: number; le?: number }

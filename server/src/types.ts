@@ -154,8 +154,6 @@ export interface Exchange {
 /** Bybit orderStatus: New, PartiallyFilled, Filled, Cancelled, PartiallyFilledCanceled, Rejected, Untriggered, Triggered, Deactivated */
 export interface OrderState { orderId: string; status: string; cumExecQty: number; avgPrice: number }
 
-// ── Shortcut runtime records (§9, §10) ─────────────────────
-
 export type Channel = 'glasses' | 'app'
 
 /** The exact exchange command a tap authorizes, resolved when the proposal is built. Never taken from a client. */

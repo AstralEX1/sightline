@@ -21,7 +21,6 @@ export function wav(pcm: Uint8Array): Buffer {
   return Buffer.concat([h, pcm])
 }
 
-// shortcut: a guess; a Mac mic's room noise read RMS ~30 per 100 ms. Measure the G2 mic's noise floor and speech level and tune it
 const QUIET_RMS = 300
 const CHUNK = 3200 // 100 ms of 16 kHz s16le: a short "yes" is loud for a moment, not on average over 5 s
 

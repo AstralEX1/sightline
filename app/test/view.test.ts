@@ -57,8 +57,6 @@ const lines = (sc: Screen) => Object.entries(sc.text).flatMap(([box, t]) => t.sp
 const alertOf = (c: Partial<Proposal> = {}, s: Partial<ServerState> = {}, v: View = {}) => screen(st({ card: card(c), pending: 1, ...s }), v)
 const result = (o: Partial<Outcome>, c: Partial<Proposal> = {}) => screen(st({ card: card({ id: 'next' }), pending: 1 }), { outcome: { card: card(c), ...o } })
 
-// ── Main ───────────────────────────────────────────────────
-
 test('quiet mode is blank between alerts and opens positions on demand', () => {
   const state = st()
   const sc = screen(state, { quiet: true })
@@ -234,8 +232,6 @@ test('main: no loss meter and no dollars on the lens', () => {
   for (const [box, l] of lines(sc)) assert.doesNotMatch(l, /[█▒$]|limit/i, `${box}: ${l}`)
 })
 
-// ── Detail ─────────────────────────────────────────────────
-
 test('detail: big coin and side, leverage under it, PnL with stop and liq distances, the hour', () => {
   const sc = screen(st({ balance: { equity: 5000, available: 2140 } }), { detail: true })
   assert.equal(sc.layout, 'detail')
@@ -277,8 +273,6 @@ test('pnlText: tenths, whole dollars, thousands', () => {
   assert.equal(pnlText(1234.5), 'PNL: +$1,235')
   assert.equal(pnlText(-12_300), 'PNL: −$12.3k')
 })
-
-// ── Alert ──────────────────────────────────────────────────
 
 // docs/glasses-shortcuts.md §5: every condition with its action, as the server words them.
 const ALERTS: [ConditionType, string, string, string, string][] = [
@@ -391,8 +385,6 @@ test('alert: Open and Increase add exposure, so their action opens Review', () =
   assert.equal(add.icon, 'pulse')
 })
 
-// ── Review ─────────────────────────────────────────────────
-
 test('review: Open shows qty, notional, leverage, margin and stop, Dismiss first', () => {
   const sc = alertOf({ id: 'o1', who: 'BTC', terms: OPEN }, { positions: [] }, { review: 'o1' })
   assert.equal(sc.layout, 'review')
@@ -445,8 +437,6 @@ test('review: only for Open and Increase, and only for its own card', () => {
   assert.equal(alertOf({}, {}, { review: 'p1' }).layout, 'alert') // a close never has a Review
   assert.equal(alertOf({ id: 'o2', terms: OPEN }, { positions: [] }, { review: 'o1' }).layout, 'alert')
 })
-
-// ── Results ────────────────────────────────────────────────
 
 test('result: Sent while the server works, no choice and taps ignored', () => {
   for (const o of [{}, { execution: exec('SUBMITTING') }]) {
@@ -543,8 +533,6 @@ test('result: holds the lens over the next alert until OK, and the next alert wa
   assert.equal(screen(st(), { outcome: { card: card() }, offline: true }).layout, 'main') // offline: nothing to answer
 })
 
-// ── Fit ────────────────────────────────────────────────────
-
 test('every line fits its box with long tickers and 6-digit prices', () => {
   const pepe = pos({ symbol: '1000PEPEUSDT', side: 'Sell', markPrice: 0.0123, liqPrice: 0.0125, stopLoss: 0, unrealisedPnl: -9876.5, positionIM: 1 })
   const big = pos({ symbol: 'VERYLONGNAME1000USDT', markPrice: 123456.7, liqPrice: 1, unrealisedPnl: 123456, positionIM: 100 })
@@ -587,8 +575,6 @@ test('every string of spec §5 and §6 fits its box', () => {
   ]
   for (const [box, all] of at) for (const s of all) assert.equal(fit(s, INNER_PX[box]), s, `${box}: ${s}`)
 })
-
-// ── Phone preview ──────────────────────────────────────────
 
 test('phone preview lists the same lines', () => {
   assert.equal(previewText(screen(st(), { hints: true })), 'Bybit Demo · 1 position\n▶ BTC long               0.05  61,240  ▼ 4.2%  liq 5.9%\n\ntap: details · tap, hold: menu · double tap: exit')

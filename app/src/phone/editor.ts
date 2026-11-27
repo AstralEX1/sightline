@@ -156,7 +156,6 @@ const payload = () => ({ ...(s.draft as EditableShortcut), ...(s.id && { id: s.i
 function validateSoon() {
   clearTimeout(timer)
   const n = ++seq
-  // shortcut: a stale answer is dropped by its sequence number instead of aborting the request, pass a signal through api.ts if requests pile up
   timer = setTimeout(async () => {
     try {
       const v = await api.validate(payload())
@@ -183,8 +182,6 @@ function commit(mut: (d: Draft) => void) {
 }
 
 const replaceCond = (c: Condition) => commit(d => { d.conditions.items = d.conditions.items.map(x => (x.id === c.id ? c : x)) })
-
-// ── Rendering ────────────────────────────────────────────
 
 /** Markers only for problems the sentence does not show already (placeholders say what is missing). */
 const SILENT = new Set(['missing_value'])
@@ -482,8 +479,6 @@ function confirmLine() {
   const phoneOnly = a.type === 'NOTIFY' && !s.draft.delivery.glasses
   return h('p', { class: 'confirm-line', html: icon(phoneOnly ? 'bell' : 'glasses', 16, 2) }, phoneOnly ? 'Sends to phone' : a.type === 'NOTIFY' ? 'OK on Even G2' : 'Confirm on Even G2')
 }
-
-// ── Token editors ────────────────────────────────────────
 
 /** The first value a fresh condition or action still needs: its sheet opens at once (§5.4). */
 const firstEmpty = (parts: Part[]) => (parts.find(p => typeof p !== 'string' && p.empty) as Tok | undefined)?.key
@@ -791,7 +786,6 @@ function optionsSheet() {
   h('span', { class: 'radio-row__check', html: o.trigger.mode === c.mode ? icon('check', 20, 2.4) : '' }),
   h('span', { class: 'radio-row__label' }, c.mode === 'REPEAT' ? `Repeat every ${cat.limits.repeatSec.default / 60} min` : { ON_ENTRY: 'On entry', ON_EVENT: 'On event', ONCE: 'Once' }[c.mode]),
   h('span', { class: 'radio-row__detail' }, c.why ?? HINT[c.mode])))))
-  // shortcut: Repeat uses the 5 min default, add an interval token when someone needs another
   sheet({
     title: 'Options', back: back('options'),
     body: [
@@ -800,7 +794,6 @@ function optionsSheet() {
       h('div', { class: 'group' },
         h('div', { class: 'row row--switch' }, h('span', { id: 'opt-glasses' }, 'Show on glasses'), rowSwitch(o.delivery.glasses, 'opt-glasses', (on, b) => { o.delivery.glasses = on; b.setAttribute('aria-checked', String(on)) })),
         h('div', { class: 'row row--switch' }, h('span', { id: 'opt-phone' }, 'Send to phone'), rowSwitch(o.delivery.phone, 'opt-phone', (on, b) => { o.delivery.phone = on; b.setAttribute('aria-checked', String(on)) }))),
-      // shortcut: voice phrases are hidden while voice only answers alerts (yes / no); show this group again to bring them back
     ],
     // Test alert and Delete live in the title menu: here they would close the sheet and drop its edits
     dirty: () => stable(o) !== stable({ trigger: s.draft.trigger, delivery: s.draft.delivery }) || normalizePhrase(phrase.value) !== (s.draft.voicePhrase ?? ''),

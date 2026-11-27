@@ -181,7 +181,6 @@ export function evaluateGroup(g: ShortcutRule['conditions'], f: Facts, o: EvalOp
 }
 
 export const DEFAULT_COOLDOWN_SEC = 60
-// shortcut: remembers the last 50 event keys, so a duplicate older than that fires again; keep a time-bounded set if fills arrive in bursts.
 const SEEN_MAX = 50
 
 /** Per rule and target; plain JSON so it can be persisted. */

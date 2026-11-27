@@ -142,7 +142,6 @@ export function createStore(path: string, clock: () => number = Date.now): Store
   const db = new DatabaseSync(path)
   if (path !== ':memory:') db.exec('PRAGMA journal_mode = WAL')
   db.exec(SCHEMA)
-  // shortcut: environment and capabilities stay empty until the Settings screen needs them stored
   db.prepare(`INSERT OR IGNORE INTO exchange_accounts VALUES (?, '', '{}')`).run(ACCOUNT)
 
   const run = (sql: string, ...p: SQLInputValue[]) => { db.prepare(sql).run(...p) }

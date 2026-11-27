@@ -22,7 +22,6 @@ export type Command = keyof typeof PHRASE
 export type Session = {
   tick(): Promise<void>
   state(): SessionState
-  /** The only way to trade: `idempotencyKey` comes from the client, a resend gets the same execution back. */
   confirm(proposalId: string, idempotencyKey: string): Promise<ConfirmResult>
   dismiss(proposalId: string, by: Channel): Reply
   /** Open on the lens: the size and leverage chosen from the card's picks. A fresh proposal with those terms replaces it. */
@@ -48,7 +47,6 @@ export type Route = (alert: AlertRecord) => Channel[]
 
 const SLOW_POLL_MS = 10_000
 const TOAST_MS = 5_000
-// shortcut: past this a flood drops its oldest waiting toast; trigger policies stop most floods
 const MAX_TOASTS = 4
 /** An input older than this is UNKNOWN, and the lens says the data is stale. */
 const STALE_MS = 15_000
@@ -80,7 +78,6 @@ function protection(p: Position, orders: Order[], kind: 'StopLoss' | 'TakeProfit
   if (mine.some(o => o.stopOrderType === `Partial${kind}`)) return { state: 'partial' }
   const level = kind === 'StopLoss' ? p.stopLoss : p.takeProfit
   if (!level) return { state: 'none' }
-  // shortcut: Bybit's default trigger (last price) when the full-mode stop order is not listed; check the listing on Demo
   return { state: 'set', price: level, triggerBy: TRIGGER_BY[mine.find(o => o.stopOrderType === kind)?.triggerBy ?? ''] ?? 'LAST' }
 }
 
@@ -119,7 +116,6 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
   const volumes = new Map<string, { at: number; candles: Candle[] }>()
   const charts = new Map<string, { at: number; candles: Candle[] }>()
   const epochs = new Map(Object.entries(store.epochs()))
-  // shortcut: in memory, so a restart between the tap and the fill leaves that one without a receipt; store `before` on the execution if that matters
   const receipts = new Map<string, { before?: Position; epoch?: string; at: number }>()
   const toasts: { text: string; alertId?: string }[] = []
   let headSince = 0
@@ -139,8 +135,6 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
   }
   const ctxNow = (): Ctx => ({ positions, orders, balance, tickers })
   const routeOf: Route = route ?? (a => (a.delivery.glasses ? ['glasses'] : []))
-
-  // ── targets and facts ───────────────────────────────────
 
   /** The position's lifecycle: a new one starts when it opens or flips side, so a reopened position is not the old one. */
   const epochOf = (p: Position) => {
@@ -170,9 +164,6 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
         return [ord(s.orderId, s.symbol, o)]
       }
       case 'ALL_ORDERS': {
-        // Every open plain order (stops and take profits excluded), and the filled ones that left the open list, so a fill
-        // and a later tap still find their order. shortcut: only orders seen open in a poll; a market order fills before
-        // the next poll and is skipped, read the execution's closedSize if market entries should count too.
         const open = os.filter(o => !isTpsl(o) && o.leavesQty > 0)
         const gone = new Map(recentFills.flatMap(f => {
           const o = known.get(f.orderId)
@@ -232,8 +223,6 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     return (isMarket(rule.action) ? expiry.marketSec : expiry.protectionSec) * 1000
   }
   const detailOf = (rule: ShortcutRule, note?: string) => [titleOf(rule), note].filter(Boolean).join(' · ')
-
-  // ── alerts and proposals ────────────────────────────────
 
   function alertStatus(a: AlertRecord, p?: Proposal): string {
     if (a.skip) return `Skipped · ${a.skip.reason}`
@@ -360,8 +349,6 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     },
   })
 
-  // ── the poll ────────────────────────────────────────────
-
   async function tick() {
     const now = clock()
     const rules = store.listShortcuts().filter(r => r.enabled)
@@ -440,14 +427,12 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     for (const f of fresh) {
       if (!f.closedBy || now - f.time > STALE_MS) continue
       const side = f.side === 'Buy' ? 'Sell' : 'Buy' // a close trades against the position
-      // shortcut: a liquidation's order is not listed, so its slot is the one this side held; hedge mode with both sides of one symbol is fine, two slots of one side cannot happen
       const idx = known.get(f.orderId)?.positionIdx ?? [0, 1, 2].find(i => before.get(`${f.symbol}:${i}`)?.startsWith(`${side}:`))
       const epoch = idx === undefined ? undefined : before.get(`${f.symbol}:${idx}`)
       if (!epoch?.startsWith(`${side}:`)) continue // opened and closed between two polls: no position to name
       closes.set(`pos:${f.symbol}:${idx}:${epoch}`, { by: f.closedBy, orderId: f.orderId, price: f.price, symbol: f.symbol, side, idx: idx!, epoch })
     }
     for (const o of orders) known.set(o.orderId, o)
-    // shortcut: forgets the oldest orders past 1000; keep only ORDER-scope ones if a trader keeps more
     while (known.size > 1000) known.delete(known.keys().next().value!)
 
     await executor.reconcile(recentFills, positions)
@@ -503,7 +488,6 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     // The engine: every enabled shortcut with conditions, on every target of its scope. Voice-only ones are never evaluated.
     const waiting = new Set(store.pendingProposals().filter(p => !p.simulated).map(p => `${p.shortcutId}:${p.targetKey}`))
     const failed = new Set<string>()
-    // shortcut: trigger_state keeps a row per rule and position epoch for good; prune closed epochs if the table grows
     for (const rule of rules) {
       try {
         if (!rule.conditions.items.length) continue

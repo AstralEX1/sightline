@@ -7,7 +7,6 @@ export function liqDistancePct(p: Position): number {
 
 export const normalizePhrase = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 
-// Whole answers only: "yes, close it" or "no idea" stays unanswered, so a stray sentence never confirms a trade.
 const YES = [
   'yes', 'yeah', 'yep', 'yup', 'ya', 'ok', 'okay', 'o k', 'sure', 'confirm', 'confirmed', 'approve', 'accept', 'affirmative', 'correct',
   'right', 'do it', 'go', 'go ahead', 'send', 'send it', 'execute', 'proceed', 'absolutely', 'of course', 'yes please', 'ok go',

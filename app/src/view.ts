@@ -166,7 +166,6 @@ const REASON_ICON: Record<ConditionType, IconName> = {
   NEAR_TP: 'target', PRICE_CHANGE: 'pulse', PRICE: 'bell', ORDER_FILLED: 'check', ORDER_PARTIAL: 'half',
   VOLUME_SPIKE: 'pulse', FUNDING: 'percent', ORDER_STALE: 'hourglass', POSITION_CLOSED: 'exit',
 }
-// shortcut: a test alert has no reasonType, so it wears the bell; send the shortcut's first condition type with a test to show its own icon
 export const iconOf = (c: Proposal): IconName => (c.reasonType ? REASON_ICON[c.reasonType] : c.voice ? 'mic' : c.manual && c.terms.type === 'order' && c.terms.reduceOnly ? 'exit' : 'bell')
 
 /** Open and Increase add exposure: their action opens Review, never the order (spec §10). */
@@ -359,7 +358,7 @@ function detail(p: Position, at: number, total: number, v: View): Screen {
 const TAP: Record<Choice, string> = { dismiss: 'tap: dismiss', confirm: 'tap: confirm', ok: 'tap: OK', review: 'tap: review', close: 'tap: close', pick: 'tap: pick', 'ack-glasses-test': 'tap: OK' }
 
 function framed(o: { layout: 'alert' | 'review'; key: string; head: Record<string, string>; labels: string[]; choices: Choice[]; icon: IconName; card: Proposal | null; hint: (at: number) => string }, v: View): Screen {
-  const at = v.cursor?.key === o.key ? Math.min(v.cursor.at, o.labels.length - 1) : 0 // Dismiss first: a stray tap must not trade
+  const at = v.cursor?.key === o.key ? Math.min(v.cursor.at, o.labels.length - 1) : 0
   const text: Record<string, string> = { frame: '', opt1: '', opt2: '', hint: fit(v.voice || o.hint(at), INNER_PX.hint) } // the mic bar, a countdown or a voice note
   for (const [box, t] of Object.entries(o.head)) text[box] = t.split('\n').map(l => (box === 'queue' ? l && alignRight(l, INNER_PX.queue) : fit(l, INNER_PX[box]))).join('\n')
   const tone: Record<string, number> = { ...TONE, queue: o.head.queue === 'TEST' || o.head.queue === 'NEW' ? 4 : TONE.queue } // a warning, not a counter
@@ -390,8 +389,6 @@ function alert(s: ServerState, c: Proposal, v: View): Screen {
       labels: ['OK'], choices: ['ok'], hint: () => TAP.ok,
     }, v)
   }
-  // Stale exchange data: the server cannot check the terms, so only Dismiss is offered.
-  // With picks the size is not chosen yet, so the label names none
   const action = s.error ? [] : [t.type === 'order' && grows(c) ? `Review ${heldBy(s, c) ? 'add' : sideWord(t.side)}${c.picks ? '' : ` · ${usdt(t.notionalUsdt)}`}` : c.question.replace(/\?$/, '')]
   return framed({
     layout: 'alert', key: `alert:${c.id}`, card: c, icon: s.error ? 'hourglass' : iconOf(c),

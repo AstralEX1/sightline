@@ -83,7 +83,6 @@ export function resolve(action: Action, t: TargetRef, m: Market, authorized?: Te
     if (o.stopLoss !== undefined && !behind(o.side, o.stopLoss)) return skip('past_price', 'stop would be past the price')
     if (o.takeProfit !== undefined && !ahead(o.side, o.takeProfit)) return skip('past_price', 'take profit would be past the price')
     // Flat before an Open, so no liquidation price yet: at `lev` the margin is gone 1/lev from the price, a little sooner with maintenance margin.
-    // shortcut: the isolated bound; a cross position liquidates later, read the margin mode if cross Opens need wider stops
     if (o.stopLoss !== undefined && dir(o.side) * (o.stopLoss - last * (1 - dir(o.side) / lev)) <= 0) return skip('past_liquidation', 'stop would be past liquidation')
     return null
   }

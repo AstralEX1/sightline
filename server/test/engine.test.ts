@@ -307,8 +307,6 @@ test('decide carries the price-change base into the next state', () => {
   assert.equal(decide(rule('ON_ENTRY', [cond(LIQ5)]), G('FALSE'), initialTriggerState(1), NOW).next.base, undefined)
 })
 
-// ---- Volume, funding, order age, position closed ----
-
 test('volumeRatio: the window over the hour before it, closed candles only, null without history', () => {
   const at = NOW
   const k = (minsAgo: number, volume?: number) => ({ start: at - minsAgo * 60_000, volume })
