@@ -313,6 +313,15 @@ test('alert: every condition wears its icon, names the position and the reason, 
   assert.equal(iconOf(card({ reasonType: undefined, simulated: true, why: 'Test alert' })), 'bell')
 })
 
+test('manual close identifies the position and defaults to Dismiss', () => {
+  const sc = alertOf({ who: 'ETH short', why: 'Manual close', manual: true, reasonType: undefined, question: 'Close 100% · 1 ETH?' })
+  assert.equal(sc.icon, 'exit')
+  assert.equal(sc.text.who, 'ETH short')
+  assert.equal(sc.text.why, 'Manual close')
+  assert.equal(sc.text.opt1, '> Dismiss')
+  assert.equal(sc.text.opt2, '   Close 100% · 1 ETH')
+})
+
 test('notify: one OK, no second choice, and a tap does not confirm', () => {
   const sc = alertOf({ terms: { type: 'notify' }, question: '', why: 'price crossed above 90,000', reasonType: 'PRICE', who: 'BTC' })
   assert.equal(sc.text.who, 'BTC')
@@ -449,6 +458,18 @@ test('result: Sent while the server works, no choice and taps ignored', () => {
     assert.equal(sc.text.hint, 'waiting for Bybit · double tap: hide')
   }
   assert.equal(result({ execution: exec('ACKNOWLEDGED') }).text.why, 'Sent · waiting for the fill')
+})
+
+test('result: cancelled remainder stays visible when the final position receipt arrives', () => {
+  const partial = exec('PARTIALLY_FILLED_CANCELLED', { filledQty: 0.015, avgPrice: 61000 })
+  const before = result({ execution: partial })
+  assert.equal(before.icon, 'half')
+  assert.equal(before.text.ask, 'Remainder cancelled')
+  assert.equal(before.text.terms, 'Filled 0.015 of 0.025 BTC · avg 61,000')
+  assert.deepEqual(before.choices, ['close'])
+  const after = result({ execution: { ...partial, receipt: '0.05 → 0.035 BTC' } })
+  assert.equal(after.text.ask, 'Remainder cancelled')
+  assert.equal(after.text.terms, 'Filled 0.015 of 0.025 BTC · avg 61,000\n0.05 → 0.035 BTC')
 })
 
 test('result: the exchange status, then OK', () => {

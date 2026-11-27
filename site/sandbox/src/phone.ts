@@ -7,14 +7,14 @@ import { createBackend } from './backend.ts'
 import { createHost, type Gesture } from './host.ts'
 import { Lens } from './lens.ts'
 import { demoExchange } from '../../../server/src/fake-exchange.ts'
-import { CLOSE_SEED, STARTER_RULES, VOICE_SEEDS } from '../../../server/src/registry.ts'
+import { CLOSE_SEED, STARTER_RULES } from '../../../server/src/registry.ts'
 
 let page: Document | null = null
 try { page = parent === window ? null : parent.document } catch { /* framed by another site */ }
 const lens = page?.getElementById('demo-lens') as HTMLCanvasElement | null
 
 const host = createHost(new Lens(lens ?? document.createElement('canvas')))
-const backend = createBackend(demoExchange(Date.now()).ex, [...STARTER_RULES, ...VOICE_SEEDS, CLOSE_SEED])
+const backend = createBackend(demoExchange(Date.now()).ex, [...STARTER_RULES, CLOSE_SEED])
 
 if (lens) {
   lens.onclick = () => host.gesture('tap')

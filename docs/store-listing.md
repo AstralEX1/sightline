@@ -12,9 +12,10 @@
 
 | Material | Link |
 | --- | --- |
-| Interactive demo | [Paper BTC liquidation scenario](https://trade-shortcuts-pi.vercel.app/sandbox/#liquidation) |
+| Phone app | [Hosted phone interface](https://tradeshortcuts.xyz/phone/) · paper server token required |
+| Interactive demo | [Paper BTC liquidation scenario](https://tradeshortcuts.xyz/sandbox/#liquidation) |
 | Physical G2 | [Beta installation and testing](judge-testing.md) |
-| Project site | [Trade Shortcuts](https://trade-shortcuts-pi.vercel.app/) |
+| Project site | [Trade Shortcuts](https://tradeshortcuts.xyz/) |
 
 ## About this plugin
 
@@ -35,7 +36,7 @@ Improved recognition of spoken close requests from the position screen. Choose *
 ## Assets and permissions
 
 - [24 × 24 monochrome icon](../assets/even-hub-icon.png) and [grayscale cover](../assets/even-hub-cover.png).
-- [Privacy policy](https://trade-shortcuts-pi.vercel.app/privacy.html) covers the server connection, local settings, account history, and optional G2 microphone and transcription. The two requested permissions are declared in [app.json](../app/app.json).
+- [Privacy policy](https://tradeshortcuts.xyz/privacy.html) covers the server connection, local settings, account history, and optional G2 microphone and transcription. The two requested permissions are declared in [app.json](../app/app.json).
 
 ## Reviewer walkthrough
 
@@ -47,7 +48,7 @@ Record the app and phone versions, G2 firmware, input device, and results before
 
 ## App screenshots
 
-Current screens from the [landing](https://trade-shortcuts-pi.vercel.app/). Lens frames are the gallery files. Phone frames are the shortcut list and the template list.
+Current screens from the [landing](https://tradeshortcuts.xyz/). Lens frames are the gallery files. Phone frames are the shortcut list and the template list.
 
 ### G2
 

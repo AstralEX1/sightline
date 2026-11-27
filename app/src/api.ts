@@ -97,7 +97,8 @@ export const getChart = (symbol: string) => request<Candle[]>('GET', `/api/chart
 export const getExecution = (executionId: string) => request<Execution>('GET', `/api/executions/${id(executionId)}`)
 export const getProposalExecution = (proposalId: string) => request<Execution>('GET', `/api/proposals/${id(proposalId)}/execution`)
 /** Glasses menu: raise the seeded "protect all" (`stop`), "lock profits" (`lock`) or "close all" (`close`) shortcut; `position` keeps one. */
-export const command = (kind: Command, position?: { symbol: string; positionIdx: number }) => request<Reply>('POST', '/api/command', { command: kind, position })
+export const command = (kind: Command, position?: { symbol: string; positionIdx: number }, source?: 'voice') =>
+  request<Reply>('POST', '/api/command', { command: kind, position, source })
 /** Transcript plus the two readings the server made. `answer` is yes or no. `close` is a whole-phrase close from Speak. */
 export const voice = (pcm: Uint8Array) => request<{ heard: string; answer: 'yes' | 'no' | null; close: { all: boolean; coin?: string } | null }>('POST', '/api/voice', pcm, VOICE_TIMEOUT_MS)
 

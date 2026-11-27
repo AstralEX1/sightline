@@ -177,7 +177,7 @@ export function createServer(d: {
         if (typeof b.command !== 'string' || !Object.hasOwn(PHRASE, b.command)) throw new HttpError(400, 'Expected {command: "stop" | "lock" | "close"}')
         const at = b.position as { symbol?: unknown; positionIdx?: unknown } | undefined
         if (at !== undefined && (typeof at?.symbol !== 'string' || !Number.isInteger(at.positionIdx))) throw new HttpError(400, 'Expected {position: {symbol, positionIdx}}')
-        return send(res, 200, await session.command(b.command as Command, at as { symbol: string; positionIdx: number } | undefined))
+        return send(res, 200, await session.command(b.command as Command, at as { symbol: string; positionIdx: number } | undefined, b.source === 'voice' ? 'voice' : undefined))
       }
 
       // Shortcuts, editor

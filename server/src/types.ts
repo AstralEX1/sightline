@@ -216,7 +216,7 @@ export interface Proposal extends Card {
   /** The lens alert's two lines: "BTC long", and "liquidation distance 3.2%" or "Voice: protect all" */
   who: string
   why: string
-  /** The condition behind `why`, for the lens icon; none for voice and tests */
+  /** The condition behind `why`, for the lens icon; none for direct commands and tests */
   reasonType?: ConditionType
   alertId: string
   shortcutId: string
@@ -232,6 +232,8 @@ export interface Proposal extends Card {
   simulated: boolean
   /** Raised by a voice phrase: its conditions were not checked, so a confirm does not check them either */
   voice?: boolean
+  /** Raised by a menu or gesture: like a voice phrase, it supplies its own trigger */
+  manual?: boolean
   /** From the alert: orders the lens queue */
   priority: 'CRITICAL' | 'NORMAL'
   status: ProposalStatus
@@ -240,7 +242,7 @@ export interface Proposal extends Card {
 
 export type ExecutionStatus =
   | 'AUTHORIZED' | 'VALIDATING' | 'SUBMITTING' | 'ACKNOWLEDGED'
-  | 'APPLIED' | 'FILLED' | 'PARTIALLY_FILLED' | 'REJECTED' | 'UNKNOWN' | 'SIMULATED'
+  | 'APPLIED' | 'FILLED' | 'PARTIALLY_FILLED' | 'PARTIALLY_FILLED_CANCELLED' | 'REJECTED' | 'UNKNOWN' | 'SIMULATED'
 
 export interface Execution {
   id: string

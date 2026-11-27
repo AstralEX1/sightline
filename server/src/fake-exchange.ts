@@ -176,7 +176,10 @@ export function demoExchange(now: number): { ex: FakeExchange; stop: () => void 
   const minute = Math.floor(now / 60_000) * 60_000
   ex.candles.SOLUSDT = Array.from({ length: 70 }, (_, i) => ({ start: minute - (70 - i) * 60_000, close: 145, volume: i >= 65 ? 4000 : 1000 }))
   // An hour that wanders into today's price, for Detail's chart.
-  const hour = (to: number, drift: number) => Array.from({ length: 60 }, (_, i) => ({ start: minute - (60 - i) * 60_000, close: to * (1 + drift * (60 - i) / 60 + 0.003 * Math.sin(i / 4)) }))
+  const hour = (to: number, drift: number) => Array.from({ length: 60 }, (_, i) => {
+    const minutesAgo = 59 - i
+    return { start: minute - minutesAgo * 60_000, close: to * (1 + drift * minutesAgo / 59 + 0.003 * Math.sin(minutesAgo / 4)) }
+  })
   ex.candles.BTCUSDT = hour(61800, 0.008)
   ex.candles.ETHUSDT = hour(3080, -0.006)
   ex.list = [
@@ -188,8 +191,17 @@ export function demoExchange(now: number): { ex: FakeExchange; stop: () => void 
     const btc = ex.list.find(p => p.symbol === 'BTCUSDT')
     if (!btc) return
     // Last price slides with the mark, so LAST and MARK conditions both see it.
-    ex.prices.BTCUSDT = Math.max(59700, btc.markPrice - 40)
-    ex.setMark('BTCUSDT', ex.prices.BTCUSDT)
+    const close = Math.max(59700, btc.markPrice - 40)
+    ex.prices.BTCUSDT = close
+    ex.setMark('BTCUSDT', close)
+    const start = Math.floor(ex.now() / 60_000) * 60_000
+    const candles = ex.candles.BTCUSDT
+    const last = candles.at(-1)!
+    if (last.start === start) last.close = close
+    else {
+      candles.push({ start, close })
+      candles.shift()
+    }
   }, 2000)
   return { ex, stop: () => clearInterval(timer) }
 }

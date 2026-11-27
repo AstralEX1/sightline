@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createExecutor, SETTLE_MS, LOOKUP_EVERY_MS } from '../src/execute.ts'
 import { createStore } from '../src/store.ts'
 import { FakeExchange } from '../src/fake-exchange.ts'
-import type { Execution, ExecutionStatus, Order, Position, Terms } from '../src/types.ts'
+import type { Execution, ExecutionStatus, Fill, Order, Position, Terms } from '../src/types.ts'
 
 const T0 = 1_800_000_000_000
 const order: Terms = { type: 'order', symbol: 'BTCUSDT', side: 'Sell', qty: '0.025', positionIdx: 0, reduceOnly: true, orderLinkId: 'link-1' }
@@ -20,7 +20,11 @@ function setup(terms: Terms, status: ExecutionStatus = 'UNKNOWN') {
   const e: Execution = { id: 'e1', proposalId: 'p1', idempotencyKey: 'k1', terms, status, message: '', filledQty: 0, avgPrice: 0, createdAt: T0, updatedAt: T0 }
   store.saveExecution(e)
   const x = createExecutor({ ex, store, clock: () => now, revalidate: async () => ({ ok: true }) })
-  const at = async (ms: number, positions: Position[] = []) => { now = T0 + ms; await x.reconcile([], positions); return store.execution('e1')! }
+  const at = async (ms: number, positions: Position[] = [], fills: Fill[] = []) => {
+    now = T0 + ms
+    await x.reconcile(fills, positions)
+    return store.execution('e1')!
+  }
   return { ex, at }
 }
 
@@ -42,13 +46,44 @@ test('an unknown order Bybit has becomes acknowledged, so its fills finish it', 
   assert.equal(e.orderId, 'o9')
 })
 
-test('an order Bybit cancelled with nothing filled is rejected, a partly filled one is not', async () => {
+test('an order Bybit cancelled with nothing filled is rejected', async () => {
   const a = setup(order, 'ACKNOWLEDGED')
   a.ex.placed.set('link-1', { orderId: 'o9', status: 'Cancelled', cumExecQty: 0, avgPrice: 0 })
   assert.match((await a.at(SETTLE_MS)).message, /Bybit cancelled it/)
-  const b = setup(order, 'UNKNOWN')
-  b.ex.placed.set('link-1', { orderId: 'o9', status: 'PartiallyFilledCanceled', cumExecQty: 0.01, avgPrice: 61000 })
-  assert.equal((await b.at(SETTLE_MS)).status, 'ACKNOWLEDGED')
+})
+
+const partial: Fill = { id: 'f1', orderId: 'o9', orderLinkId: 'link-1', symbol: 'BTCUSDT', side: 'Sell', qty: 0.01, price: 61000, leavesQty: 0.015, time: T0 + 1 }
+
+test('lookup settles a timed-out linear IOC with a partial fill, and late fills leave its terminal result intact', async () => {
+  const { ex, at } = setup(order)
+  ex.placed.set('link-1', { orderId: 'o9', status: 'Cancelled', cumExecQty: 0.015, avgPrice: 60900 })
+  const final = await at(SETTLE_MS)
+  assert.deepEqual([final.status, final.filledQty, final.avgPrice, final.orderId], ['PARTIALLY_FILLED_CANCELLED', 0.015, 60900, 'o9'])
+  assert.deepEqual(await at(2 * SETTLE_MS, [], [partial]), final)
+  assert.equal(ex.calls.length, 0)
+})
+
+test('a repeated partial fill does not prevent lookup and transient errors keep it open', async () => {
+  const { ex, at } = setup(order, 'ACKNOWLEDGED')
+  assert.equal((await at(1, [], [partial])).status, 'PARTIALLY_FILLED')
+  ex.failReads = 'Bybit HTTP 502'
+  assert.equal((await at(SETTLE_MS + 1, [], [partial])).status, 'PARTIALLY_FILLED')
+  ex.failReads = null
+  ex.placed.set('link-1', { orderId: 'o9', status: 'Cancelled', cumExecQty: 0.015, avgPrice: 60900 })
+  const final = await at(SETTLE_MS + 1 + LOOKUP_EVERY_MS, [], [partial])
+  assert.deepEqual([final.status, final.filledQty, final.avgPrice], ['PARTIALLY_FILLED_CANCELLED', 0.015, 60900])
+})
+
+test('an order snapshot with a larger partial fill survives a shorter fill window', async () => {
+  const { ex, at } = setup(order, 'ACKNOWLEDGED')
+  ex.placed.set('link-1', { orderId: 'o9', status: 'PartiallyFilled', cumExecQty: 0.015, avgPrice: 60900 })
+  const pending = await at(SETTLE_MS)
+  assert.deepEqual([pending.status, pending.filledQty, pending.avgPrice], ['PARTIALLY_FILLED', 0.015, 60900])
+  assert.deepEqual(await at(SETTLE_MS + 1, [], [partial]), pending)
+  // The persisted fill still counts if the order response momentarily omits quantity.
+  ex.placed.set('link-1', { orderId: 'o9', status: 'PartiallyFilledCanceled', cumExecQty: 0, avgPrice: 0 })
+  const final = await at(2 * SETTLE_MS)
+  assert.deepEqual([final.status, final.filledQty, final.avgPrice], ['PARTIALLY_FILLED_CANCELLED', 0.015, 60900])
 })
 
 test('a failed lookup decides nothing and does not count as a miss', async () => {

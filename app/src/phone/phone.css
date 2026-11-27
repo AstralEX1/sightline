@@ -78,6 +78,8 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .circle-btn { position: relative; display: flex; flex: none; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%;
   background: var(--surface); color: var(--text); }
 .phone .circle-btn--glass {
+  width: 56px;
+  height: 56px;
   background: radial-gradient(ellipse at 30% 0%, rgb(255 255 255 / .48), transparent 68%),
     color-mix(in srgb, var(--surface) 55%, transparent);
   -webkit-backdrop-filter: blur(14px);
@@ -99,7 +101,7 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
   background: #B72432; color: #FFFFFF; font-size: .6875rem; line-height: 1.15; font-weight: 650; box-shadow: 0 0 0 2px var(--surface); }
 
 /* Home */
-.phone .title-large { margin-top: 4px; font-size: 2.125rem; line-height: 2.5rem; font-weight: 700; letter-spacing: -.02em; }
+.phone .title-large { min-width: 0; overflow-wrap: anywhere; margin-top: 4px; font-size: 2.125rem; line-height: 2.5rem; font-weight: 700; letter-spacing: -.02em; }
 .phone .title-section { margin: 24px 0 12px; font-size: 1.5rem; line-height: 2rem; font-weight: 600; letter-spacing: -.02em; }
 .phone .status-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 44px;
   font-size: .8125rem; line-height: 1.25rem; color: var(--text-2); }
@@ -161,10 +163,11 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .screen--editor:not([hidden]) { display: flex; flex-direction: column;
   min-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
 .phone .editor-fields { container-type: inline-size; padding-bottom: 16px; }
-.phone .editor-actions { position: sticky; z-index: 2; bottom: 0; display: grid; gap: 8px; margin-top: auto;
+.phone .editor-actions { position: sticky; z-index: 2; bottom: 0; display: grid; margin-top: auto;
   padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); background: var(--bg); }
 .phone .editor-actions .pill-btn { justify-content: center; font-weight: 650; text-align: center; }
 .phone .editor-actions__note { color: var(--text-2); font-size: .8125rem; line-height: 1.125rem; text-align: center; }
+.phone .editor-actions__note:not(:empty) { margin-bottom: 8px; }
 .phone .title-pill { justify-self: center; display: flex; align-items: center; gap: 8px; max-width: 100%; min-height: 44px; padding: 0 8px;
   font-size: 1.125rem; line-height: 1.5rem; font-weight: 500; letter-spacing: -.01em; }
 .phone .title-pill__text { min-width: 0; overflow-wrap: anywhere; }
@@ -288,15 +291,15 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 .phone .menu-scrim { background: var(--menu-scrim); opacity: 1; }
 .phone .scrim.is-open { opacity: 1; }
 .phone .scrim.is-closing, .phone .sheet.is-closing { pointer-events: none; } /* a closing sheet never swallows the next tap; an opening one does, so a double tap opens one sheet */
-.phone .sheet { position: fixed; z-index: 11; right: 0; bottom: 0; left: 0; max-width: 600px; max-height: 90dvh; margin: 0 auto; overflow: auto; overscroll-behavior: contain;
+.phone .sheet { container-type: inline-size; position: fixed; z-index: 11; right: 0; bottom: 0; left: 0; max-width: 600px; max-height: 90dvh; margin: 0 auto; overflow: auto; overscroll-behavior: contain;
   padding-bottom: calc(env(safe-area-inset-bottom) + 16px); border-radius: 12px 12px 0 0; background: var(--bg);
   transform: translateY(100%); transition: transform .35s cubic-bezier(.2, 1, .3, 1); } /* no overshoot: nothing threw it */
 .phone .sheet.is-open { transform: none; }
 .phone .sheet.is-held { animation: hold .3s ease-out; } /* a dismiss that would lose edits: a nudge, then it stays */
 @keyframes hold { 40% { translate: 0 12px; } }
 .phone .sheet__grabber { width: 36px; height: 5px; margin: 8px auto 4px; border-radius: 3px; background: #C7C7CC; touch-action: none; }
-.phone .sheet__nav { position: sticky; top: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; min-height: 44px; padding: 0 12px; touch-action: none; } /* 12 + the button's 8 puts Cancel on the body's 20 px edge */
-.phone .sheet__title { font-size: 1.125rem; line-height: 1.5rem; font-weight: 500; letter-spacing: -.01em; text-align: center; }
+.phone .sheet__nav { position: sticky; top: 0; display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr); align-items: center; min-height: 44px; padding: 0 12px; touch-action: none; } /* 12 + the button's 8 puts Cancel on the body's 20 px edge */
+.phone .sheet__title { font-size: 1.125rem; line-height: 1.5rem; font-weight: 500; letter-spacing: -.01em; text-align: center; overflow-wrap: anywhere; }
 .phone .link-btn { justify-self: start; min-height: 44px; padding: 0 8px; color: var(--accent-text); font-weight: 500; }
 .phone .link-btn--strong { justify-self: end; font-weight: 600; }
 .phone .sheet__body { padding: 8px 20px 0; }

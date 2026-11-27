@@ -204,10 +204,12 @@ export const sameTerms = (a: Terms, b: Terms) => JSON.stringify(a) === JSON.stri
 /** Market orders wait the short expiry; protection, margin and cancel the long one (§9). */
 export const isMarket = (a: Action) => a.type === 'CLOSE_POSITION' || a.type === 'OPEN_LONG' || a.type === 'OPEN_SHORT' || a.type === 'INCREASE_POSITION'
 
-/** Lens queue (§9): Close, stops, margin, cancel (critical first), then take profit, then Notify, then Open and Increase; oldest first. */
+/** Lens queue (§9): Close, stops, margin, cancel; critical first, then action rank, then age. */
 const group = (t: Terms) => t.type === 'notify' ? 2 : t.type === 'order' ? (t.reduceOnly ? 0 : 3) : t.type === 'setTakeProfit' ? 1 : 0
+const actionRank = (t: Terms) => t.type === 'order' && t.reduceOnly ? 0 : t.type === 'setStop' ? 1 : t.type === 'addMargin' ? 2 : t.type === 'cancel' ? 3 : 0
 export const queueOrder = (a: Proposal, b: Proposal) =>
-  group(a.terms) - group(b.terms) || (a.priority === b.priority ? 0 : a.priority === 'CRITICAL' ? -1 : 1) || a.createdAt - b.createdAt
+  group(a.terms) - group(b.terms) || (a.priority === b.priority ? 0 : a.priority === 'CRITICAL' ? -1 : 1)
+    || actionRank(a.terms) - actionRank(b.terms) || a.createdAt - b.createdAt
 
 /** The matching condition and its observed value: "liquidation distance 3.2%". */
 export function reasonText(c: Condition, value = NaN): string {
@@ -246,6 +248,7 @@ export function executionLine(e: Execution): string {
     case 'ACKNOWLEDGED': return 'Submitted · waiting for fill'
     case 'FILLED': return `Filled · ${e.filledQty} ${coin(t.symbol)} at ${price(e.avgPrice)}`
     case 'PARTIALLY_FILLED': return `Partly filled · ${e.filledQty} of ${t.type === 'order' ? t.qty : ''} ${coin(t.symbol)}`
+    case 'PARTIALLY_FILLED_CANCELLED': return `Filled ${e.filledQty} of ${t.type === 'order' ? t.qty : ''} ${coin(t.symbol)}${e.avgPrice > 0 ? ` at ${price(e.avgPrice)}` : ''} · remainder cancelled`
     case 'APPLIED':
       return t.type === 'setStop' ? `Done · stop at ${price(t.price)}` : t.type === 'setTakeProfit' ? `Done · take profit at ${price(t.price)}`
         : t.type === 'addMargin' ? `Done · added ${t.usd} USDT margin` : t.type === 'cancel' ? 'Done · order cancelled' : 'Done'

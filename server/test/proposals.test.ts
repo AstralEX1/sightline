@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { actionSummary, conditionSummary, resolve, type Market } from '../src/proposals.ts'
+import { actionSummary, conditionSummary, queueOrder, resolve, type Market } from '../src/proposals.ts'
 import { ACTION_TYPES, CONDITION_TYPES, type Action, type Condition } from '../src/registry.ts'
+import type { Proposal, Terms } from '../src/types.ts'
 
 const market: Market = {
   ticker: { last: 100, mark: 100, index: 100 },
@@ -153,4 +154,23 @@ test('a tile’s Do line for every action, a blank value as …', () => {
   ]
   for (const [action, text] of cases) assert.equal(actionSummary(action), text)
   assert.deepEqual(new Set(cases.map(([a]) => a.type)), new Set(ACTION_TYPES))
+})
+
+
+const queued = (id: string, terms: Terms, priority: Proposal['priority'] = 'NORMAL', createdAt = 1): Proposal => ({
+  id, key: id, title: id, detail: '', question: id, who: '', why: '', alertId: `a-${id}`, shortcutId: 's1', version: 1,
+  targetKey: 'pos:BTCUSDT:0:e1', terms, simulated: false, priority, status: 'PENDING', createdAt, expiresAt: createdAt + 60_000,
+})
+
+test('the critical queue group keeps its documented action order, then age', () => {
+  const close = queued('close', { type: 'order', symbol: 'BTCUSDT', side: 'Sell', qty: '0.025', positionIdx: 0, reduceOnly: true, orderLinkId: 'close' }, 'NORMAL', 20)
+  const stop = queued('stop', { type: 'setStop', symbol: 'BTCUSDT', positionIdx: 0, price: 60_500 }, 'NORMAL', 30)
+  const margin = queued('margin', { type: 'addMargin', symbol: 'BTCUSDT', positionIdx: 0, usd: 50 }, 'NORMAL', 1)
+  const cancel = queued('cancel', { type: 'cancel', symbol: 'BTCUSDT', orderId: 'o1' }, 'NORMAL', 0)
+  assert.deepEqual([margin, cancel, stop, close].sort(queueOrder).map(p => p.id), ['close', 'stop', 'margin', 'cancel'])
+
+  const criticalMargin = queued('critical-margin', margin.terms, 'CRITICAL', 40)
+  assert.deepEqual([close, criticalMargin].sort(queueOrder).map(p => p.id), ['critical-margin', 'close'])
+  const oldClose = queued('old-close', close.terms, 'NORMAL', 10)
+  assert.deepEqual([close, oldClose].sort(queueOrder).map(p => p.id), ['old-close', 'close'])
 })

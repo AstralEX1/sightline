@@ -30,7 +30,7 @@ export type Session = {
   /** Raises the proposals of the shortcut whose phrase was said. Nothing runs until a tap. */
   voice(text: string): Promise<Reply>
   /** Glasses menu: seeded protect, lock and close. `at` keeps one position and the toast says "close position". */
-  command(kind: Command, at?: { symbol: string; positionIdx: number }): Promise<Reply>
+  command(kind: Command, at?: { symbol: string; positionIdx: number }, source?: 'voice'): Promise<Reply>
   /** Editor · Options · Test: a simulated alert and proposal on the first target (§9). */
   test(shortcutId: string): Promise<Reply & { alertId?: string; proposalId?: string }>
   /** Editor: what a draft matches now ("3 now") and each condition's value per target. */
@@ -72,7 +72,7 @@ const opens = (a: Action): a is Extract<Action, { type: 'OPEN_LONG' | 'OPEN_SHOR
 
 /** The exchange state one resolution reads. */
 type Ctx = { positions: Position[]; orders: Order[]; balance: Balance | null; tickers: Record<string, Ticker> }
-type Why = { reason: string; matched: string[]; type?: ConditionType; voice?: boolean; simulated?: boolean }
+type Why = { reason: string; matched: string[]; type?: ConditionType; voice?: boolean; manual?: boolean; simulated?: boolean }
 
 /** §5: absence is true only when verified; partial stops are a configuration the engine does not read. */
 function protection(p: Position, orders: Order[], kind: 'StopLoss' | 'TakeProfit'): Protection {
@@ -263,8 +263,10 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
         return { alert, proposal, error: 'Could not read Bybit, try again' } // nothing saved: the next tick tries again
       }
       // A phrase or the menu asking for what a card already asks: that card answers it, a second one would ask twice.
-      const same = r.ok && why.voice && store.pendingProposals().find(q =>
-        q.targetKey === t.key && !q.simulated && sameTerms(q.terms, r.terms)
+      const same = r.ok && (why.voice || why.manual) && store.pendingProposals().find(q =>
+        q.targetKey === t.key && !q.simulated
+        && sameTerms(q.terms, r.terms.type === 'order' && q.terms.type === 'order'
+          ? { ...r.terms, orderLinkId: q.terms.orderLinkId } : r.terms)
         && (q.terms.type !== 'notify' || (q.shortcutId === rule.id && q.version === rule.version)))
       if (same) return { alert, proposal: same }
       if (!r.ok) alert.skip = { code: r.code, reason: r.reason }
@@ -276,7 +278,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
           who: t.label, why: why.reason, reasonType: why.type,
           detail: detailOf(rule, r.note), question: r.question, createdAt: now, expiresAt: now + lifetimeMs(rule),
           alertId: alert.id, shortcutId: rule.id, version: rule.version, targetKey: t.key, epoch: t.epoch, terms: r.terms,
-          simulated: !!why.simulated, voice: why.voice, priority: alert.priority, status: 'PENDING',
+          simulated: !!why.simulated, voice: why.voice, manual: why.manual, priority: alert.priority, status: 'PENDING',
           ...(opens(a) && (a.sizes.length > 1 || a.leverages.length > 1) && { picks: { sizes: a.sizes.map(Number), leverages: a.leverages.map(Number) } }),
         }
       }
@@ -345,7 +347,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       const c = await check(p, { positions: ps, orders: os, balance: bal, tickers: { [p.terms.symbol]: tk } })
       if (!c.ok) return { ok: false, message: c.reason }
       const pass = { ok: true as const, openLeverage: opens(c.rule.action) && p.terms.type === 'order' ? p.terms.leverage : undefined }
-      if (p.voice) return pass // the phrase was the trigger, its conditions were never checked
+      if (p.voice || p.manual) return pass // the command was the trigger
       const { logic, items: original } = c.rule.conditions
       const items = asStates(original)
       if (!items.length) return pass
@@ -455,7 +457,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
       const e = store.execution(id)
       if (!e || e.status === 'REJECTED' || e.status === 'SIMULATED' || now - r.at > RECEIPT_TTL_MS) { receipts.delete(id); continue }
       const partial = e.status === 'PARTIALLY_FILLED'
-      if ((partial ? !!e.receipt : e.status !== 'FILLED' && e.status !== 'APPLIED') || e.updatedAt >= now) continue
+      if ((partial ? !!e.receipt : e.status !== 'FILLED' && e.status !== 'APPLIED' && e.status !== 'PARTIALLY_FILLED_CANCELLED') || e.updatedAt >= now) continue
       const t = e.terms
       const after = t.type === 'cancel' || t.type === 'notify' ? undefined : positions.find(p => p.symbol === t.symbol && p.positionIdx === t.positionIdx)
       // Bybit updates its position timestamp on every fill, so compare the tracked lifecycle instead.
@@ -544,19 +546,21 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
     return store.pendingProposals().filter(p => p.expiresAt > now).sort(queueOrder)
   }
 
-  async function voice(text: string, at?: { symbol: string; positionIdx: number }, said?: string): Promise<Reply> {
+  async function voice(text: string, at?: { symbol: string; positionIdx: number }, said?: string, manual = false): Promise<Reply> {
     const reply = (message: string) => { say(message, { first: true }); return { ok: false, message } }
     if (!normalizePhrase(text)) return reply('Heard nothing')
     const rule = matchShortcut(text, store.listShortcuts().filter(r => r.enabled))
     if (!rule) return reply(`No shortcut for "${text}"`)
+    const heard = said ?? rule.voicePhrase!
+    const reason = manual ? (heard.startsWith('close') ? (at ? 'Manual close' : 'Manual close all') : `Manual: ${heard}`) : `Voice: ${heard}`
     let n = 0
     for (const t of targetsOf(rule, positions, orders)) {
       if (at && (t.position?.symbol !== at.symbol || t.position.positionIdx !== at.positionIdx)) continue
-      if ((await raise(rule, t, { reason: `Voice: ${rule.voicePhrase}`, matched: [], voice: true }, ctxNow())).proposal) n++
+      if ((await raise(rule, t, { reason, matched: [], voice: !manual, manual }, ctxNow())).proposal) n++
     }
-    const heard = said ?? rule.voicePhrase
-    if (!n) return reply(`Heard "${heard}" · nothing to change`)
-    return { ok: true, message: `Heard "${heard}" · ${n} proposal${n > 1 ? 's' : ''}` }
+    const label = manual ? heard[0].toUpperCase() + heard.slice(1) : `Heard "${heard}"`
+    if (!n) return reply(`${label} · nothing to change`)
+    return { ok: true, message: `${label} · ${n} proposal${n > 1 ? 's' : ''}` }
   }
 
   return {
@@ -646,7 +650,7 @@ export function createSession(ex: Exchange, store: Store, clock: () => number = 
 
     voice: text => voice(text),
     // Close of one position matches the "close all" seed, then keeps that position. The toast names that one position.
-    command: (kind, at) => voice(PHRASE[kind], at, kind === 'close' && at ? 'close position' : undefined),
+    command: (kind, at, source) => voice(PHRASE[kind], at, kind === 'close' && at ? 'close position' : undefined, source !== 'voice'),
 
     async test(shortcutId) {
       const rule = store.getShortcut(shortcutId)

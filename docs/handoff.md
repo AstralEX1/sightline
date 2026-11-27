@@ -25,6 +25,8 @@ Settings in the Even app can send a connection check to the lens in the same ses
 
 ## Verification and release history
 
+- Current Sandbox guided alerts use the simulated glasses gestures: Down → Click for trade actions, Click for Notify. Sandbox does not request microphone access.
+
 - Notify completes the sandbox walkthrough after OK. Manual steps follow the alert state, and Play acknowledges the rendered card when the scenario action is Notify. The scenario test covers acknowledgement on the paper exchange.
 
 - The sandbox treats a spoken answer as a short command. The first final yes, no, or close is kept, a quiet mic cannot confirm, and “йес” or “da” still count. Typecheck passed and the sandbox voice tests passed on 27 November 2026. The live browser microphone was not exercised.

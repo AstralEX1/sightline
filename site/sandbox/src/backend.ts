@@ -3,7 +3,7 @@
  * server/src/main.ts, on an in-memory SQLite and the sandbox's FakeExchange. The phone and lens call it through `fetch`.
  */
 import { Buffer } from './shims/buffer.ts'
-import { createServer, type Transcribe } from '../../../server/src/http.ts'
+import { createServer } from '../../../server/src/http.ts'
 import { createStore } from '../../../server/src/store.ts'
 import { createSession } from '../../../server/src/session.ts'
 import type { EditableShortcut } from '../../../server/src/validate.ts'
@@ -25,12 +25,12 @@ export type Backend = {
 }
 
 /** `startEnabled` is false for a guided scenario: the phone opens the rule off, and Play switches it on. */
-export function createBackend(ex: Exchange, shortcuts: EditableShortcut[], startEnabled = true, transcribe?: Transcribe): Backend {
+export function createBackend(ex: Exchange, shortcuts: EditableShortcut[], startEnabled = true): Backend {
   const store = createStore(':memory:')
   store.seed(shortcuts, 'sandbox')
   if (!startEnabled) for (const rule of store.listShortcuts()) store.setEnabled(rule.id, false)
   const session = createSession(ex, store, Date.now)
-  const { handler } = createServer({ session, store, token: TOKEN, source: 'Sandbox', transcribe }) as unknown as { handler: Handler }
+  const { handler } = createServer({ session, store, token: TOKEN, source: 'Sandbox' }) as unknown as { handler: Handler }
 
   let running: Promise<void> | null = null
   let stopped = false

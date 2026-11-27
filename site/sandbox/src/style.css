@@ -5,7 +5,7 @@
   --line: rgba(21, 21, 21, .1);
   --card: #fff;
   --accent: #202124;
-  --up: #20b26c;
+  --amber: #ffbf47;
   --radius: 18px;
   --wide: min(1432px, calc(100% - 48px));
   color-scheme: light;
@@ -34,16 +34,19 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .tab[aria-selected="true"] { background: var(--card); color: var(--ink); }
 .tab-n { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(21, 21, 21, .08); font-weight: 700; font-size: 13px; }
 .tab[aria-selected="true"] .tab-n { background: var(--ink); color: #fff; }
-/* The first visit is one story. The other scenarios appear once Replay does. */
-.tabs:not(.is-open) .tab:not(:first-child) { display: none; }
 .tab-t { display: grid; min-width: 0; }
 .tab-t b { font-size: 15.5px; letter-spacing: -.01em; }
 .tab-t small { font-size: 13px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .panel {
   width: var(--wide); margin: 0 auto 40px; padding: 22px 24px 28px; border-radius: 0 22px 22px 22px; background: var(--card);
-  display: grid; gap: 24px; grid-template-columns: 320px minmax(0, 1fr) 320px; grid-template-areas: "phone glasses exchange"; align-items: start;
+  display: grid; gap: 12px 24px; grid-template-columns: 320px minmax(0, 1fr) 320px; grid-template-rows: max-content 1fr;
+  grid-template-areas: "phone glasses exchange" "phone guide exchange"; align-items: start;
 }
+.views { display: none; grid-area: views; padding: 3px; gap: 3px; background: #eceef1; border-radius: 13px; }
+.views button { min-width: 0; min-height: 44px; border: 0; border-radius: 10px; background: transparent; font-weight: 650; color: #51555c; }
+.views button[aria-pressed="true"] { color: var(--ink); background: var(--card); box-shadow: 0 1px 4px rgb(0 0 0 / .12); }
+.views button:active { background: #dfe1e5; }
 .device { min-width: 0; }
 .phone-col { grid-area: phone; position: relative; }
 .glasses { grid-area: glasses; }
@@ -54,106 +57,71 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .phone iframe { position: absolute; top: 10px; left: 10px; display: block; width: 390px; height: 874px; border: 0; border-radius: 47px; background: #f3f3f3; transform: scale(var(--phone-scale, .76923)); transform-origin: 0 0; }
 .screen { width: 100%; height: 100%; border-radius: 36px; overflow: hidden; background: #0b0e11; }
 
-/* ── the lens in a copy of the Even Hub simulator's "Glasses Display" window ── */
+/* ── glasses display ── */
 .sim { width: 576px; max-width: 100%; margin: 0 auto; border-radius: 12px; overflow: hidden; background: #1e1e1e; box-shadow: 0 0 0 1px rgba(255, 255, 255, .08) inset, 0 22px 60px -22px rgba(0, 0, 0, .6); }
 .sim-title { display: flex; align-items: center; gap: 14px; height: 30px; padding: 0 12px; background: #2a2a2a; color: #b3b3b3; font: 600 13px/1 -apple-system, system-ui, sans-serif; border-bottom: 1px solid #111; }
-.sim-dots { display: flex; gap: 8px; }
-.sim-dots i { width: 12px; height: 12px; border-radius: 50%; background: #b8b8b8; }
-.sim-dots i:nth-child(2) { background: #858585; }
-.sim-dots i:nth-child(3) { background: #4d4d4d; }
 #lens { display: block; width: 576px; max-width: 100%; height: auto; aspect-ratio: 2 / 1; background: #000; cursor: pointer; }
-#lens:focus-visible { outline-offset: -2px; }
+#lens:focus-visible { outline-color: #f4f4f5; outline-offset: -2px; }
 .sim-bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 9px 10px 10px; background: #1e1e1e; border-top: 1px solid #111; }
 .sim-bar button { min-height: 34px; padding: 0 12px; border-radius: 7px; border: 1px solid #3c3c3c; background: #2b2b2b; color: #dcdcdc; font: 500 14px/1 -apple-system, system-ui, sans-serif; transition: background-color .12s, border-color .2s; }
 .sim-bar button:hover { background: #333; }
-.sim-bar button:active, .sim-bar button.pressed { background: #3d3d3d; }
+.sim-bar button:active, .sim-bar button.pressed { background: #494949; color: white; }
+.sim-bar button.is-next { background: #3b2c16; border-color: var(--amber); color: #ffdb98; }
 .sim-bar button:focus-visible { outline-color: #f4f4f5; }
-.sim-note { min-height: 0; margin: 0; text-align: center; color: var(--ink); font-size: 13px; font-weight: 600; }
-.sim-note:not(:empty) { min-height: 20px; margin-top: 8px; }
-.step-note { flex-basis: 100%; font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, .7); }
-.steps li.missed .step-n { background: #ef454a; color: #fff; }
 
-/* ── what to do next ── */
-.steps { list-style: none; width: min(100%, 576px); margin: 12px auto 0; padding: 0; display: grid; gap: 8px; }
-.steps li { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 54px; padding: 9px 14px; border-radius: 14px; background: var(--bg); color: var(--mute); font-weight: 600; transition: background-color .25s, color .25s; }
-.steps li.now { background: var(--ink); color: #fff; }
-.steps li.done { color: var(--ink); }
-.step-n { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(21, 21, 21, .08); font-size: 13px; font-weight: 700; }
-.steps li.now .step-n { background: #fff; color: #151515; }
-.steps li.done .step-n { background: var(--up); color: #fff; }
-.or { color: rgba(255, 255, 255, .6); font-weight: 500; }
-.steps kbd { font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 8px; background: rgba(255, 255, 255, .14); }
-.play { min-height: 38px; padding: 0 18px; border: 0; border-radius: 99px; background: #202124; color: #fff; font-weight: 700; transition: transform .12s ease, filter .15s; }
-.play:hover { filter: brightness(1.05); }
-.play:active { transform: scale(.96); }
-.play:disabled { opacity: .5; cursor: default; }
-.play span { margin-right: 3px; font-size: 11px; }
-.restart { margin-top: 10px; min-height: 44px; padding: 0 10px; border: 0; background: none; color: var(--mute); font-weight: 600; }
-.restart:hover { color: var(--ink); }
-
-/* The story control is as wide as the lens. Pause and Replay share that width. */
-.story-actions {
-  display: flex; align-items: stretch; gap: 0;
-  width: min(100%, 576px); margin: 10px auto 0;
-  transition: gap .4s cubic-bezier(.22, 1, .36, 1);
+/* ── current step, result, and playback ── */
+.guide { grid-area: guide; width: min(100%, 576px); margin: 0 auto; display: grid; gap: 8px; }
+.steps { display: grid; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.steps:empty { display: none; }
+.steps li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 8px; align-items: baseline; padding: 8px 10px; border-radius: 11px; background: var(--bg); font-weight: 650; }
+.steps li[data-state="complete"] { background: transparent; color: #5b6068; font-weight: 550; }
+.steps li[aria-current="step"] { background: #f1f2f4; }
+.step-n { color: #51555c; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.step-note { grid-column: 2; color: #51555c; font-size: 13px; font-weight: 500; }
+@media (prefers-reduced-motion: no-preference) {
+  .steps li { animation: step-reveal .8s cubic-bezier(.2, .7, .2, 1) both; }
+  @keyframes step-reveal { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
 }
-.story-actions .sl-playback { --playback-unit: 1.15px; --playback-ink: #111111; --playback-hover: #000000; --playback-active: #000000; width: 100%; }
-.story-actions .sl-playback__surface { display: flex; align-items: center; justify-content: center; gap: 12px; }
-.story-actions .sl-playback__icon { position: relative; left: auto; top: auto; transform: none; flex: none; }
-.story-actions .sl-playback__label { width: auto; }
-.story-actions__slot {
-  flex: 1 1 0; min-width: 0; overflow: hidden;
-  transition: flex-grow .4s cubic-bezier(.22, 1, .36, 1), opacity .3s ease;
-}
-.story-actions__slot--replay { flex-grow: 0; opacity: 0; pointer-events: none; }
-.story-actions.is-split { gap: 14px; }
-.story-actions.is-split .story-actions__slot--replay { flex-grow: 1; opacity: 1; pointer-events: auto; }
-.story-actions.is-replay .story-actions__slot--main { flex-grow: 0; opacity: 0; pointer-events: none; }
-.story-actions.is-replay .story-actions__slot--replay { flex-grow: 1; opacity: 1; pointer-events: auto; }
+.sim-note, .result { margin: 0; padding: 8px 10px; font-size: 13px; font-weight: 650; border-radius: 11px; }
+.sim-note { background: var(--bg); }
+.sim-note:empty { display: none; }
+.result { background: #eaf5ee; color: #14502d; font-size: 14px; font-variant-numeric: tabular-nums; }
+.guide-actions { display: flex; gap: 8px; align-items: stretch; }
+.guide-actions .sl-playback { --playback-ink: #111111; --playback-hover: #000000; --playback-active: #000000; flex: 1 1 auto; min-width: 0; }
+.guide-actions .sl-playback__surface { display: flex; align-items: center; justify-content: center; gap: 9px; }
+.guide-actions .sl-playback__icon { position: relative; left: auto; top: auto; transform: none; flex: none; }
+.guide-actions .sl-playback__label { width: auto; white-space: nowrap; }
+.secondary { padding: 0 12px; min-height: 44px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); font-weight: 650; font-size: 13px; }
+.secondary:active { background: #dfe1e5; }
+.secondary:disabled { color: #51555c; cursor: default; }
 
-/* Dim the page without moving it. The active frame and the steps stay above the veil. */
+/* Keep the active frame and controls visible above the veil without moving the layout. */
 body::before {
   content: ""; position: fixed; inset: 0; z-index: 20; pointer-events: none; opacity: 0;
-  background: rgba(21, 21, 21, .52);
+  background: rgba(21, 21, 21, .24);
 }
 body.is-shade::before { opacity: 1; }
-body.is-shade :is(.story-actions, .steps) { position: relative; z-index: 22; }
+body.is-shade .guide { position: relative; z-index: 22; }
 body[data-spotlight="phone"] .phone-col,
 body[data-spotlight="chart"] .exchange-col,
 body[data-spotlight="glasses"] .sim { position: relative; z-index: 21; }
-/* Amber frame: the phone wears it for the whole opening stage. A result wears it when it arrives. */
-body[data-spotlight="phone"] .phone-col > .phone,
-.phone.is-ring {
-  box-shadow:
-    0 0 0 3px rgba(255, 206, 110, .95),
-    0 0 18px 4px rgba(255, 120, 20, .5),
-    0 18px 50px -24px rgba(0, 0, 0, .55),
-    inset 0 0 0 2px #2a2a2a;
-  animation: frame-breath 2s cubic-bezier(0.77, 0, 0.175, 1) 1;
-}
-@keyframes frame-breath {
-  50% {
-    box-shadow:
-      0 0 0 4px #fff1cc,
-      0 0 22px 8px rgba(255, 120, 20, .75),
-      0 18px 50px -24px rgba(0, 0, 0, .55),
-      inset 0 0 0 2px #2a2a2a;
-  }
-}
-.sim-bar button.is-ring {
-  border-color: #ffce6e;
-  box-shadow: 0 0 0 3px rgba(255, 206, 110, .95), 0 0 12px 2px rgba(255, 120, 20, .55);
-}
 @media (prefers-reduced-motion: no-preference) {
   body::before { transition: opacity .7s ease; }
 }
-@media (prefers-reduced-motion: reduce) {
-  body[data-spotlight="phone"] .phone-col > .phone, .phone.is-ring { animation: none; }
-}
 
-/* ── narrower screens: the glasses stay first ── */
+/* ── a selectable side panel on narrow desktops, one view on phones ── */
 @media (max-width: 1240px) {
-  .panel { grid-template-columns: 320px 320px; justify-content: center; grid-template-areas: "glasses glasses" "phone exchange"; }
+  body.is-shade::before { opacity: 0; }
+  .panel { grid-template-columns: minmax(0, 576px) 320px; grid-template-rows: auto max-content 1fr; justify-content: center;
+    grid-template-areas: ". views" "glasses side" "guide side"; }
+  .views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .views button[data-view="glasses"] { display: none; }
+  .phone-col, .exchange-col { grid-area: side; }
+  .panel[data-side="phone"] .exchange-col, .panel[data-side="chart"] .phone-col { display: none; }
+  .device > .phone { height: clamp(440px, calc(100svh - 248px), 692px); }
+  .exchange-col .ex-charts { overflow-y: auto; }
+  .exchange-col .ex-plot { flex: 1 0 112px; }
+  .panel[data-guided] .ex-charts :is(.ex-quickbar, .ex-cta) { display: none; }
 }
 @media (max-width: 760px) {
   /* below its native 576 px, nearest-neighbour drops 1 px strokes: let the browser smooth the downscale */
@@ -163,6 +131,27 @@ body[data-spotlight="phone"] .phone-col > .phone,
   .tab { padding: 8px; min-height: 56px; }
   .tab-n, .tab-t small { display: none; }
   .tab-t b { font-size: 13.5px; }
-  .panel { padding: 16px 12px 24px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "glasses" "phone" "exchange"; justify-items: center; }
-  .glasses { width: 100%; }
+  .panel { --stage-height: clamp(340px, calc(100svh - 330px), 608px); padding: 12px 12px 16px; display: flex; flex-direction: column; align-items: stretch; }
+  .views { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .views button[data-view="glasses"] { display: block; }
+  .panel[data-view="glasses"] :is(.phone-col, .exchange-col),
+  .panel[data-view="phone"] :is(.glasses, .exchange-col),
+  .panel[data-view="chart"] :is(.glasses, .phone-col) { display: none; }
+  .glasses { display: grid; align-content: center; min-height: var(--stage-height); }
+  .device > .phone { height: var(--stage-height); margin-inline: auto; border-radius: 32px; }
+  .phone iframe, .screen { border-radius: 22px; }
+  .sim-bar button { min-height: 44px; }
+  body.is-shade .guide, .guide {
+    position: sticky; z-index: 22; bottom: 0; padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line); background: #fff;
+  }
+}
+@media (max-width: 1240px) and (prefers-reduced-motion: no-preference) {
+  .device { animation: reveal-device .14s ease-out; }
+  @keyframes reveal-device { from { opacity: .78; } }
+}
+@media (max-width: 760px) and (prefers-reduced-transparency: no-preference) {
+  @supports (backdrop-filter: blur(14px)) {
+    .guide { background: rgb(255 255 255 / .88); backdrop-filter: blur(14px); }
+  }
 }

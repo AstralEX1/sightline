@@ -4,7 +4,9 @@ Trading alerts and order confirmations for [Even Realities G2](https://www.evenr
 
 Set a shortcut on your phone. The glasses show what triggered it, and the exact order, before anything is sent.
 
-**[Website demo](https://trade-shortcuts-pi.vercel.app/sandbox/#liquidation)** · [Try on your G2](docs/judge-testing.md) · [Project site](https://trade-shortcuts-pi.vercel.app/)
+**[Phone app](https://tradeshortcuts.xyz/phone/)** · **[Website demo](https://tradeshortcuts.xyz/sandbox/#liquidation)** · [Try on your G2](docs/judge-testing.md) · [Project site](https://tradeshortcuts.xyz/)
+
+The hosted phone page connects to the paper server with the address and token shared privately.
 
 ## Features
 
@@ -47,7 +49,7 @@ Lens frames are from the Even Hub Simulator. [27-second clip](assets/demo.mp4) �
 
 ## Website demo
 
-1. Open the [demo](https://trade-shortcuts-pi.vercel.app/sandbox/#liquidation) and press **Play** under the glasses, or drag the BTC chart down.
+1. Open the [demo](https://tradeshortcuts.xyz/sandbox/#liquidation) and press **Play** under the glasses, or drag the BTC chart down.
 2. When the alert appears, press **Down** to select **Close 50%**, then **Click**.
 3. The lens shows **Closed 0.025 BTC**. **Start over** resets the demo.
 
@@ -162,4 +164,4 @@ Built for the Exchanges & Stocks track. [Submission brief](docs/dorahacks.md)
 
 ## License
 
-[MIT](LICENSE) · [Privacy policy](https://trade-shortcuts-pi.vercel.app/privacy.html) · [Even Hub listing](docs/store-listing.md)
+[MIT](LICENSE) · [Privacy policy](https://tradeshortcuts.xyz/privacy.html) · [Even Hub listing](docs/store-listing.md)
