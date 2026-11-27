@@ -82,8 +82,8 @@ export interface Store {
   alert(id: string): AlertRecord | null
   /** Newest first. With beforeId, continue within the same timestamp. Default limit 50. */
   history(before?: number, limit?: number, beforeId?: string): AlertRecord[]
-  /** createdAt > after, oldest first. */
-  alertsAfter(after: number, limit?: number): AlertRecord[]
+  /** Phone alerts, oldest first. With afterId, continue within the same timestamp. */
+  alertsAfter(after: number, limit?: number, afterId?: string): AlertRecord[]
   saveProposal(p: Proposal): void
   proposal(id: string): Proposal | null
   latestProposalForAlert(alertId: string): Proposal | null
@@ -291,8 +291,13 @@ export function createStore(path: string, clock: () => number = Date.now): Store
          AND (created_at < ? OR rowid < (SELECT rowid FROM alerts WHERE account_id = ? AND created_at = ? AND id = ?))
        ORDER BY created_at DESC, rowid DESC LIMIT ?`,
       ACCOUNT, before, before, ACCOUNT, before, beforeId ?? null, limit),
-    alertsAfter: (after, limit = 50) => many<AlertRecord>(
-      'SELECT json FROM alerts WHERE account_id = ? AND created_at > ? ORDER BY created_at, rowid LIMIT ?', ACCOUNT, after, limit),
+    alertsAfter: (after, limit = 50, afterId) => many<AlertRecord>(
+      `SELECT json FROM alerts
+       WHERE account_id = ? AND created_at >= ?
+         AND (created_at > ? OR rowid > (SELECT rowid FROM alerts WHERE account_id = ? AND created_at = ? AND id = ?))
+         AND json_extract(json, '$.delivery.phone') = 1
+       ORDER BY created_at, rowid LIMIT ?`,
+      ACCOUNT, after, after, ACCOUNT, after, afterId ?? null, limit),
 
     saveProposal: p => store.transaction(() => {
       const prev = get('SELECT status FROM proposals WHERE id = ?', p.id)

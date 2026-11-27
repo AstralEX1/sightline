@@ -131,15 +131,15 @@ export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<un
   banner.addEventListener('click', () => banner.classList.remove('is-on'))
 
   // §7.5: polling also tells the server the app is open, so alerts reach it in-app
-  let after: number | null = null
+  let after: AlertRecord | null | undefined
   const pollAlerts = async () => {
     if (document.visibilityState !== 'visible') return
     if (current?.name === 'history') void historyPage.refresh()
     try {
-      after ??= (await api.getHistory())[0]?.createdAt ?? 0 // start after the newest known alert, by the server's clock
-      const fresh = await api.getNotifications(after)
+      if (after === undefined) after = (await api.getHistory())[0] ?? null
+      const fresh = await api.getNotifications(after ?? undefined)
       if (!fresh.length) return
-      after = fresh[fresh.length - 1].createdAt
+      after = fresh[fresh.length - 1]
       if (current?.name !== 'history') { unseen += fresh.length; setBadge() }
       showBanner(fresh[fresh.length - 1], fresh.length - 1)
     } catch (e) {

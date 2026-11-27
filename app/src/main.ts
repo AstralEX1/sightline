@@ -100,8 +100,8 @@ let hide = ''
 let cursor = { key: '', at: 0 }
 let mic: 'off' | 'starting' | 'on' | 'stopping' | 'sending' = 'off'
 let micAttempt = 0
-let voiceInForeground = true
-const canUseVoice = () => voiceInForeground && !document.hidden && !quit
+// Foreground events also describe the system menu overlay. WebView visibility owns background audio.
+const canUseVoice = () => !document.hidden && !quit && wear.inUse
 let audio: Uint8Array[] = []
 let listenTimer: ReturnType<typeof setTimeout> | undefined
 let voiceNote = { text: '', until: 0 }
@@ -585,13 +585,9 @@ function onSpokenClose(r: VoiceReply) {
   return raiseCommand('close', p)
 }
 
-/** One transcript, one target. A card that arrived during Speak still takes a plain yes or no. */
+/** Speak handles commands. An alert answer belongs to the card that opened its mic. */
 async function onTranscript(target: Listen, r: VoiceReply) {
-  const open = current()
-  if (target.kind === 'close') {
-    if (open.layout === 'alert' && open.card && r.answer) return onAnswer(open.card.id, r)
-    return onSpokenClose(r)
-  }
+  if (target.kind === 'close') return onSpokenClose(r)
   return onAnswer(target.id, r)
 }
 
@@ -670,7 +666,7 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
 
   if (is(OsEventTypeList.ABNORMAL_EXIT_EVENT)) {
     void interruptVoice()
-    page = '-' // the host dropped the page: the next draw rebuilds it
+    if (page) page = '-' // the host dropped an existing page
     return
   }
   const life = LIFECYCLE.find(is)
@@ -683,19 +679,15 @@ async function onEvent(event: Parameters<Parameters<EvenAppBridge['onEvenHubEven
       void interruptVoice()
       return
     }
-    if (life === OsEventTypeList.FOREGROUND_ENTER_EVENT) voiceInForeground = true
     if (quit && life === OsEventTypeList.FOREGROUND_ENTER_EVENT) {
       quit = false // the host kept the WebView and opened the app again
       shown = {}
       page = '-'
       return poll()
     }
-    if (act === 'pass' && life === OsEventTypeList.FOREGROUND_EXIT_EVENT) {
-      voiceInForeground = false
-      void interruptVoice()
-    }
     if (act === 'ignore') return // the exit dialogue just appeared: a rebuild behind it only loses the images
     if (act === 'show' || act === 'resume') {
+      if (!page && bridge) await openLens(bridge)
       if (act === 'show') {
         shown = {}
         page = '-' // rebuild from scratch: an alert comes back on Dismiss with a fresh settle time
@@ -875,6 +867,36 @@ function moveFocus(dir: 1 | -1) {
   return draw()
 }
 
+let openingLens = false
+let retryLensOpen = false
+async function openLens(b: EvenAppBridge) {
+  if (page || quit) return
+  if (openingLens) { retryLensOpen = true; return }
+  openingLens = true
+  try {
+    do {
+      retryLensOpen = false
+      const sc = current()
+      shown = boxText(sc)
+      shownTone = { ...sc.tone }
+      let result = await call(() => b.createStartUpPageContainer(new CreateStartUpPageContainer(layout(sc, shown)))).catch(() => null)
+      // The start-up page exists once per session. After a WebView reload the host answers 1 (invalid) and the lens would keep
+      // the old page for good, so rebuild the existing one instead.
+      if (result === 1 && (await call(() => b.rebuildPageContainer(new RebuildPageContainer(layout(sc, shown)))).catch(() => false))) result = 0
+      if (result === 0) {
+        page = pageKey(sc)
+        pageSince = Date.now()
+        if (sc.icon) await sendIcon(sc.icon)
+        enableGlassesTest() // only this WebView is on the glasses; a plain browser must not send the test there
+      }
+      $('glasses').textContent = result === 0 ? 'Glasses connected' : result === null ? 'Glasses not answering' : `Glasses not connected (code ${result})`
+    } while (retryLensOpen && !page && !quit && wear.inUse)
+  } finally {
+    openingLens = false
+    retryLensOpen = false
+  }
+}
+
 async function startGlasses() {
   try {
     bridge = await Promise.race([
@@ -891,30 +913,21 @@ async function startGlasses() {
   const stored = { getLocalStorage: (k: string) => b.getLocalStorage(k), setLocalStorage: (k: string, v: string) => call(() => b.setLocalStorage(k, v)) }
   await call(() => api.loadSettings(stored)).catch(() => {}) // before the first request: the token lives here
   settingsLoaded()
-  const sc = current()
-  shown = boxText(sc)
-  shownTone = { ...sc.tone }
-  let result = await call(() => b.createStartUpPageContainer(new CreateStartUpPageContainer(layout(sc, shown)))).catch(() => null)
-  // The start-up page exists once per session. After a WebView reload the host answers 1 (invalid) and the lens would keep
-  // the old page for good, so rebuild the existing one instead.
-  if (result === 1 && (await call(() => b.rebuildPageContainer(new RebuildPageContainer(layout(sc, shown)))).catch(() => false))) result = 0
-  if (result === 0) {
-    page = pageKey(sc)
-    pageSince = Date.now()
-    if (sc.icon) await sendIcon(sc.icon)
-    enableGlassesTest() // only this WebView is on the glasses; a plain browser must not send the test there
-  }
-  // A refused host (a normal browser has no Flutter handler) stays quiet. page '' makes draw skip the bridge,
-  // so it does not rebuild once a second for the rest of the session.
-  $('glasses').textContent = result === 0 ? 'Glasses connected' : result === null ? 'Glasses not answering' : `Glasses not connected (code ${result})`
-  api.countLaunch() // after the start-up page and its images: a storage write next to them can drop the link
   bridge.onEvenHubEvent(e => void onEvent(e))
-  const status = (await call(() => b.getDeviceInfo()).catch(() => null))?.status
-  if (status) wear.update(status)
-  bridge.onDeviceStatusChanged(s => {
+  bridge.onDeviceStatusChanged(async s => {
     const was = wear.inUse
-    if (wear.update(s) && !was) void poll() // just put on: fresh numbers now, not on the next tick
+    if (!wear.update(s)) { void interruptVoice(); return }
+    if (!page && s.connectType === 'connected') await openLens(b)
+    if (!was) void poll()
   })
+  await openLens(b)
+  api.countLaunch()
+  const status = (await call(() => b.getDeviceInfo()).catch(() => null))?.status
+  if (status) {
+    const inUse = wear.update(status)
+    if (!inUse) void interruptVoice()
+    else if (!page && status.connectType === 'connected') await openLens(b)
+  }
 }
 
 document.addEventListener('visibilitychange', () => { if (document.hidden) void interruptVoice() })

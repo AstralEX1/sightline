@@ -380,3 +380,15 @@ test('settings: defaults until saved; validateSettings bounds', () => {
   bad({ notifications: null }, /Notifications must be an object/)
   assert.throws(() => validateSettings([]), /Settings must be an object/)
 })
+
+test('phone notifications page past glasses-only alerts and shared timestamps', () => {
+  const s = createStore(':memory:')
+  for (let i = 0; i < 51; i++) {
+    s.saveAlert({ ...alertRec(`glasses${i}`, 'sc_1', 1), delivery: { glasses: true, phone: false } })
+  }
+  for (const id of ['phoneA', 'phoneB']) {
+    s.saveAlert({ ...alertRec(id, 'sc_1', 2), delivery: { glasses: true, phone: true } })
+  }
+  assert.deepEqual(s.alertsAfter(0, 1).map(a => a.id), ['phoneA'])
+  assert.deepEqual(s.alertsAfter(2, 1, 'phoneA').map(a => a.id), ['phoneB'])
+})
