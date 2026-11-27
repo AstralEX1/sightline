@@ -12,12 +12,12 @@
 </head>
 <body>
   <header class="top">
-    <a href="../" class="brand"><img src="lockup.svg" alt="Trade Shortcuts" width="214" height="20" /></a>
-    <span class="pill">Sandbox</span>
-    <a href="../" class="back">Back to site</a>
+    <a href="../" class="brand" aria-label="Trade Shortcuts home"><img src="favicon.svg" alt="" width="32" height="32" /></a>
+    <span class="brand-title">Sandbox</span>
   </header>
 
   <nav id="tabs" class="tabs" role="tablist" aria-label="Scenarios"></nav>
+  <div id="spotlight-mask" class="spotlight-mask" aria-hidden="true" hidden></div>
 
   <main id="panel" class="panel" role="tabpanel" data-view="glasses" data-side="phone">
     <div id="views" class="views" role="group" aria-label="Sandbox view">
@@ -60,6 +60,7 @@
       </div>
       <ol id="steps" class="steps" aria-live="polite"></ol>
       <p id="result" class="result" role="status" hidden></p>
+      <p id="next-prompt" class="next-prompt" role="status" hidden>Now try it by yourself. Choose template and drag the price.</p>
       <p id="note" class="sim-note" role="status"></p>
     </div>
   </main>

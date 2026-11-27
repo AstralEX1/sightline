@@ -14,6 +14,7 @@
   --bx-down-bg: #391c1f;
   --bx-accent: #d6d8dc;
   --bx-alert: #f0f1f3;
+  --bx-amber: #ffc45e;
   display: flex; flex-direction: column; width: 100%; height: 100%; overflow: hidden; padding: 0; margin: 0;
   background: var(--bx-bg); color: var(--bx-text); color-scheme: dark; box-shadow: none;
   font: 12.5px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -129,7 +130,19 @@
 .bx .ex-grid .ex-cell:nth-child(3n + 2) { text-align: center; }
 .bx .ex-grid .ex-cell:nth-child(3n) { text-align: right; }
 .bx .ex-grid .ex-cell:nth-child(5) { grid-column: span 2; text-align: right; }
-.bx .ex-cell.ex-result { border-radius: 4px; background: rgba(85, 175, 114, .17); box-shadow: 0 0 0 3px rgba(85, 175, 114, .17); }
+.bx .ex-cell.ex-result {
+  border-radius: 4px; outline: 2px solid var(--bx-amber); outline-offset: 2px;
+  background: rgba(255, 196, 94, .14);
+  box-shadow: 0 0 0 1px rgba(255, 196, 94, .35), 0 0 10px 2px rgba(255, 177, 64, .48);
+  animation: ex-position-glow 1.2s ease-in-out infinite alternate;
+}
+@keyframes ex-position-glow {
+  from { background: rgba(255, 196, 94, .10); box-shadow: 0 0 0 1px rgba(255, 196, 94, .3), 0 0 7px 1px rgba(255, 177, 64, .34); }
+  to { background: rgba(255, 196, 94, .24); box-shadow: 0 0 0 2px rgba(255, 196, 94, .72), 0 0 16px 4px rgba(255, 177, 64, .68); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bx .ex-cell.ex-result { animation: none; }
+}
 .bx .ex-card-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .bx .ex-card-btns button, .bx .ex-cancel { height: 28px; border: 0; border-radius: 4px; background: var(--bx-field); color: var(--bx-text); font-size: 12.5px; font-weight: 600; }
 .bx .ex-cancel { margin-left: auto; padding: 0 14px; }
