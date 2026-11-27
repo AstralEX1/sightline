@@ -134,6 +134,7 @@ export const getHistory = (before?: Pick<AlertRecord, 'createdAt' | 'id'>) =>
   request<AlertRecord[]>('GET', before ? `/api/history?before=${before.createdAt}&beforeId=${id(before.id)}` : '/api/history')
 export const getAlertDetails = (alertId: string) => request<AlertDetails>('GET', `/api/history/${id(alertId)}`)
 /** New alerts for the in-app banner; polling it also tells the server the app is open. */
-export const getNotifications = (after: number) => request<AlertRecord[]>('GET', `/api/notifications?after=${after}`)
+export const getNotifications = (after?: Pick<AlertRecord, 'id' | 'createdAt'>) =>
+  request<AlertRecord[]>('GET', after ? `/api/notifications?after=${after.createdAt}&afterId=${id(after.id)}` : '/api/notifications')
 export const getAccountSettings = () => request<SettingsPage>('GET', '/api/settings')
 export const putAccountSettings = (s: Settings) => request<Settings>('PUT', '/api/settings', s)

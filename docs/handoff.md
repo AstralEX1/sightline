@@ -36,11 +36,17 @@ Settings in the Even app can send a connection check to the lens in the same ses
 - Typecheck and all 587 automated tests passed on 26 November 2026 after the sandbox playback highlight, and again after bringing main's voice cancellation and privacy page onto this branch. The landing price-level cards were refreshed in the same change.
 - The G2 connection check, Quiet mode, and History changes passed typecheck and all 593 automated tests. The app, landing page, and browser sandbox built successfully. The browser simulator confirmed the TEST card, opened the position list from Quiet mode, and recorded a simulated close from 0.050 to 0.025 BTC in History. Physical G2/R1 verification is pending.
 - Working tree based on `f5a7e38`, including local server changes, 25 November 2026. With Node 22.23.4, typecheck and all 587 automated tests passed (zero skipped). The app, landing page, browser sandbox and a test `.ehpk` built in an isolated copy with a placeholder HTTPS origin.
-- Even Hub beta is `com.tradeshortcuts.g2` version `0.1.5` (26 November). It defaults to the hosted paper demo and also allowlists the private Bybit Testnet server. A tap on a position, or Speak then “close”, raises a close card that still starts on Dismiss. Package SHA-256 `aa05f2b4fc4193dbb4c964f651b86273deff55302175a58d620e2f1ef924ae17`. [Judge testing guide](judge-testing.md)
+- Before the 0.1.6 release, Even Hub Beta `com.tradeshortcuts.g2` was version `0.1.5` (26 November). It defaults to the hosted paper demo and also allowlists the private Bybit Testnet server. A tap on a position, or Speak then “close”, raises a close card that still starts on Dismiss. Package SHA-256 `aa05f2b4fc4193dbb4c964f651b86273deff55302175a58d620e2f1ef924ae17`. [Judge testing guide](judge-testing.md)
 - The hosted API on the VPS serves the current server. Demo returns `Demo data` and the Bybit service returns `Bybit testnet`. Rollback copy of the previous sources: `/opt/trade-shortcuts/bak-20261126-1140`. Earlier databases: `/opt/trade-shortcuts/bak-20261126-0724`.
 - Recorded on 24 November 2026 on Bybit testnet (XRPUSDT): open, duplicate `orderLinkId` refused (110072), set SL/TP each keeps the other, SL past mark rejected, limit order listed and cancelled, reduce-only half and oversize close (no flip), fills deduped by `execId`, add margin on isolated (110076 on cross, as expected).
 
 - The hackathon paper demo starts with the BTC half-close rule only. Its card expires after 120 seconds and can recur while the rule matches. The official desktop simulator confirmed 0.025 BTC once from 0.050 BTC and showed a single fill in History. A separate run with a synthetic lost confirmation reply recovered the execution by a read-only request. The app, landing, and sandbox built successfully and 589 automated tests passed.
+
+## G2 startup and speech fixes for 0.1.6
+
+The lens retries startup on reconnect or foreground entry, including a connection event during a failed first page creation. Speak interprets close commands, and a spoken answer stays tied to the alert that started its recording. Closing the system menu keeps recording open. Hiding the WebView, losing the device, or exiting still cancels voice. Phone banners page by timestamp and alert ID, with phone delivery filtered before the server applies its limit.
+
+Typecheck passed; all 603 automated tests passed. SDK bridge fixtures verified the startup race, reconnect recovery, Speak during a system-menu transition, and alert-bound voice answers. The app, landing, sandbox and 0.1.6 package built successfully. Physical G2/R1 checks remain: reconnect, Speak, cancelling a spoken confirmation, microphone permission denial, and the five-minute lock check.
 
 ## Open checks
 

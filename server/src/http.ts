@@ -248,7 +248,7 @@ export function createServer(d: {
       if (route === 'GET /api/notifications') {
         d.notifier?.seen('app')
         const on = store.settings().notifications.app
-        return send(res, 200, on ? store.alertsAfter(num('after') ?? 0).filter(a => a.delivery.phone) : [])
+        return send(res, 200, on ? store.alertsAfter(num('after') ?? 0, undefined, url.searchParams.get('afterId') ?? undefined) : [])
       }
       if (route === 'GET /api/settings') {
         if (d.apiKeyInfo && (!apiKey || Date.now() - apiKey.at > API_KEY_TTL_MS)) {
