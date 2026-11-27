@@ -41,9 +41,9 @@ const CURSOR_IDLE_MS = 8000 // `>` left on an action goes back to Dismiss: a str
 // (server tick 2 s + lens poll 1 s); ask the server for the card's last status if a withdrawn card must say why
 const EXPIRY_SLACK_MS = 3000
 /** Results that no longer change: polling the execution stops. */
-const FINAL: ExecutionStatus[] = ['FILLED', 'APPLIED', 'REJECTED', 'SIMULATED']
+const FINAL: ExecutionStatus[] = ['FILLED', 'APPLIED', 'PARTIALLY_FILLED_CANCELLED', 'REJECTED', 'SIMULATED']
 /** Results that went through: the lens goes back to Main on its own after NOTE_MS. */
-const DONE: ExecutionStatus[] = ['FILLED', 'APPLIED']
+const DONE: ExecutionStatus[] = ['FILLED', 'APPLIED', 'PARTIALLY_FILLED_CANCELLED']
 /** How long a done result waits for its receipt (the server reads Bybit's position on its next 2 s poll). */
 const RECEIPT_WAIT_MS = 6000
 /** When the result on the lens turned done; 0 until then. */
@@ -110,7 +110,7 @@ const pausedMin = () => Math.max(0, Math.ceil((pausedUntil - Date.now()) / 60_00
 /** The server has no speech key. The phone status line uses this. */
 const noVoice = () => state?.voice === false
 /** The mic may open: the server can transcribe, and voice answers are on. Speak uses the same switch. */
-const speakOn = () => !noVoice() && api.voiceAnswersOn()
+const speakOn = () => !import.meta.env.TRADE_SHORTCUTS_SANDBOX && !noVoice() && api.voiceAnswersOn()
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 const CALL_MS = 3000 // a BLE reply can get lost; without a cap one lost reply froze the lens for good
 /** A bridge call that does not answer in time counts as failed, so the next draw can try again. */
@@ -549,7 +549,7 @@ function positionForClose(coinName?: string) {
 
 /** Menu and spoken close share this. The card still has to be confirmed. `position` keeps one; omitted means every position. */
 let asking = false
-async function raiseCommand(kind: Command, position?: { symbol: string; positionIdx: number }) {
+async function raiseCommand(kind: Command, position?: { symbol: string; positionIdx: number }, source?: 'voice') {
   if (asking) return
   asking = true
   const label = kind === 'close' ? 'Close' : 'Menu'
@@ -557,7 +557,7 @@ async function raiseCommand(kind: Command, position?: { symbol: string; position
     pausedUntil = 0 // you asked for this card: show it
     note('One moment…', Infinity)
     await draw()
-    await api.command(kind, position)
+    await api.command(kind, position, source)
     note('', 0) // the server's toast says what it queued
   } catch (e) {
     note(`${label}: ${(e as Error).message}`)
@@ -576,18 +576,22 @@ function onSpokenClose(r: VoiceReply) {
     note(r.heard ? `Heard "${r.heard}" · say close` : 'Heard nothing · say close')
     return draw()
   }
-  if (intent.all) return raiseCommand('close')
+  if (intent.all) return raiseCommand('close', undefined, 'voice')
   const p = positionForClose(intent.coin)
   if (!p) {
     note(intent.coin ? `No ${intent.coin.toUpperCase()} position` : 'No position to close')
     return draw()
   }
-  return raiseCommand('close', p)
+  return raiseCommand('close', p, 'voice')
 }
 
 /** Speak handles commands. An alert answer belongs to the card that opened its mic. */
 async function onTranscript(target: Listen, r: VoiceReply) {
-  if (target.kind === 'close') return onSpokenClose(r)
+  const open = current()
+  if (target.kind === 'close') {
+    if (open.layout === 'alert' && open.card && r.answer) return onAnswer(open.card.id, r)
+    return onSpokenClose(r)
+  }
   return onAnswer(target.id, r)
 }
 

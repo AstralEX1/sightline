@@ -226,7 +226,7 @@ function render() {
   if (!s.readOnly) {
     const note = bar.querySelector('p')!
     const button = bar.querySelector('button')!
-    const text = s.saving ? 'Saving…' : s.saveError ?? (!s.id ? 'New shortcuts start off.' : s.enabled ? 'Changes to this active shortcut take effect when saved.' : 'This shortcut is off.')
+    const text = s.saving ? 'Saving…' : s.saveError ?? (!s.id ? '' : s.enabled ? 'Changes to this active shortcut take effect when saved.' : 'This shortcut is off.')
     if (note.textContent !== text) note.textContent = text
     button.textContent = s.id ? 'Save changes' : 'Add shortcut'
     button.setAttribute('aria-disabled', String(s.saving || !!s.id && !changed()))

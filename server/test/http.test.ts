@@ -355,7 +355,7 @@ test('voice classifies yes, no, and a close phrase; silence never reaches the tr
 test('voice is 503 without a transcriber; the menu command maps to the seeded phrases', async () => {
   const { call } = await serve()
   assert.equal((await call('POST', '/voice', new Uint8Array(16_000))).status, 503)
-  assert.deepEqual((await call('POST', '/command', { command: 'lock' })).body, { ok: false, message: 'Heard "lock profits" · nothing to change' })
+  assert.deepEqual((await call('POST', '/command', { command: 'lock' })).body, { ok: false, message: 'Lock profits · nothing to change' })
   assert.equal((await call('POST', '/command', { command: 'buy' })).status, 400)
   assert.equal((await call('POST', '/command', { command: 'close', position: { symbol: 'BTCUSDT' } })).status, 400)
   assert.equal((await call('POST', '/command', { command: 'toString' })).status, 400)

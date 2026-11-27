@@ -2,6 +2,10 @@
 
 Use the Even Realities app on the phone already paired with your G2. The walkthrough uses paper positions and requires no Bybit account, API keys, or funds. A ring is optional.
 
+## Hosted phone page
+
+Open the [Trade Shortcuts phone app](https://tradeshortcuts.xyz/phone/) and connect using the paper server address and token shared privately by the project maintainer.
+
 ## Even Hub Beta
 
 1. Accept the Trade Shortcuts invitation for the Even account signed in on your phone. The project maintainer needs to see **Active** membership and a build in the **Beta** channel for `com.tradeshortcuts.g2`. In the Even Realities app, go to **Me → Beta tester**, install **Trade Shortcuts 0.1.6**, then open it from the G2 menu. If the phone says the test version expired, ask the maintainer to check both conditions. [Even Hub Beta testing](https://hub.evenrealities.com/docs/test/beta-testing), [Membership status](https://hub.evenrealities.com/docs/cli/testers)
@@ -29,6 +33,6 @@ Use this route without a Trade Shortcuts invitation. Sign in to the Even Hub dev
 
 ## Browser fallback
 
-Open the browser sandbox, choose **Liquidation alert**, and press **▶ Play**. Use **Down** to highlight **Close 50%**, then **Click**. The simulated lens shows the paper fill. **Start over** starts a fresh account. This route needs no access credentials or glasses. [Trade Shortcuts sandbox](https://trade-shortcuts-pi.vercel.app/sandbox/)
+Open the browser sandbox, choose **Liquidation alert**, and press **▶ Play**. Use **Down** to highlight **Close 50%**, then **Click**. The simulated lens shows the paper fill. **Start over** starts a fresh account. This route needs no access credentials or glasses. [Trade Shortcuts sandbox](https://tradeshortcuts.xyz/sandbox/)
 
 For a device result, record what you saw on the physical G2 and whether the phone acknowledged the connection test. The browser result verifies the software flow on a simulated display.

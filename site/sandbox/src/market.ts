@@ -73,6 +73,13 @@ export class Market {
     this.#emit()
   }
 
+  /** Seed the five closed candles used by the volume scenario before the engine caches them. */
+  seedVolumeSpike() {
+    for (const bar of this.bars.slice(-6, -1)) bar.v = BASE_VOLUME * 3
+    this.#sync()
+    this.#emit()
+  }
+
   /**
    * Time passing, once a second: the live candle keeps forming and a new one opens every minute. The price wanders
    * around where it was put (about 0.06% standard deviation, mean-reverting), well inside every scenario's margin,

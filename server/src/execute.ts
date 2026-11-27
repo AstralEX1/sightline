@@ -22,7 +22,7 @@ const IN_FLIGHT: ExecutionStatus[] = ['AUTHORIZED', 'VALIDATING', 'SUBMITTING']
 export const SETTLE_MS = 30_000
 /** Between two lookups of one order; a not-found counts only on the second miss, as Hummingbot does with its lost orders. */
 export const LOOKUP_EVERY_MS = 10_000
-const DEAD = ['Cancelled', 'Rejected', 'Deactivated']
+const DEAD = ['Cancelled', 'PartiallyFilledCanceled', 'Rejected', 'Deactivated']
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 const round8 = (n: number) => Math.round(n * 1e8) / 1e8
 
@@ -69,7 +69,8 @@ export function createExecutor(o: { ex: Exchange; store: Store; clock: () => num
     try {
       if (e.terms.type === 'notify') return undefined
       const o = await ex.order(e.terms.symbol, ref)
-      return store.execution(e.id)?.status === e.status ? o : undefined // changed meanwhile: the next tick decides
+      const current = store.execution(e.id)
+      return current?.status === e.status && current.updatedAt === e.updatedAt && current.filledQty === e.filledQty ? o : undefined
     } catch {
       return undefined
     }
@@ -78,14 +79,14 @@ export function createExecutor(o: { ex: Exchange; store: Store; clock: () => num
 
   function save(e: Execution, status: ExecutionStatus, message = '', patch: Partial<Execution> = {}): Execution {
     const next = { ...e, ...patch, status, message, updatedAt: clock() }
-    if (e.status === 'PARTIALLY_FILLED' && (status !== e.status || next.filledQty !== e.filledQty)) delete next.receipt
+    if (e.status === 'PARTIALLY_FILLED' && next.filledQty !== e.filledQty) delete next.receipt
     if (!RESOLVED.includes(status)) lookedAt.delete(e.id)
     store.transaction(() => {
       store.saveExecution(next)
       const p = store.proposal(next.proposalId)
       const a = p && store.alert(p.alertId)
       if (a && store.latestProposalForAlert(a.id)?.id === next.proposalId) {
-        store.saveAlert({ ...a, status: executionLine(next) })
+        store.saveAlert({ ...a, status: next.receipt ? `${executionLine(next)} · ${next.receipt}` : executionLine(next) })
       }
     })
     return next
@@ -167,32 +168,43 @@ export function createExecutor(o: { ex: Exchange; store: Store; clock: () => num
 
     /**
      * Settles open executions from Bybit, after a fresh read only. Fills by orderLinkId make orders FILLED or PARTIALLY_FILLED.
-     * Past SETTLE_MS an unknown or unfilled order is looked up by orderLinkId: missing twice means it never reached Bybit,
-     * cancelled or rejected with nothing filled means no trade. An unknown stop or take profit settles from the position,
+     * Past SETTLE_MS an order that isn't fully filled is looked up by orderLinkId. Two misses settle an unknown write;
+     * a cancelled order keeps any quantity it already filled. An unknown stop or take profit settles from the position,
      * an unknown cancel from the order's status. `fills` are the recent fills, already deduped: a repeat changes nothing.
      */
     async reconcile(fills: Fill[], positions: Position[]): Promise<void> {
       // shortcut: scans every open execution each tick; age old ones out if the list grows
-      for (const e of store.openExecutions()) {
+      for (let e of store.openExecutions()) {
         if (!RESOLVED.includes(e.status)) continue // still in flight: run() owns it
         const t = e.terms
         const settled = clock() - e.updatedAt >= SETTLE_MS
         if (t.type === 'order') {
           const mine = fills.filter(f => f.orderLinkId === t.orderLinkId)
           if (mine.length) {
-            const qty = round8(mine.reduce((s, f) => s + f.qty, 0))
-            const avg = mine.reduce((s, f) => s + f.price * f.qty, 0) / qty
-            const status: ExecutionStatus = qty >= Number(t.qty) || mine.some(f => f.leavesQty === 0) ? 'FILLED' : 'PARTIALLY_FILLED'
-            if (status !== e.status || qty !== e.filledQty) save(e, status, '', { filledQty: qty, avgPrice: avg, orderId: e.orderId ?? mine[0].orderId })
-            continue
+            const total = mine.reduce((s, f) => s + f.qty, 0)
+            const qty = round8(total)
+            if (qty > e.filledQty || (qty > 0 && qty === e.filledQty && !e.avgPrice)) {
+              const avg = mine.reduce((s, f) => s + f.price * f.qty, 0) / total
+              const status = qty >= Number(t.qty) ? 'FILLED' : 'PARTIALLY_FILLED'
+              e = save(e, status, '', { filledQty: qty, avgPrice: avg, orderId: e.orderId ?? mine[0].orderId })
+              if (status === 'FILLED') continue
+            }
           }
-          if (!settled || e.status === 'PARTIALLY_FILLED') continue
+          if (!settled) continue
           const o = await lookUp(e, { orderLinkId: t.orderLinkId })
           if (o === undefined) continue
           if (o === null) { if (e.status === 'UNKNOWN' && miss(e)) save(e, 'REJECTED', 'never reached Bybit, nothing traded'); continue }
-          if (DEAD.includes(o.status) && o.cumExecQty === 0) save(e, 'REJECTED', `Bybit ${o.status.toLowerCase()} it, nothing traded`)
-          else if (o.status === 'Filled') save(e, 'FILLED', '', { filledQty: o.cumExecQty, avgPrice: o.avgPrice, orderId: o.orderId }) // its fills were missed
-          else if (e.status === 'UNKNOWN') save(e, 'ACKNOWLEDGED', '', { orderId: o.orderId }) // it went through: fills finish it
+          // The fill window and order endpoint can each lag. Keep the largest cumulative quantity known.
+          const filledQty = Math.max(e.filledQty, o.cumExecQty)
+          const avgPrice = o.cumExecQty === filledQty && o.avgPrice > 0 ? o.avgPrice : filledQty === e.filledQty ? e.avgPrice : 0
+          const patch = { filledQty, avgPrice, orderId: o.orderId }
+          if (o.status === 'Filled' || filledQty >= Number(t.qty)) save(e, 'FILLED', '', patch)
+          else if (DEAD.includes(o.status)) {
+            if (filledQty > 0) save(e, 'PARTIALLY_FILLED_CANCELLED', '', patch)
+            else save(e, 'REJECTED', `Bybit ${o.status.toLowerCase()} it, nothing traded`)
+          } else if (filledQty > 0) {
+            if (e.status !== 'PARTIALLY_FILLED' || filledQty !== e.filledQty || avgPrice !== e.avgPrice) save(e, 'PARTIALLY_FILLED', '', patch)
+          } else if (e.status === 'UNKNOWN') save(e, 'ACKNOWLEDGED', '', patch)
         } else if (e.status !== 'UNKNOWN') {
           continue
         } else if (t.type === 'setStop' || t.type === 'setTakeProfit') {

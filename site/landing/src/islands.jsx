@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { Accordion } from '@base-ui/react/accordion';
 import { ACTION_TITLE, TEMPLATES, VOICE_SEEDS } from '../../../server/src/registry.ts';
 import { ACTION_ICON, icon } from '../../../app/src/phone/icons.ts';
+import { templateTitle } from '../../../app/src/phone/sentence.ts';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -14,7 +15,7 @@ const tile = (title, draft) => {
   const { icon: name, color } = ACTION_ICON[draft.action.type];
   return `<div class="tpl" style="--c:${color}"><span class="tpl-top"><span class="tpl-glyph">${icon(name, 32)}</span><span class="tpl-add" aria-hidden="true">${icon('plus', 12)}</span></span><span class="tpl-title">${title}</span></div>`;
 };
-const templates = TEMPLATES.map((t) => [t.id.replace('tpl_', ''), tile(t.title, t.draft)]);
+const templates = TEMPLATES.map((t) => [t.id.replace('tpl_', ''), tile(templateTitle(t), t.draft)]);
 const tiles = new Map([...templates, ...VOICE_SEEDS.map((v) => [v.voicePhrase, tile(ACTION_TITLE[v.action.type], v)])]);
 for (const el of $$('[data-tpl]')) {
   if (el.dataset.tpl === 'all') {

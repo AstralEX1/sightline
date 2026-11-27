@@ -8,14 +8,13 @@ import './sl/playback/buttons.css'
 import './sl/playback/buttons.js'
 import { CARD_SETTLE_MS, type RenderedAlert } from '../../../app/src/view.ts'
 import { TEMPLATES } from '../../../server/src/registry.ts'
-import type { AlertRecord } from '../../../server/src/types.ts'
+import type { AlertRecord, Position } from '../../../server/src/types.ts'
 import { createBackend, type Backend } from './backend.ts'
 import { mountExchange } from './exchange.ts'
 import { createHost, type Gesture } from './host.ts'
 import { Lens } from './lens.ts'
 import { Market } from './market.ts'
 import { BUILD_WATCHES, TABS, scenarioPhase, type Phase, type Tab } from './scenarios.ts'
-import { transcript } from './voice.ts'
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, ...kids: (Node | string)[]) => {
@@ -26,12 +25,22 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
 
 const canvas = $<HTMLCanvasElement>('lens')
 const lens = new Lens(canvas, () => {
-  const labels = lens.page.textObject?.filter(box => ['top', 'who', 'why', 'ask', 'terms', 'opt1', 'opt2'].includes(box.containerName))
+  const boxes = lens.page.textObject ?? []
+  const labels = boxes.filter(box => ['top', 'who', 'why', 'ask', 'terms', 'opt1', 'opt2'].includes(box.containerName))
     .map(box => box.content?.replace(/\s+/g, ' ').trim()).filter(Boolean)
-  const label = labels?.length ? `Even G2 display. ${labels.join('. ')}` : 'Even G2 display'
+  const lines = (name: string) => boxes.find(box => box.containerName === name)?.content?.split('\n').map(line => line.replace(/\s+/g, ' ').trim()) ?? []
+  const [names, selected, prices, losses, gains, risks] = ['name', 'cur', 'price', 'loss', 'gain', 'flag'].map(lines)
+  for (let i = 0; i < Math.max(names.length, selected.length); i++) {
+    const position = selected[i] || names[i]
+    if (!position) continue
+    const roi = losses[i] ? `ROI minus ${losses[i].replace(/^▼\s*/, '')}` : gains[i] ? `ROI plus ${gains[i].replace(/^▲\s*/, '')}` : ''
+    labels.push([selected[i] ? `Selected: ${position.replace(/^▶\s*/, '')}` : position, prices[i] && `mark ${prices[i]}`, roi, risks[i]].filter(Boolean).join(', '))
+  }
+  const label = labels.length ? `Even G2 display. ${labels.join('. ')}` : 'Even G2 display'
   if (canvas.getAttribute('aria-label') !== label) canvas.setAttribute('aria-label', label)
+  updateGestureHint()
 })
-const host = createHost(lens, () => say('The glasses would ask to close the app here. The sandbox keeps it open.'), { voice: true })
+const host = createHost(lens, () => say('The glasses would ask to close the app here. The sandbox keeps it open.'))
 const market = new Market()
 let backend: Backend | undefined
 let run = 0
@@ -48,6 +57,7 @@ const sandbox = {
       if (id !== run) return
       renderedAlertId = (e as CustomEvent<RenderedAlert | null>).detail?.id
       spotlightAlert()
+      updateGestureHint()
     })
     return true
   },
@@ -62,31 +72,34 @@ const exchange = mountExchange($('exchange'), market, () => {
   if (phase === 'move') spotlight('chart')
 })
 setInterval(() => market.refresh(), 500) // the app's trades change FakeExchange directly: show them
-setInterval(() => { if (backend) market.drift() }, 1000) // time passes: the chart moves on its own
+setInterval(() => { if (backend && story !== 'paused') market.drift() }, 1000) // time passes: the chart moves on its own
 
 const phone = $<HTMLIFrameElement>('phone')
 const panel = $('panel')
-panel.addEventListener('pointerdown', () => { void host.allowMic() }, { capture: true })
 const play = $<HTMLButtonElement>('scenario-play')
-const actions = $('story-actions')
-const replay = $<HTMLButtonElement>('scenario-replay')
+const restart = $<HTMLButtonElement>('restart')
+const result = $('result')
+const board = $('exchange')
+type View = 'phone' | 'chart' | 'glasses'
+const narrow = matchMedia('(max-width: 760px)')
+const viewButtons = Array.from($('views').querySelectorAll<HTMLButtonElement>('button'))
+const gestureButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-gesture]'))
 type Story = 'idle' | 'running' | 'paused' | 'done'
 let story: Story = 'idle'
-let paused = false
-/** Guided step on screen: 0 setup, 1 trigger, 2 alert, 3 the exchange. It lags the server so each stage can rest. */
+/** Playback's cue before a real alert guides the steps. */
 let guidedStep: number | undefined
-let exchangeShown = false
-/** The other scenarios stay hidden until this story reaches Replay. */
-let moreStories = false
 const tabsEl = $('tabs')
 const stepsEl = $('steps')
 new ResizeObserver(([entry]) => {
-  phone.style.setProperty('--phone-scale', String(entry.contentRect.width / 390))
+  const { width, height } = entry.contentRect
+  if (!width) return
+  const scale = width / 390
+  phone.style.setProperty('--phone-scale', String(scale))
+  phone.style.height = `${height / scale}px`
 }).observe(phone.parentElement!)
 
 // ── tabs ──
 let tab = TABS[0]
-/** Where the visitor is: add the shortcut, move the price, answer the alert, done; or the alert ended unanswered. */
 let phase: Phase = 'move'
 let gliding = false
 let enabledShortcutId: string | undefined
@@ -95,66 +108,51 @@ let scenarioShortcutId: string | undefined
 let currentAlertId: string | undefined
 let renderedAlertId: string | undefined
 let notifyAlert = false
+let positionBefore: Position | undefined
+let completionPauseUntil = 0
 /** A line under the current step: why it is still there. */
 let note = ''
 /** How the tab's own alert ended, when it ended without the action. */
 let missed = ''
 let status = ''
 
-const spotlightTargets = { phone: play, chart: $('exchange'), glasses: panel.querySelector('.glasses')! }
-const BEAT_MS = 3400
+const STAGE_PAUSE_MS = 1800
+const RULE_REVIEW_MS = STAGE_PAUSE_MS
 const GLIDE_MS = 4200
-/** Hold the finished stage on screen before the next one begins. Long enough to see what just happened. */
-const STAGE_PAUSE_MS = 4000
-/** Read the lens line, then the ring button, before the demo presses it. */
-const GESTURE_BEAT_MS = 2800
-/** How long a result ring stays. The phone's own frame lasts the whole opening stage. */
-const RING_MS = 2800
-let shadeGen = 0
-let ringTimer = 0
-function clearRing() {
-  clearTimeout(ringTimer)
-  for (const old of document.querySelectorAll('.is-ring')) old.classList.remove('is-ring')
+const GESTURE_BEAT_MS = 2400
+
+function updateViewButtons() {
+  const active = narrow.matches ? panel.dataset.view : panel.dataset.side
+  for (const button of viewButtons) button.setAttribute('aria-pressed', String(button.dataset.view === active))
 }
-/** An amber frame on one result, then it goes. A later ring replaces the earlier one. */
-function ring(el: Element | null | undefined, ms = RING_MS) {
-  clearRing()
-  if (!el) return
-  el.classList.add('is-ring')
-  ringTimer = window.setTimeout(clearRing, ms)
+function selectView(target: View) {
+  panel.dataset.view = target
+  if (target !== 'glasses') panel.dataset.side = target
+  updateViewButtons()
+  updateGestureHint()
 }
-function spotlight(target: keyof typeof spotlightTargets, reveal = false) {
+for (const button of viewButtons) button.onclick = () => selectView(button.dataset.view as View)
+narrow.addEventListener('change', updateViewButtons)
+
+function spotlight(target: View) {
   if (!tab.on) return
-  shadeGen++
+  selectView(target)
   panel.dataset.spotlight = target
   document.body.dataset.spotlight = target
   document.body.classList.add('is-shade')
-  void reveal
 }
-/** The story is over: the dimming fades, then the frames drop back into the page. */
-function releaseShade() {
-  if (!document.body.classList.contains('is-shade')) return
-  const id = run
-  const token = ++shadeGen
+
+function releaseSpotlight() {
   document.body.classList.remove('is-shade')
-  const ms = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 700
-  window.setTimeout(() => {
-    if (token !== shadeGen || id !== run) return
-    delete panel.dataset.spotlight
-    delete document.body.dataset.spotlight
-    clearRing()
-    delete $('exchange').dataset.light
-  }, ms)
+  delete panel.dataset.spotlight
+  delete document.body.dataset.spotlight
 }
 
 function spotlightAlert() {
-  if (!tab.on || phase === 'executing' || phase === 'done' || phase === 'missed') return
-  if (currentAlertId && currentAlertId === renderedAlertId && panel.dataset.spotlight !== 'glasses') {
-    spotlight('glasses', true)
-    // Back and the switch leave the keys inside the phone. Hand them to the glasses with the alert.
-    const focused = document.activeElement
-    if (focused === phone || spotlightTargets.chart.contains(focused)) canvas.focus({ preventScroll: true })
-  }
+  if (!tab.on || phase !== 'answer' || !currentAlertId || currentAlertId !== renderedAlertId || panel.dataset.spotlight === 'glasses') return
+  const focused = document.activeElement
+  spotlight('glasses')
+  if (focused === phone || board.contains(focused)) canvas.focus({ preventScroll: true })
 }
 
 const shortcutHash = (id: string) => `#/shortcut/${encodeURIComponent(id)}`
@@ -178,7 +176,6 @@ const buttons = TABS.map((t, i) => {
   b.onkeydown = e => {
     const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
     if (!d) return
-    if (!moreStories) return
     const next = TABS[(i + d + TABS.length) % TABS.length]
     void open(next)
     $(`tab-${next.id}`).focus()
@@ -188,7 +185,7 @@ const buttons = TABS.map((t, i) => {
 tabsEl.append(...buttons)
 
 /** A tab starts from scratch: a new account, the server, and the app reloaded on the phone. */
-async function open(t: Tab, revealPhone = false) {
+async function open(t: Tab, autoplay = false) {
   const id = ++run
   tab = t
   history.replaceState(null, '', `#${t.id}`)
@@ -203,27 +200,30 @@ async function open(t: Tab, revealPhone = false) {
   gliding = false
   enabledShortcutId = scenarioShortcutId = currentAlertId = renderedAlertId = undefined
   story = 'idle'
-  paused = false
+  phase = t.on ? 'add' : 'move'
   guidedStep = undefined
-  exchangeShown = false
   notifyAlert = false
-  delete play.dataset.restLabel
-  clearRing()
-  delete $('exchange').dataset.light
-  shadeGen++
-  document.body.classList.remove('is-shade')
-  delete panel.dataset.spotlight
-  delete document.body.dataset.spotlight
-  if (revealPhone) actions.scrollIntoView({ block: 'nearest', behavior: 'instant' })
+  positionBefore = undefined
+  result.hidden = true
+  result.textContent = ''
   stepsEl.replaceChildren()
+  completionPauseUntil = 0
+  delete board.dataset.light
+  delete board.dataset.position
+  note = missed = status = ''
+  panel.toggleAttribute('data-guided', t.on)
+  releaseSpotlight()
+  selectView('phone')
+  selectView(t.on ? 'glasses' : 'chart')
   say('')
+  renderSteps()
   lens.showHints = !t.on
   lens.setPage({})
   market.reset()
   await t.before(market)
   if (id !== run) return
   // Only the free sandbox needs the shortcuts behind the glasses menu. A guided rule starts off.
-  backend = createBackend(market.ex, t.on ? [structuredClone(t.template.draft)] : BUILD_WATCHES, !t.on, () => transcript())
+  backend = createBackend(market.ex, t.on ? [structuredClone(t.template.draft)] : BUILD_WATCHES, !t.on)
   // during the scenario the price stops 1% short of liquidation: a fast drag cannot skip the alert window
   const long = market.positions.find(x => x.side === 'Buy')
   market.floor = long ? long.liqPrice * 1.01 : 0
@@ -237,36 +237,37 @@ async function open(t: Tab, revealPhone = false) {
   // A new query reloads the app even when only the hash would change.
   phone.src = `app.html?run=${id}${route}`
   exchange.start()
-  phase = t.on ? 'add' : 'move'
-  note = missed = status = ''
-  playback.setPlaying(false)
   renderSteps()
+  if (autoplay && await until(id, phoneReady)) {
+    renderSteps()
+    play.click()
+  }
 }
 
-$('restart').onclick = () => void open(tab, true)
-replay.onclick = () => void open(tab, true)
+restart.onclick = () => void open(tab)
 
-function sleep(ms: number) {
+function sleep(ms: number, id = run) {
   return new Promise<void>(resolve => {
     let left = ms
     let then = performance.now()
     const tick = () => {
       const now = performance.now()
-      if (!paused) left -= now - then
+      if (story !== 'paused') left -= now - then
       then = now
-      if (left <= 0) resolve()
+      if (left <= 0 || id !== run) resolve()
       else setTimeout(tick, Math.min(60, Math.max(left, 16)))
     }
     tick()
   })
 }
 async function until(id: number, ready: () => boolean, ms = 8000) {
-  const start = performance.now()
-  while (id === run && !ready() && performance.now() - start < ms) await sleep(50)
+  for (let left = ms; id === run && !ready() && left > 0; left -= 50) await sleep(50, id)
   return id === run && ready()
 }
 function phoneReady() {
-  return !!phone.contentDocument?.querySelector('main:not([hidden]) .nav')
+  const doc = phone.contentDocument
+  return !!doc && new URL(doc.URL).searchParams.get('run') === String(run)
+    && !!doc.querySelector('main:not([hidden]) .nav')
 }
 function canPlay(at: Phase = phase) {
   if (gliding || !phoneReady()) return false
@@ -274,118 +275,123 @@ function canPlay(at: Phase = phase) {
   return at === 'move' && !!enabledShortcutId
 }
 
-// ── steps under the glasses ──
-function renderSteps() {
-  actions.hidden = !tab.on
-  actions.classList.toggle('is-split', story === 'running' || story === 'paused')
-  actions.classList.toggle('is-replay', story === 'done')
-  if (story === 'running' || story === 'paused') play.dataset.restLabel = 'Resume'
-  else delete play.dataset.restLabel
-  if (story === 'idle') play.disabled = !canPlay()
-  const order: Phase[] = ['add', 'move', 'answer']
-  const actualStep = phase === 'done' ? tab.steps.length
-    : phase === 'executing' && tab.on ? 3
-    : phase === 'missed' || phase === 'executing' ? order.indexOf('answer')
-    : order.indexOf(phase)
-  const at = tab.on && phase !== 'missed' ? guidedStep ?? actualStep : actualStep
-  stepsEl.replaceChildren(...tab.steps.map((text, i) => {
-    const caption = tab.on && notifyAlert && i >= 2
-      ? i === 2 ? 'The alert arrives on the glasses' : 'The alert is acknowledged'
-      : text
-    const li = el('li', { className: i < at ? 'done' : i === at ? 'now' : '' }, el('span', { className: 'step-n' }, i < at ? '✓' : String(i + 1)), el('span', {}, caption))
-    if (i === at) li.setAttribute('aria-current', 'step')
-    if (!tab.on && i === at && order[i] === 'move') {
-      const play = el('button', { type: 'button', className: 'play', disabled: gliding }, el('span', { ariaHidden: 'true' }, '▶'), ' Play')
-      play.onclick = () => void playMove(play)
-      li.append(el('span', { className: 'or' }, 'or'), play)
-    }
-    if (i === at && phase === 'answer' && notifyAlert) {
-      li.append(el('kbd', {}, 'Click'), el('span', { className: 'step-note' }, 'to select OK'))
-    } else if (i === at && phase === 'answer') {
-      li.append(el('kbd', {}, 'Say yes'), el('span', { className: 'or' }, 'or'), el('kbd', {}, 'Down'), el('span', { className: 'or' }, 'then'), el('kbd', {}, 'Click'))
-      if (!host.micDenied()) li.append(el('span', { className: 'step-note' }, 'Heard in this tab. The browser turns the word into text.'))
-    }
-    if (i === at && phase === 'executing') li.append(el('span', { className: 'step-note' }, status))
-    if (i === at && phase === 'add' && !tab.on) li.append(el('span', { className: 'or' }, '← on the phone'))
-    if (i === at && phase === 'missed') {
-      const again = el('button', { type: 'button', className: 'play' }, '↺ Start over')
-      again.onclick = () => void open(tab, true)
-      li.className = 'now missed'
-      li.append(el('span', { className: 'step-note' }, `Not done: ${missed}.`), again)
-    }
-    if (i === at && note && phase === 'move') li.append(el('span', { className: 'step-note' }, note))
-    return li
-  }))
+// ── current step and playback ──
+function syncPlayback() {
+  play.hidden = !tab.on && phase !== 'move'
+  play.disabled = story === 'idle' && !canPlay()
+  play.dataset.restLabel = story === 'done' ? 'Replay' : story === 'paused' || story === 'running' ? 'Resume' : tab.on ? 'Play demo' : 'Move price'
+  playback.setPlaying(story === 'running')
 }
 
-async function playMove(button: HTMLButtonElement) {
-  void host.allowMic() // in this click, so the prompt is up before the alert opens the mic
+function renderSteps() {
+  syncPlayback()
+  restart.hidden = tab.on
+  const answer = phase === 'answer'
+  const step = phase === 'done' ? tab.steps.length - 1
+    : phase === 'executing' && tab.on ? 3
+    : answer || phase === 'missed' || phase === 'executing' ? 2
+    : guidedStep ?? (story === 'idle' || phase === 'add' ? 0 : 1)
+  const lastVisibleStep = Math.min(step, tab.steps.length - 1)
+  const title = phase === 'missed' ? 'Scenario ended'
+    : answer && notifyAlert ? 'Alert on the glasses'
+    : answer ? 'Confirm on the glasses'
+    : step === 0 && phase === 'move' && story === 'running' && tab.on ? 'Rule enabled'
+    : tab.steps[step]
+  const detail = phase === 'missed' ? missed : phase === 'executing' ? status : note
+
+  for (let index = 0; index <= lastVisibleStep; index++) {
+    let li = stepsEl.querySelector<HTMLLIElement>(`li[data-step-index="${index}"]`)
+    if (!li) {
+      li = el('li', {},
+        el('span', { className: 'step-n' }),
+        el('span', { className: 'step-title' }),
+      )
+      li.dataset.stepIndex = String(index)
+      stepsEl.append(li)
+    }
+    const current = index === step && phase !== 'done'
+    li.dataset.state = index < step || phase === 'done' ? 'complete' : 'current'
+    if (current) li.setAttribute('aria-current', 'step')
+    else li.removeAttribute('aria-current')
+    li.querySelector('.step-n')!.textContent = String(index + 1)
+    li.querySelector('.step-title')!.textContent = index === step ? title : tab.steps[index]
+
+    let noteEl = li.querySelector<HTMLElement>('.step-note')
+    if (current && (detail || answer)) {
+      if (!noteEl) {
+        noteEl = el('span', { className: 'step-note' })
+        li.append(noteEl)
+      }
+      noteEl.id = answer ? 'gesture-hint' : ''
+      noteEl.textContent = detail
+    } else noteEl?.remove()
+  }
+  for (const li of stepsEl.querySelectorAll<HTMLLIElement>('li[data-step-index]')) {
+    if (Number(li.dataset.stepIndex) > lastVisibleStep) li.remove()
+  }
+  updateGestureHint()
+}
+
+async function playMove() {
   const id = run
   const server = backend
   if (!server || story !== 'idle' || !canPlay()) return
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
-  const look = reduceMotion ? 0 : BEAT_MS
   story = 'running'
-  if (tab.on) guidedStep = 0
-  play.dataset.restLabel = 'Resume'
   gliding = true
-  if (button !== play) button.disabled = true
+  note = ''
+  guidedStep = tab.on ? 0 : undefined
   renderSteps()
   try {
-    if (tab.on) spotlight('phone') // the amber frame is the opening: look here
-    if (tab.on && scenarioShortcutId) {
+    if (tab.on) {
+      spotlight('phone')
       const doc = phone.contentDocument
       const back = doc?.querySelector<HTMLButtonElement>('main:not([hidden]) [aria-label="Back to Shortcuts"]')
+      const toggle = () => doc?.querySelector<HTMLButtonElement>('main:not([hidden]) .tile__switch')
       if (back) {
-        spotlight('phone')
-        await sleep(look)
+        await sleep(reduceMotion ? 0 : RULE_REVIEW_MS, id)
         if (id !== run) return
         back.click()
-        await until(id, () => !!doc?.querySelector('main[aria-label="Shortcuts"]:not([hidden]) .tile__switch'))
-        if (id !== run) return
+        if (!await until(id, () => !!toggle())) return
       }
-      const sw = doc?.querySelector<HTMLButtonElement>('main:not([hidden]) .tile__switch[aria-checked="false"]')
-      if (sw) {
-        spotlight('phone')
-        await sleep(reduceMotion ? 0 : 1100)
-        if (id !== run) return
-        sw.click()
-        const on = await until(id, () => {
-          const box = doc?.querySelector('.tile__switch')
-          return box?.getAttribute('aria-checked') === 'true' && !box.hasAttribute('data-busy')
-        })
-        if (!on) return
-        if (!reduceMotion) await sleep(500)
-        if (id !== run) return
+      if (toggle()?.getAttribute('aria-checked') === 'false') {
+        toggle()?.click()
+        if (!await until(id, () => toggle()?.getAttribute('aria-checked') === 'true' && !toggle()?.hasAttribute('data-busy'))) return
       }
+      await server.tick() // Price-change rules need one observation before the scripted move.
+      if (id !== run) return
+      guidedStep = 1
+      renderSteps()
+      spotlight('chart')
+      await sleep(STAGE_PAUSE_MS, id)
+      if (id !== run) return
     }
-    if (id !== run) return
-    await sleep(reduceMotion ? 0 : STAGE_PAUSE_MS) // stage 1 rests before the trigger
-    if (id !== run) return
-    if (tab.on) guidedStep = 1
-    renderSteps()
-    server.hold(true) // the price may reach the trigger; the alert waits until the glasses have the room
-    spotlight('chart', true)
+    server.hold(true)
     if (reduceMotion) market.setPrice(tab.to)
     else await glide(tab.to, GLIDE_MS, id)
     if (id !== run) return
-    ring(document.querySelector('.exchange-col > .phone')) // the price has reached the line
-    await sleep(reduceMotion ? 0 : STAGE_PAUSE_MS) // the trigger stays on the chart
-    if (id !== run) return
-    if (tab.on) guidedStep = 2
-    renderSteps()
-    spotlight('glasses', true)
-    await sleep(reduceMotion ? 0 : STAGE_PAUSE_MS) // the glasses are in view before the alert exists
-    if (id !== run) return
+    if (tab.on) {
+      guidedStep = 2
+      spotlight('glasses')
+      renderSteps()
+      await sleep(STAGE_PAUSE_MS, id)
+      if (id !== run) return
+    }
     server.hold(false)
     await server.tick()
-    await sleep(reduceMotion ? 400 : 800) // the steps poll catches an alert in this time
-    // An edited rule, or a closed position: Play comes back with a reason.
-    if (id === run && phase === 'move') note = 'It did not fire at this price. Drag the chart further, or Start over.'
+    if (!await until(id, () => phase !== 'add' && phase !== 'move', 1500) && id === run) {
+      note = 'The rule did not fire at this price. Drag the chart to try again.'
+      selectView('chart')
+    }
   } finally {
     server.hold(false)
     if (id === run) {
       gliding = false
+      if (!tab.on || phase === 'add' || phase === 'move') {
+        story = 'idle'
+        guidedStep = undefined
+        releaseSpotlight()
+      }
       renderSteps()
     }
   }
@@ -400,7 +406,7 @@ function glide(to: number, ms: number, id: number) {
   return new Promise<void>(done => {
     const frame = (now: number) => {
       if (id !== run) return done()
-      if (paused) {
+      if (story === 'paused') {
         if (!heldAt) heldAt = now
         requestAnimationFrame(frame)
         return
@@ -415,7 +421,29 @@ function glide(to: number, ms: number, id: number) {
   })
 }
 
-/** The steps follow the server: a shortcut exists, an alert is waiting for the glasses, it was answered. */
+function targetPosition(alert: AlertRecord) {
+  const [kind, symbol, index] = alert.targetKey.split(':')
+  if (kind === 'pos') return market.positions.find(p => p.symbol === symbol && String(p.positionIdx) === index)
+}
+
+function showResult(alert: AlertRecord) {
+  const before = positionBefore
+  const after = targetPosition(alert)
+  const size = before && alert.actionType === 'CLOSE_POSITION' && before.size !== (after?.size ?? 0)
+  const stops = before && after && (alert.actionType === 'MOVE_SL' || alert.actionType === 'SET_SL') && before.stopLoss !== after.stopLoss
+  const price = (value: number) => value ? value.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'
+  result.textContent = size ? `Position size · ${before.size.toFixed(3)} → ${(after?.size ?? 0).toFixed(3)} BTC`
+    : stops ? `Stop loss · ${price(before.stopLoss)} → ${price(after.stopLoss)} USDT`
+    : alert.status
+  result.hidden = false
+  if (after && (size || stops)) {
+    board.dataset.light = size ? 'size' : 'stops'
+    board.dataset.position = String(after.positionIdx)
+  }
+  if (tab.on && (size || stops)) selectView('chart')
+}
+
+/** Follow the real alert and execution so the UI shows a result only once confirmed. */
 setInterval(async () => {
   const server = backend
   if (!server) return
@@ -425,116 +453,93 @@ setInterval(async () => {
     type Tile = { id: string; enabled: boolean; voicePhrase?: string }
     const [shortcuts, alerts] = (await Promise.all([get('/api/shortcuts'), get('/api/history')])) as [Tile[], AlertRecord[]]
     if (id !== run) return
-    // the tab's own rule: not the menu's voice shortcuts, and not a Test from the editor
     const own = shortcuts.filter(s => !s.voicePhrase)
     const alert = alerts.find(a => !a.simulated && own.some(s => s.id === a.shortcutId))
-    // the app saves a new shortcut off: it counts once it is switched on
     enabledShortcutId = own.find(s => s.enabled)?.id
     const next = scenarioPhase(!!enabledShortcutId, alert?.status)
-    const alertChanged = alert?.id !== currentAlertId
-    notifyAlert = alert?.actionType === 'NOTIFY'
-    if (next === 'missed') missed = alert!.status.split(' · ')[0].toLowerCase()
-    if (next === 'done' || next === 'missed') market.floor = 0 // the scenario is over: the market is free again
     const latest = alert?.status ?? ''
+    const alertChanged = alert?.id !== currentAlertId
+    if (phase === 'executing' && next === 'done' && performance.now() < completionPauseUntil) return
+    if (next === phase && latest === status && !alertChanged) {
+      if (story === 'idle') play.disabled = !canPlay()
+      return
+    }
+    const entered = next !== phase || alertChanged
+    phase = next
+    status = latest
     currentAlertId = alert?.id
-    spotlightAlert()
-    if (alert && next === 'answer' && (phase !== 'answer' || alertChanged)) {
-      if (!notifyAlert && host.micDenied()) say('Microphone blocked. Down, then Click still confirms.')
-      if (tab.on && (!notifyAlert || guidedStep !== undefined)) void answerGlasses(id, alert.id, notifyAlert)
+    notifyAlert = alert?.actionType === 'NOTIFY'
+    if (next !== 'move') note = ''
+    if (alert && alertChanged) {
+      const position = targetPosition(alert)
+      positionBefore = position && { ...position }
     }
-    if (next === 'add' && phase !== 'add') spotlight('phone')
-    if (tab.on && !notifyAlert && (next === 'executing' || next === 'done') && !exchangeShown) {
-      exchangeShown = true
-      const finished = id
-      void (async () => {
-        await sleep(matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : STAGE_PAUSE_MS)
-        if (finished !== run) return
-        const filled = await until(finished, () => phase === 'done' || phase === 'missed', 12_000)
-        if (!filled || phase !== 'done') return
-        if (guidedStep !== undefined) guidedStep = 3
-        renderSteps()
-        spotlight('chart', true)
-        const field = tab.id === 'profit' ? 'stops' : 'size'
-        const board = $('exchange')
-        board.dataset.light = field
-        window.setTimeout(() => { if (board.dataset.light === field) delete board.dataset.light }, STAGE_PAUSE_MS)
-      })()
+    if (alert && next === 'answer' && entered) {
+      spotlightAlert()
+      if (tab.on && (story === 'running' || story === 'paused')) void answerGlasses(id, alert.id, notifyAlert)
     }
-    if ((next === 'done' || next === 'missed') && phase !== next) {
+    if (next === 'executing' && entered && tab.on) {
+      spotlight('chart')
+      completionPauseUntil = performance.now() + STAGE_PAUSE_MS
+    }
+    if (alert && (next === 'done' || next === 'missed') && entered) {
+      market.floor = 0
       story = 'done'
-      moreStories = true
-      tabsEl.classList.add('is-open')
-      paused = false
-      const finished = run
-      window.setTimeout(() => {
-        if (finished !== run) return
-        guidedStep = undefined
-        renderSteps()
-        releaseShade()
-      }, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : STAGE_PAUSE_MS + 1800)
+      guidedStep = undefined
+      if (next === 'done') {
+        showResult(alert)
+        if (tab.on) {
+          spotlight(alert.actionType === 'NOTIFY' ? 'glasses' : 'chart')
+          const left = completionPauseUntil ? Math.max(0, completionPauseUntil - performance.now()) : STAGE_PAUSE_MS
+          if (left) window.setTimeout(() => { if (id === run) releaseSpotlight() }, left)
+          else releaseSpotlight()
+        } else releaseSpotlight()
+      } else {
+        missed = alert.status
+        releaseSpotlight()
+      }
     }
-    if (story === 'idle') play.disabled = !canPlay(next)
-    if (next !== phase || latest !== status || alertChanged) {
-      phase = next
-      status = latest
-      if (next !== 'move') note = ''
-      renderSteps()
-    }
+    renderSteps()
   } catch { /* the tab is being replaced */ }
 }, 400)
 
 // ── glasses input: buttons, the lens itself, the keyboard ──
-for (const b of document.querySelectorAll<HTMLButtonElement>('[data-gesture]')) {
+for (const b of gestureButtons) {
   b.onmousedown = e => e.preventDefault() // keep focus off the button, so Enter and the arrows still reach the glasses
   b.onclick = () => press(b.dataset.gesture as Gesture)
 }
-let answering: string | undefined
-/** The visitor does not have to hunt for Down and Click: show each, then press it. A spoken yes answers first. */
+function selectedChoice() {
+  if (phase !== 'answer' || !currentAlertId || renderedAlertId !== currentAlertId) return ''
+  return lens.page.textObject?.find(box =>
+    (box.containerName === 'opt1' || box.containerName === 'opt2') && box.content?.trim().startsWith('>'))?.content?.trim() ?? ''
+}
+function nextGesture(): Gesture | undefined {
+  const choice = selectedChoice()
+  return choice ? choice === '> Dismiss' ? 'down' : 'tap' : undefined
+}
+function updateGestureHint() {
+  const next = nextGesture()
+  for (const button of gestureButtons) button.classList.toggle('is-next', button.dataset.gesture === next)
+  const hint = document.getElementById('gesture-hint')
+  const action = next === 'down' ? 'Down to select the action'
+    : next === 'tap' ? (notifyAlert ? 'Click to acknowledge' : 'Click to confirm') : 'Check the glasses'
+  if (hint && hint.textContent !== action) hint.textContent = action
+}
+
+/** The automatic demo uses the same settled lens gestures as the visitor. */
 async function answerGlasses(id: number, alertId: string, notify: boolean) {
-  if (answering === alertId || id !== run || (tab.voice && !notify)) return
-  answering = alertId
   const current = () => id === run && phase === 'answer' && currentAlertId === alertId
-  try {
-    const beat = matchMedia('(prefers-reduced-motion: reduce)').matches ? 200 : GESTURE_BEAT_MS
-    const label = () => canvas.getAttribute('aria-label') ?? ''
-    if (notify) {
-      const showsOk = () => renderedAlertId === alertId && lens.page.textObject?.some(
-        box => box.containerName === 'opt1' && box.content?.trim() === '> OK') === true
-      if (!(await until(id, showsOk)) || !current()) return
-      await sleep(Math.max(beat, CARD_SETTLE_MS))
-      if (current() && showsOk()) press('tap')
-      return
-    }
-    await until(id, () => /Dismiss/i.test(label()))
-    if (!current()) return
-    // The mic opens with the card, after its blink. Wait for a yes before pressing anything.
-    await until(id, () => host.voiceBusy() || phase !== 'answer', 5000)
-    if (!current()) return
-    if (host.voiceBusy()) {
-      await until(id, () => !host.voiceBusy() || phase !== 'answer', 16_000)
-      if (!current() || host.voiceBusy()) return
-    }
-    if (!/>\s*(Close|Move|Set)/i.test(label())) {
-      ring(document.querySelector('[data-gesture="down"]'))
-      await sleep(beat)
-      if (!current() || host.voiceBusy()) return
-      // The card ignores the first gesture while it is still settling.
-      for (let i = 0; i < 3 && current() && !host.voiceBusy() && !/>\s*(Close|Move|Set)/i.test(label()); i++) {
-        press('down')
-        await sleep(500)
-      }
-      if (!current() || host.voiceBusy() || !/>\s*(Close|Move|Set)/i.test(label())) return
-    }
-    clearRing() // the choice is selected; Click stays dark until the line has been read
-    await sleep(beat)
-    if (!current() || host.voiceBusy()) return
-    ring(document.querySelector('[data-gesture="tap"]'))
-    await sleep(beat)
-    if (!current() || host.voiceBusy()) return
-    if (renderedAlertId === alertId) press('tap')
-  } finally {
-    if (answering === alertId) answering = undefined
+  const readyToTap = () => notify ? selectedChoice() === '> OK' : /^>\s*(Close|Move|Set)\b/i.test(selectedChoice())
+  const beat = matchMedia('(prefers-reduced-motion: reduce)').matches ? CARD_SETTLE_MS : GESTURE_BEAT_MS
+  if (!await until(id, () => renderedAlertId === alertId && !!nextGesture()) || !current()) return
+  await sleep(beat, id)
+  if (!current() || renderedAlertId !== alertId) return
+  if (nextGesture() === 'down') {
+    press('down')
+    if (!await until(id, () => readyToTap() || !current()) || !current()) return
+    await sleep(beat, id)
   }
+  if (current() && readyToTap()) press('tap')
 }
 function press(g: Gesture) {
   host.gesture(g)
@@ -556,21 +561,13 @@ document.addEventListener('keydown', e => {
 type Playback = { setPlaying(value: boolean): void; reset(): void; destroy(): void }
 const playback = (window as unknown as { MattePlayback: { mount(button: HTMLButtonElement, opts?: { onChange?: (detail: { playing: boolean }) => void }): Playback } }).MattePlayback.mount(play, {
   onChange({ playing }) {
-    if (story === 'idle') {
-      if (!playing) return
-      if (!canPlay()) playback.setPlaying(false)
-      else void playMove(play)
-      return
-    }
-    if (story === 'running' && !playing) { paused = true; story = 'paused'; renderSteps(); return }
-    if (story === 'paused' && playing) { paused = false; story = 'running'; renderSteps() }
+    if (story === 'done') { void open(tab, true); return }
+    if (story === 'idle') { if (playing) void playMove(); return }
+    story = playing ? 'running' : 'paused'
+    renderSteps()
   },
 })
 play.disabled = true
 
-const scenario = location.hash === '#sandbox' ? '#build' : location.hash
-if (scenario && scenario !== '#liquidation') {
-  moreStories = true
-  tabsEl.classList.add('is-open')
-}
+const scenario = { '#sandbox': '#build', '#profit': '#volume' }[location.hash] ?? location.hash
 void open(TABS.find(t => `#${t.id}` === scenario) ?? TABS[0])

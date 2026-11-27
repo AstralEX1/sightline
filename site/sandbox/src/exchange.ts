@@ -29,7 +29,6 @@ const input = (name: string, value = '') => el('input', { name, inputmode: 'deci
 /** A filled field with its caption floating above the value, and a unit on the right. */
 const box = (caption: string, i: HTMLInputElement, unit = '') => el('label', { class: 'ex-box' }, i, el('span', {}, caption), ...(unit ? [el('i', {}, unit)] : []))
 const cell = (k: string, v: string, cls = '') => el('div', { class: 'ex-cell' }, el('span', {}, k), el('b', { class: cls }, v))
-const field = (name: string, node: HTMLElement) => { node.dataset.field = name; return node }
 
 /** Replaces the children only when what they show changed: a click survives the twice-a-second refresh. */
 function swap(host: HTMLElement, kids: Node[]) {
@@ -235,6 +234,12 @@ export function mountExchange(root: HTMLElement, m: Market, onChartInput: () => 
     const pnl = p.unrealisedPnl
     const roi = p.positionIM ? (pnl / p.positionIM) * 100 : 0
     const tone = pnl >= 0 ? 'ex-up' : 'ex-down'
+    const size = cell('Size (BTC)', fmt(p.size, 3))
+    const stops = cell('TP/SL', `${p.takeProfit ? fmt(p.takeProfit) : '--'} / ${p.stopLoss ? fmt(p.stopLoss) : '--'}`)
+    if (root.dataset.position === String(p.positionIdx)) {
+      size.classList.toggle('ex-result', root.dataset.light === 'size')
+      stops.classList.toggle('ex-result', root.dataset.light === 'stops')
+    }
     const card = el('div', { class: 'ex-card' },
       el('div', { class: 'ex-card-head' }, el('b', {}, SYMBOL), el('span', { class: 'ex-tag' }, 'Perp'),
         el('span', { class: `ex-tag ex-tag-${long ? 'up' : 'down'}` }, `${long ? 'Long' : 'Short'} ${p.leverage.toFixed(2)}x`)),
@@ -242,9 +247,9 @@ export function mountExchange(root: HTMLElement, m: Market, onChartInput: () => 
         cell('Unrealized P&L (USDT)', signed(pnl), tone),
         cell('ROI', `${signed(roi)}%`, tone)),
       el('div', { class: 'ex-grid' },
-        field('size', cell('Size (BTC)', fmt(p.size, 3))), cell('Entry Price', fmt(p.entryPrice)), cell('Mark Price', fmt(p.markPrice)),
+        size, cell('Entry Price', fmt(p.entryPrice)), cell('Mark Price', fmt(p.markPrice)),
         cell('Liq. Price', p.liqPrice ? fmt(p.liqPrice) : '--', 'ex-warn'),
-        field('stops', cell('TP/SL', `${p.takeProfit ? fmt(p.takeProfit) : '--'} / ${p.stopLoss ? fmt(p.stopLoss) : '--'}`))))
+        stops))
     if (editing === p) card.append(editor(p))
     else card.append(el('div', { class: 'ex-card-btns' },
       el('button', { type: 'button', 'data-act': 'tpsl', 'data-i': String(i) }, 'TP/SL'),
@@ -335,9 +340,9 @@ export function mountExchange(root: HTMLElement, m: Market, onChartInput: () => 
       out.push({ price: p.entryPrice, label: 'Entry', color: '#a1a4a5', key: 'entry' })
       if (p.takeProfit) out.push({ price: p.takeProfit, label: 'TP', color: UP, key: 'tp' })
       if (p.stopLoss) out.push({ price: p.stopLoss, label: 'SL', color: DOWN, key: 'sl' })
-      if (p.liqPrice) out.push({ price: p.liqPrice, label: 'Liq.', color: '#eeae3f', key: 'liq' })
+      if (p.liqPrice) out.push({ price: p.liqPrice, label: 'Liq.', color: '#d4d6da', key: 'liq' })
     }
-    for (const o of m.orders) out.push({ price: o.price, label: o.side === 'Buy' ? 'Buy limit' : 'Sell limit', color: '#5b8def', key: `o:${o.orderId}` })
+    for (const o of m.orders) out.push({ price: o.price, label: o.side === 'Buy' ? 'Buy limit' : 'Sell limit', color: '#b6b8bc', key: `o:${o.orderId}` })
     return out
   }
   const visible = () => m.bars.slice(-Math.floor((size.w - AXIS_W) / BAR_W))

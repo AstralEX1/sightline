@@ -1,9 +1,9 @@
 /**
  * The sandbox's tabs, one scenario each. Their numbers are the templates' own (registry.ts), so the lens shows the
- * alert the app would raise. Take half is answered out loud; the other guided tabs still press Down and Click if nobody speaks.
+ * alert the app would raise. Guided trade alerts are confirmed with the Down and Click gestures.
  */
 import { DEFAULT_DELIVERY, TEMPLATES, type Draft, type Template } from '../../../server/src/registry.ts'
-import { liqOf, START_PRICE as P, type Market } from './market.ts'
+import { liqOf, START_PRICE as P, SYMBOL, type Market } from './market.ts'
 
 const QTY = 0.05 // 4,800 USDT at 96,000; 480 USDT margin at 10×
 const LEV = 10
@@ -26,8 +26,6 @@ export type Tab = {
   template: Template
   /** A guided story; otherwise the phone opens the template in the editor and the visitor adds it. */
   on: boolean
-  /** Play leaves the card for a spoken yes. Down and Click still answer it. */
-  voice?: boolean
   /** The account before anything moves. */
   before(m: Market): Promise<void>
   /** Where Play moves the price so the shortcut fires. */
@@ -57,17 +55,30 @@ export const TABS: Tab[] = [
   {
     id: 'liquidation', title: 'Liquidation alert', sub: 'Close half when BTC nears liquidation', template: template('tpl_6'), on: true,
     before: m => m.open('Buy', QTY, LEV), to: liqOf('Buy', P, LEV) * 1.025,
-    steps: ['Switch on Near liquidation · half', 'BTC nears liquidation', 'The glasses ask: close half?', 'The exchange closes half'],
+    steps: ['Set up the shortcut and switch it on', 'The trigger fires', 'The alert arrives on the glasses', 'The close is sent, then the exchange fills it'],
   },
   {
-    id: 'profit', title: 'Lock in profit', sub: 'Stop to entry at +20% ROI', template: template('tpl_1'), on: true,
-    before: m => m.open('Buy', QTY, LEV, 0, P * 0.98), to: P * 1.024, // a stop to move
-    steps: ['Switch on ROI above 20% · breakeven', 'BTC reaches +20% ROI', 'The glasses ask: move the stop?', 'The stop moves to entry'],
+    id: 'volume', title: 'Volume spike', sub: 'Notify on a volume spike and a 5% price rise', on: true,
+    template: {
+      id: 'sandbox-volume', category: 'Market', title: 'Notify', sub: 'Volume spike + price up 5%',
+      draft: {
+        scope: { type: 'SYMBOL', symbol: SYMBOL },
+        conditions: { logic: 'ALL', items: [
+          { id: 'c1', type: 'PRICE_CHANGE', source: 'LAST', direction: 'UP', percent: '5' },
+          { id: 'c2', type: 'VOLUME_SPIKE', multiplier: '2', windowSec: 300 },
+        ] },
+        action: { type: 'NOTIFY' },
+        trigger: { mode: 'ON_ENTRY' },
+        delivery: { ...DEFAULT_DELIVERY },
+      },
+    },
+    before: async m => { m.seedVolumeSpike() }, to: P * 1.055,
+    steps: ['Set up the shortcut and switch it on', 'BTC rises 5% with volume at least 2× usual', 'The alert arrives on the glasses'],
   },
   {
-    id: 'half', title: 'Take half', sub: 'Close half at +50% ROI', template: template('tpl_2'), on: true, voice: true,
+    id: 'half', title: 'Take half', sub: 'Close half at +50% ROI', template: template('tpl_2'), on: true,
     before: m => m.open('Buy', QTY, LEV), to: P * 1.055, // 10×: +5.5% is about +55% ROI
-    steps: ['Switch on ROI above 50% · half', 'BTC reaches +50% ROI', 'Say yes. Five seconds to cancel', 'The exchange closes half'],
+    steps: ['Set up the shortcut and switch it on', 'The trigger fires', 'Confirm on the glasses with Down → Click', 'The close is sent, then the exchange fills it'],
   },
   {
     id: 'build', title: 'Build your own', sub: 'Drag BTC a little, down or up', template: template('tpl_2'), on: false,

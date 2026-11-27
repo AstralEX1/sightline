@@ -6,7 +6,7 @@ import { demoExchange, FakeExchange } from '../src/fake-exchange.ts'
 import { receiptLine } from '../src/proposals.ts'
 import { CLOSE_SEED, STARTER_RULES, VOICE_SEEDS, type Draft } from '../src/registry.ts'
 import { template } from './removed-templates.ts'
-import { closeProposal } from '../src/execute.ts'
+import { closeProposal, SETTLE_MS } from '../src/execute.ts'
 import type { Position } from '../src/types.ts'
 
 const START = 1_800_000_000_000
@@ -853,6 +853,26 @@ test('History waits for the position to reflect partial and final fills', async 
   assert.equal(store.execution(id)!.receipt, '0.05 → 0.025 BTC')
 })
 
+test('a partial close whose remainder was cancelled shows the final execution and position receipt in History', async () => {
+  const { s, store, ex, ticks, advance } = setup([btc()], [tpl(6)])
+  await ticks()
+  const card = s.state().card!
+  const r = await s.confirm(card.id, 'tap-partial')
+  const id = r.execution!.id
+  const fill = ex.fills[0]
+  Object.assign(fill, { qty: 0.015, leavesQty: 0.01 })
+  ex.list[0].size = 0.035
+  ex.placed.set(fill.orderLinkId, { orderId: fill.orderId, status: 'Cancelled', cumExecQty: 0.015, avgPrice: 61000 })
+  await ticks(2)
+  assert.equal(store.execution(id)!.receipt, '0.05 → 0.035 BTC')
+  advance(SETTLE_MS)
+  await ticks(2)
+  assert.equal(store.openExecutions().length, 0)
+  assert.equal((await s.confirm(card.id, 'tap-partial')).execution?.receipt, '0.05 → 0.035 BTC')
+  assert.equal(store.alert(card.alertId)?.status, 'Filled 0.015 of 0.025 BTC at 61,000 · remainder cancelled · 0.05 → 0.035 BTC')
+  assert.equal(ex.calls.length, 1)
+})
+
 test('a partial fill has no position readback after its slot is reused by another position', async () => {
   const { s, store, ex, ticks } = setup([btc()], [tpl(6)])
   await ticks()
@@ -894,7 +914,7 @@ test('starter rules: on the demo account the lens has work at once, and the menu
   now += 2000
   const cards = () => store.pendingProposals().map(p => p.question).sort()
   assert.deepEqual(cards(), ['Move SOL stop to entry 140?'])
-  assert.deepEqual(await s.command('lock'), { ok: true, message: 'Heard "lock profits" · 1 proposal' }) // the card already up
+  assert.deepEqual(await s.command('lock'), { ok: true, message: 'Lock profits · 1 proposal' }) // the card already up
   assert.equal(cards().length, 1)
   ex.setMark('BTCUSDT', 61200) // liquidation distance 2.8%: the third rule
   ex.prices.BTCUSDT = 61200
@@ -977,10 +997,22 @@ test('the menu closes one position or all of them, each as a card to confirm', a
   ex.prices.ETHUSDT = 3080
   store.seed([CLOSE_SEED], 'seeded:close')
   await ticks()
-  assert.deepEqual(await s.command('close', { symbol: 'ETHUSDT', positionIdx: 0 }), { ok: true, message: 'Heard "close position" · 1 proposal' })
-  assert.deepEqual(store.pendingProposals().map(p => p.question), ['Close 100% · 1 ETH?'])
-  assert.deepEqual(await s.command('close'), { ok: true, message: 'Heard "close all" · 2 proposals' }) // ETH's card already up
+  const target = { symbol: 'ETHUSDT', positionIdx: 0 }
+  assert.deepEqual(await s.command('close', target), { ok: true, message: 'Close position · 1 proposal' })
+  const manual = s.state().card!
+  assert.deepEqual([manual.question, manual.who, manual.why, !!manual.voice], ['Close 100% · 1 ETH?', 'ETH short', 'Manual close', false])
+  assert.equal(store.alert(manual.alertId)?.reason, 'Manual close')
+  assert.equal((await s.command('close', target)).ok, true)
+  assert.equal(s.state().card!.id, manual.id)
+  assert.equal(s.dismiss(manual.id, 'glasses').ok, true)
+  assert.equal((await s.command('close', target, 'voice')).ok, true)
+  const heard = s.state().card!
+  assert.deepEqual([heard.who, heard.why, heard.voice], ['ETH short', 'Voice: close position', true])
+  assert.equal(s.dismiss(heard.id, 'glasses').ok, true)
+  assert.equal((await s.command('close', target)).ok, true)
+  assert.deepEqual(await s.command('close'), { ok: true, message: 'Close all · 2 proposals' }) // ETH's card already up
   assert.deepEqual(store.pendingProposals().map(p => p.question).sort(), ['Close 100% · 0.05 BTC?', 'Close 100% · 1 ETH?'])
+  assert.equal(store.pendingProposals().find(p => p.who === 'BTC long')?.why, 'Manual close all')
   assert.equal((await s.command('close', { symbol: 'SOLUSDT', positionIdx: 0 })).ok, false)
   assert.equal(ex.calls.length, 0)
 })

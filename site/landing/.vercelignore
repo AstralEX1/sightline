@@ -12,3 +12,5 @@
 !sandbox
 !sandbox/**
 !vercel.json
+!phone
+!phone/**

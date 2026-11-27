@@ -21,7 +21,11 @@ Take a SQLite backup before starting the new service. Opening the DB versions le
 
 ## Web and Even Hub
 
-1. Deploy the landing and sandbox output from `site/landing/`. The sandbox has its own in-memory exchange and does not need a token.
-2. If releasing the separate hosted phone demo, build the app with `VITE_TRADE_SHORTCUTS_BACKEND_ORIGIN` set to the hosted paper origin. `VITE_DEMO_TOKEN`, if set, becomes public JavaScript. Use only the dedicated fake-exchange token there. Test hosted Settings and a paper alert after deploying.
+1. From the clean export, build the hosted phone app for `/phone/` alongside the landing and sandbox.
+   ```sh
+   env -u VITE_DEMO_TOKEN -u VITE_APP_TOKEN VITE_TRADE_SHORTCUTS_BACKEND_ORIGIN="$DEMO_HTTPS_ORIGIN" \
+     npm run build -- --base=/phone/ --outDir="$PWD/site/landing/phone"
+   ```
+2. Deploy `site/landing/` to the Vercel site project. Verify `/phone/` can connect to the hosted paper API with a user-supplied app token and `/sandbox/` can run a paper scenario on its own.
 3. From the same clean export, run `npm run pack -- "$DEMO_HTTPS_ORIGIN" "$TESTNET_HTTPS_ORIGIN" "trade-shortcuts-$BUILD_VERSION.ehpk"`. The first origin is the default. The packer clears `VITE_DEMO_TOKEN` for this build. Check version, allowed origins and the digest before handing it to the portal owner.
 4. Promote the uploaded version to Beta and verify that testers are Active. Follow the [store and device checklist](store-listing.md) before submitting for public review.

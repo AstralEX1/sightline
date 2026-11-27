@@ -1,0 +1,6 @@
+.env
+.env.*
+dist/
+.playwright-cli/
+.superpowers/
+*.ehpk

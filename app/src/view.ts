@@ -167,7 +167,7 @@ const REASON_ICON: Record<ConditionType, IconName> = {
   VOLUME_SPIKE: 'pulse', FUNDING: 'percent', ORDER_STALE: 'hourglass', POSITION_CLOSED: 'exit',
 }
 // shortcut: a test alert has no reasonType, so it wears the bell; send the shortcut's first condition type with a test to show its own icon
-export const iconOf = (c: Proposal): IconName => (c.reasonType ? REASON_ICON[c.reasonType] : c.voice ? 'mic' : 'bell')
+export const iconOf = (c: Proposal): IconName => (c.reasonType ? REASON_ICON[c.reasonType] : c.voice ? 'mic' : c.manual && c.terms.type === 'order' && c.terms.reduceOnly ? 'exit' : 'bell')
 
 /** Open and Increase add exposure: their action opens Review, never the order (spec §10). */
 const grows = (c: Proposal) => c.terms.type === 'order' && !c.terms.reduceOnly
@@ -453,6 +453,7 @@ function told(o: Outcome): [IconName, string, string?] {
     case 'ACKNOWLEDGED': return ['clock', 'Sent · waiting for the fill']
     case 'FILLED': return ['check', `${t.type === 'order' && t.reduceOnly ? 'Closed' : 'Filled'} ${e.filledQty} ${coinName} · avg ${price(e.avgPrice)}`, 'OK']
     case 'PARTIALLY_FILLED': return ['half', `Partly filled · ${e.filledQty} of ${t.type === 'order' ? t.qty : '?'} ${coinName}`, 'OK']
+    case 'PARTIALLY_FILLED_CANCELLED': return ['half', `Filled ${e.filledQty} of ${t.type === 'order' ? t.qty : '?'} ${coinName}${e.avgPrice > 0 ? ` · avg ${price(e.avgPrice)}` : ''}`, 'OK']
     case 'APPLIED': return ['check', t.type === 'setStop' ? `Stop at ${price(t.price)}` : t.type === 'setTakeProfit' ? `Take profit at ${price(t.price)}`
       : t.type === 'addMargin' ? `Added ${usdt(t.usd)} margin` : 'Order cancelled', 'OK']
     case 'REJECTED': return ['reject', 'Rejected by Bybit', 'OK'] // the reason goes on the row under OK
@@ -472,6 +473,8 @@ function result(o: Outcome, v: View): Screen {
     labels: label ? [label] : [], choices: label ? ['close' as const] : [],
     hint: () => (label ? `tap: ${label === 'OK' ? label : label.toLowerCase()}` : 'waiting for Bybit · double tap: hide'),
   }
+  if (e?.status === 'PARTIALLY_FILLED_CANCELLED') return framed({ ...rest, layout: 'review',
+    head: { ask: 'Remainder cancelled', terms: [why, extra].filter(Boolean).join('\n') } }, v)
   return extra
     ? framed({ ...rest, layout: 'review', head: { ask: o.card.who, terms: `${why}\n${extra}` } }, v)
     : framed({ ...rest, layout: 'alert', head: { who: o.card.who, why, queue: '' } }, v)

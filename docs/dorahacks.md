@@ -5,10 +5,11 @@ Heads Up · **Track 03 · Exchanges & Stocks** · **Bybit V5 + Even Realities G2
 | Material | Link |
 | --- | --- |
 | Public source and setup | [GitHub](https://github.com/AstralEX1/trade-shortcuts) |
-| Interactive demo | [Paper BTC liquidation scenario](https://trade-shortcuts-pi.vercel.app/sandbox/#liquidation) |
+| Phone app | [Hosted phone interface](https://tradeshortcuts.xyz/phone/) · paper server token required |
+| Interactive demo | [Paper BTC liquidation scenario](https://tradeshortcuts.xyz/sandbox/#liquidation) |
 | Physical G2 | [Beta installation and testing](judge-testing.md) |
 | Simulator clip | [27-second paper close](../assets/demo.mp4) |
-| Project site | [Trade Shortcuts](https://trade-shortcuts-pi.vercel.app/) |
+| Project site | [Trade Shortcuts](https://tradeshortcuts.xyz/) |
 
 ## Problem and approach
 

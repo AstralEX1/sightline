@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { FakeExchange } from '../src/fake-exchange.ts'
+import { demoExchange, FakeExchange } from '../src/fake-exchange.ts'
 import type { OrderRequest, Position } from '../src/types.ts'
 
 const long = (o: Partial<Position> = {}): Position => ({
@@ -99,6 +99,22 @@ test('ticker: last from prices, else the mark; index from its override, else the
   ex.index = { BTCUSDT: 60990 }
   assert.deepEqual(await ex.ticker('BTCUSDT'), { last: 61050, mark: 61000, index: 60990 })
   await assert.rejects(ex.ticker('NOPEUSDT'), { name: 'ExchangeRejected' })
+})
+
+test('paper chart updates its BTC candle as the simulated price moves', async t => {
+  const minute = Date.UTC(2026, 10, 27)
+  t.mock.timers.enable({ apis: ['Date', 'setInterval'], now: minute + 56_000 })
+  const { ex, stop } = demoExchange(Date.now())
+  t.after(stop)
+  const latest = async () => (await ex.kline('BTCUSDT', 'LAST', 60)).at(-1)
+  assert.deepEqual(await latest(), { start: minute, close: (await ex.ticker('BTCUSDT')).last })
+
+  t.mock.timers.tick(2000)
+  assert.deepEqual(await latest(), { start: minute, close: 61_760 })
+
+  t.mock.timers.tick(2000)
+  assert.deepEqual(await latest(), { start: minute + 60_000, close: 61_720 })
+  assert.equal((await ex.kline('BTCUSDT', 'LAST', 100)).length, 60)
 })
 
 test('slots: the positions of a symbol, or one empty slot when flat', async () => {

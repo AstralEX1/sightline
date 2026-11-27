@@ -138,14 +138,15 @@ const LABEL_PX = 15
 
 /**
  * Detail's last hour, calm like a ticker: the line with entry dotted and stop dashed across it, each named with its
- * price at the right next to the last price, `−1h` and `now` under it. Liq appears only when near.
+ * price at the right next to the last price, with the time of the last candle below. Liq appears only when near.
  * The lens takes images up to 288 px wide, so the w-wide chart goes as slices: this is the one starting at `fromX`.
  */
 export const chartPng = (candles: Candle[], levels: Levels, w: number, h: number, fromX: number, sliceW: number) => draw(sliceW, h, g => {
   if (candles.length < 2) return // black: nothing to draw yet
   g.translate(-fromX, 0)
   const closes = candles.map(c => c.close)
-  const now = closes[closes.length - 1]
+  const last = candles[candles.length - 1]
+  const lastPrice = last.close
   const { lo, hi, pinned } = chartRange(closes, levels)
   g.font = `${LABEL_PX}px sans-serif`
   g.textBaseline = 'middle'
@@ -159,13 +160,13 @@ export const chartPng = (candles: Candle[], levels: Levels, w: number, h: number
     .map(l => ({ ...l, at: l.v > hi ? hi : l.v < lo ? lo : l.v, arrow: l.v > hi ? ' ↑' : l.v < lo ? ' ↓' : '' }))
   // One precision for every label: the usual one for the price (as price() in format.ts), plus a digit while two
   // different prices would still read the same, so 0.99995 is not "1.000" next to "0.9999".
-  const values = [now, ...lines.map(l => l.v)]
-  let digits = now >= 1000 ? 0 : now >= 1 ? 2 : Math.ceil(-Math.log10(now)) + 3
+  const values = [lastPrice, ...lines.map(l => l.v)]
+  let digits = lastPrice >= 1000 ? 0 : lastPrice >= 1 ? 2 : Math.ceil(-Math.log10(lastPrice)) + 3
   const fmt = (v: number) => v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })
   while (digits < 8 && values.some((v, i) => values.some((u, j) => j > i && u !== v && fmt(u) === fmt(v)))) digits++
   const labels = [
     ...lines.map(l => ({ text: `${l.name} ${fmt(l.v)}${l.arrow}`, at: l.at, color: l.color })),
-    { text: fmt(now), at: now, color: '#fff' }, // brighter, not bold: bold smeared in 4-bit
+    { text: fmt(lastPrice), at: lastPrice, color: '#fff' }, // brighter, not bold: bold smeared in 4-bit
   ].sort((a, b) => b.at - a.at)
   const labelW = Math.ceil(Math.max(...labels.map(l => g.measureText(l.text).width))) + 14
   const plotW = w - labelW, plotH = h - AXIS_H
@@ -188,10 +189,10 @@ export const chartPng = (candles: Candle[], levels: Levels, w: number, h: number
   })
   g.font = `${LABEL_PX - 2}px sans-serif`
   g.fillStyle = '#888'
-  const minutes = Math.round((candles[candles.length - 1].start - candles[0].start) / 60_000) + 1 // a new listing has less than an hour
+  const minutes = Math.round((last.start - candles[0].start) / 60_000) + 1 // a new listing has less than an hour
   g.fillText(minutes >= 60 ? '−1h' : `−${minutes}m`, 0, plotH + AXIS_H / 2 + 1)
   g.textAlign = 'right'
-  g.fillText('now', plotW, plotH + AXIS_H / 2 + 1)
+  g.fillText(`Last · ${new Date(last.start).toTimeString().slice(0, 5)}`, plotW, plotH + AXIS_H / 2 + 1)
 
   g.strokeStyle = g.fillStyle = '#fff'
   g.lineWidth = 2
@@ -199,5 +200,5 @@ export const chartPng = (candles: Candle[], levels: Levels, w: number, h: number
   g.beginPath()
   closes.forEach((c, i) => (i ? g.lineTo(x(i), y(c)) : g.moveTo(x(i), y(c))))
   g.stroke()
-  g.beginPath(); g.arc(x(closes.length - 1), y(now), 3, 0, 2 * Math.PI); g.fill() // now
+  g.beginPath(); g.arc(x(closes.length - 1), y(lastPrice), 3, 0, 2 * Math.PI); g.fill()
 })

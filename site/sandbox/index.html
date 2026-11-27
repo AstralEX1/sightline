@@ -19,14 +19,15 @@
 
   <nav id="tabs" class="tabs" role="tablist" aria-label="Scenarios"></nav>
 
-  <main id="panel" class="panel" role="tabpanel">
-    <section class="device phone-col" aria-label="Phone">
-      <div class="phone"><iframe id="phone" title="Trade Shortcuts on the phone"></iframe></div>
-    </section>
-
-    <section class="device glasses" aria-label="Glasses">
+  <main id="panel" class="panel" role="tabpanel" data-view="glasses" data-side="phone">
+    <div id="views" class="views" role="group" aria-label="Sandbox view">
+      <button type="button" data-view="phone" aria-controls="rule-panel" aria-pressed="false">Rule</button>
+      <button type="button" data-view="chart" aria-controls="market-panel" aria-pressed="false">Market</button>
+      <button type="button" data-view="glasses" aria-controls="glasses-panel" aria-pressed="true">Glasses</button>
+    </div>
+    <section id="glasses-panel" class="device glasses" aria-label="Glasses">
       <div class="sim">
-        <div class="sim-title"><span class="sim-dots" aria-hidden="true"><i></i><i></i><i></i></span>Glasses Display</div>
+        <div class="sim-title">Glasses Display</div>
         <canvas id="lens" width="576" height="288" tabindex="-1" role="img" aria-label="What the glasses show. Click to tap."></canvas>
         <div class="sim-bar" role="group" aria-label="Ring and temple">
           <button type="button" data-gesture="up">Up</button>
@@ -37,38 +38,30 @@
           <button type="button" data-gesture="menu" data-free-control>Menu</button>
         </div>
       </div>
-      <div class="story-actions" id="story-actions">
-        <div class="story-actions__slot story-actions__slot--main">
-          <button class="sl-playback" id="scenario-play" type="button" data-playing="false" aria-label="Play" disabled>
-            <span class="sl-playback__surface" aria-hidden="true">
-              <span class="sl-playback__icon">
-                <span class="sl-playback__piece sl-playback__piece--left"></span>
-                <span class="sl-playback__piece sl-playback__piece--right"></span>
-              </span>
-              <span class="sl-playback__label">Play</span>
-            </span>
-          </button>
-        </div>
-        <div class="story-actions__slot story-actions__slot--replay">
-          <button class="sl-playback" id="scenario-replay" type="button" data-playing="false" aria-label="Replay">
-            <span class="sl-playback__surface" aria-hidden="true">
-              <span class="sl-playback__icon">
-                <span class="sl-playback__piece sl-playback__piece--left"></span>
-                <span class="sl-playback__piece sl-playback__piece--right"></span>
-              </span>
-              <span class="sl-playback__label">Replay</span>
-            </span>
-          </button>
-        </div>
-      </div>
-      <p id="note" class="sim-note" role="status" aria-live="polite"></p>
-      <ol id="steps" class="steps" aria-live="polite"></ol>
-      <button type="button" id="restart" class="restart">↺ Start over</button>
     </section>
-
-    <section class="device exchange-col" aria-label="Exchange">
+    <section id="rule-panel" class="device phone-col" aria-label="Phone">
+      <div class="phone"><iframe id="phone" title="Trade Shortcuts on the phone"></iframe></div>
+    </section>
+    <section id="market-panel" class="device exchange-col" aria-label="Exchange">
       <div class="phone phone--dark"><div id="exchange" class="screen"></div></div>
     </section>
+    <div class="guide">
+      <div class="guide-actions">
+        <button class="sl-playback" id="scenario-play" type="button" data-playing="false" aria-label="Play demo" disabled>
+          <span class="sl-playback__surface" aria-hidden="true">
+            <span class="sl-playback__icon">
+              <span class="sl-playback__piece sl-playback__piece--left"></span>
+              <span class="sl-playback__piece sl-playback__piece--right"></span>
+            </span>
+            <span class="sl-playback__label">Play demo</span>
+          </span>
+        </button>
+        <button type="button" id="restart" class="secondary" hidden>Start over</button>
+      </div>
+      <ol id="steps" class="steps" aria-live="polite"></ol>
+      <p id="result" class="result" role="status" hidden></p>
+      <p id="note" class="sim-note" role="status"></p>
+    </div>
   </main>
 
   <script type="module" src="./src/page.ts"></script>
