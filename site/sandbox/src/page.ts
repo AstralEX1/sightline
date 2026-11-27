@@ -6,7 +6,7 @@
 import './style.css'
 import './sl/playback/buttons.css'
 import './sl/playback/buttons.js'
-import type { RenderedAlert } from '../../../app/src/view.ts'
+import { CARD_SETTLE_MS, type RenderedAlert } from '../../../app/src/view.ts'
 import { TEMPLATES } from '../../../server/src/registry.ts'
 import type { AlertRecord } from '../../../server/src/types.ts'
 import { createBackend, type Backend } from './backend.ts'
@@ -14,7 +14,7 @@ import { mountExchange } from './exchange.ts'
 import { createHost, type Gesture } from './host.ts'
 import { Lens } from './lens.ts'
 import { Market } from './market.ts'
-import { BUILD_WATCHES, TABS, type Tab } from './scenarios.ts'
+import { BUILD_WATCHES, TABS, scenarioPhase, type Phase, type Tab } from './scenarios.ts'
 import { transcript } from './voice.ts'
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T
@@ -74,9 +74,8 @@ type Story = 'idle' | 'running' | 'paused' | 'done'
 let story: Story = 'idle'
 let paused = false
 /** Guided step on screen: 0 setup, 1 trigger, 2 alert, 3 the exchange. It lags the server so each stage can rest. */
-let guidedStep = 0
+let guidedStep: number | undefined
 let exchangeShown = false
-let stagesDone = false
 /** The other scenarios stay hidden until this story reaches Replay. */
 let moreStories = false
 const tabsEl = $('tabs')
@@ -88,7 +87,6 @@ new ResizeObserver(([entry]) => {
 // ── tabs ──
 let tab = TABS[0]
 /** Where the visitor is: add the shortcut, move the price, answer the alert, done; or the alert ended unanswered. */
-type Phase = 'add' | 'move' | 'answer' | 'executing' | 'done' | 'missed'
 let phase: Phase = 'move'
 let gliding = false
 let enabledShortcutId: string | undefined
@@ -96,6 +94,7 @@ let enabledShortcutId: string | undefined
 let scenarioShortcutId: string | undefined
 let currentAlertId: string | undefined
 let renderedAlertId: string | undefined
+let notifyAlert = false
 /** A line under the current step: why it is still there. */
 let note = ''
 /** How the tab's own alert ended, when it ended without the action. */
@@ -205,9 +204,9 @@ async function open(t: Tab, revealPhone = false) {
   enabledShortcutId = scenarioShortcutId = currentAlertId = renderedAlertId = undefined
   story = 'idle'
   paused = false
-  guidedStep = 0
+  guidedStep = undefined
   exchangeShown = false
-  stagesDone = false
+  notifyAlert = false
   delete play.dataset.restLabel
   clearRing()
   delete $('exchange').dataset.light
@@ -283,22 +282,26 @@ function renderSteps() {
   if (story === 'running' || story === 'paused') play.dataset.restLabel = 'Resume'
   else delete play.dataset.restLabel
   if (story === 'idle') play.disabled = !canPlay()
-  const order: Phase[] = tab.on ? ['move', 'answer', 'done'] : ['add', 'move', 'answer']
-  const at = tab.on
-    ? phase === 'missed' ? 2
-      : stagesDone ? tab.steps.length
-      : guidedStep
-    : phase === 'done' ? order.length : phase === 'missed' || phase === 'executing' ? order.indexOf('answer')
-      : order.indexOf(phase)
+  const order: Phase[] = ['add', 'move', 'answer']
+  const actualStep = phase === 'done' ? tab.steps.length
+    : phase === 'executing' && tab.on ? 3
+    : phase === 'missed' || phase === 'executing' ? order.indexOf('answer')
+    : order.indexOf(phase)
+  const at = tab.on && phase !== 'missed' ? guidedStep ?? actualStep : actualStep
   stepsEl.replaceChildren(...tab.steps.map((text, i) => {
-    const li = el('li', { className: i < at ? 'done' : i === at ? 'now' : '' }, el('span', { className: 'step-n' }, i < at ? '✓' : String(i + 1)), el('span', {}, text))
+    const caption = tab.on && notifyAlert && i >= 2
+      ? i === 2 ? 'The alert arrives on the glasses' : 'The alert is acknowledged'
+      : text
+    const li = el('li', { className: i < at ? 'done' : i === at ? 'now' : '' }, el('span', { className: 'step-n' }, i < at ? '✓' : String(i + 1)), el('span', {}, caption))
     if (i === at) li.setAttribute('aria-current', 'step')
     if (!tab.on && i === at && order[i] === 'move') {
       const play = el('button', { type: 'button', className: 'play', disabled: gliding }, el('span', { ariaHidden: 'true' }, '▶'), ' Play')
       play.onclick = () => void playMove(play)
       li.append(el('span', { className: 'or' }, 'or'), play)
     }
-    if (i === at && phase === 'answer') {
+    if (i === at && phase === 'answer' && notifyAlert) {
+      li.append(el('kbd', {}, 'Click'), el('span', { className: 'step-note' }, 'to select OK'))
+    } else if (i === at && phase === 'answer') {
       li.append(el('kbd', {}, 'Say yes'), el('span', { className: 'or' }, 'or'), el('kbd', {}, 'Down'), el('span', { className: 'or' }, 'then'), el('kbd', {}, 'Click'))
       if (!host.micDenied()) li.append(el('span', { className: 'step-note' }, 'Heard in this tab. The browser turns the word into text.'))
     }
@@ -323,6 +326,7 @@ async function playMove(button: HTMLButtonElement) {
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
   const look = reduceMotion ? 0 : BEAT_MS
   story = 'running'
+  if (tab.on) guidedStep = 0
   play.dataset.restLabel = 'Resume'
   gliding = true
   if (button !== play) button.disabled = true
@@ -358,7 +362,7 @@ async function playMove(button: HTMLButtonElement) {
     if (id !== run) return
     await sleep(reduceMotion ? 0 : STAGE_PAUSE_MS) // stage 1 rests before the trigger
     if (id !== run) return
-    guidedStep = 1
+    if (tab.on) guidedStep = 1
     renderSteps()
     server.hold(true) // the price may reach the trigger; the alert waits until the glasses have the room
     spotlight('chart', true)
@@ -368,7 +372,7 @@ async function playMove(button: HTMLButtonElement) {
     ring(document.querySelector('.exchange-col > .phone')) // the price has reached the line
     await sleep(reduceMotion ? 0 : STAGE_PAUSE_MS) // the trigger stays on the chart
     if (id !== run) return
-    guidedStep = 2
+    if (tab.on) guidedStep = 2
     renderSteps()
     spotlight('glasses', true)
     await sleep(reduceMotion ? 0 : STAGE_PAUSE_MS) // the glasses are in view before the alert exists
@@ -426,23 +430,20 @@ setInterval(async () => {
     const alert = alerts.find(a => !a.simulated && own.some(s => s.id === a.shortcutId))
     // the app saves a new shortcut off: it counts once it is switched on
     enabledShortcutId = own.find(s => s.enabled)?.id
-    const next: Phase = !enabledShortcutId && !alert ? 'add'
-      : !alert ? 'move'
-      : /^Waiting/.test(alert.status) ? 'answer'
-      : /^(Sending|Submitted|Partly filled)/.test(alert.status) ? 'executing'
-      : /^(Filled|Done|Shown|Logged)/.test(alert.status) ? 'done'
-      : 'missed' // expired, dismissed, skipped, withdrawn, rejected: nothing happened on the exchange
+    const next = scenarioPhase(!!enabledShortcutId, alert?.status)
+    const alertChanged = alert?.id !== currentAlertId
+    notifyAlert = alert?.actionType === 'NOTIFY'
     if (next === 'missed') missed = alert!.status.split(' · ')[0].toLowerCase()
     if (next === 'done' || next === 'missed') market.floor = 0 // the scenario is over: the market is free again
     const latest = alert?.status ?? ''
     currentAlertId = alert?.id
     spotlightAlert()
-    if (next === 'answer' && phase !== 'answer') {
-      if (host.micDenied()) say('Microphone blocked. Down, then Click still confirms.')
-      if (tab.on) void answerGlasses(id)
+    if (alert && next === 'answer' && (phase !== 'answer' || alertChanged)) {
+      if (!notifyAlert && host.micDenied()) say('Microphone blocked. Down, then Click still confirms.')
+      if (tab.on && (!notifyAlert || guidedStep !== undefined)) void answerGlasses(id, alert.id, notifyAlert)
     }
     if (next === 'add' && phase !== 'add') spotlight('phone')
-    if (tab.on && (next === 'executing' || next === 'done') && !exchangeShown) {
+    if (tab.on && !notifyAlert && (next === 'executing' || next === 'done') && !exchangeShown) {
       exchangeShown = true
       const finished = id
       void (async () => {
@@ -450,7 +451,7 @@ setInterval(async () => {
         if (finished !== run) return
         const filled = await until(finished, () => phase === 'done' || phase === 'missed', 12_000)
         if (!filled || phase !== 'done') return
-        guidedStep = 3
+        if (guidedStep !== undefined) guidedStep = 3
         renderSteps()
         spotlight('chart', true)
         const field = tab.id === 'profit' ? 'stops' : 'size'
@@ -467,13 +468,13 @@ setInterval(async () => {
       const finished = run
       window.setTimeout(() => {
         if (finished !== run) return
-        stagesDone = true
+        guidedStep = undefined
         renderSteps()
         releaseShade()
       }, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : STAGE_PAUSE_MS + 1800)
     }
     if (story === 'idle') play.disabled = !canPlay(next)
-    if (next !== phase || latest !== status) {
+    if (next !== phase || latest !== status || alertChanged) {
       phase = next
       status = latest
       if (next !== 'move') note = ''
@@ -487,43 +488,52 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('[data-gesture]')) 
   b.onmousedown = e => e.preventDefault() // keep focus off the button, so Enter and the arrows still reach the glasses
   b.onclick = () => press(b.dataset.gesture as Gesture)
 }
-let answering = false
+let answering: string | undefined
 /** The visitor does not have to hunt for Down and Click: show each, then press it. A spoken yes answers first. */
-async function answerGlasses(id: number) {
-  if (answering || id !== run || tab.voice) return
-  answering = true
+async function answerGlasses(id: number, alertId: string, notify: boolean) {
+  if (answering === alertId || id !== run || (tab.voice && !notify)) return
+  answering = alertId
+  const current = () => id === run && phase === 'answer' && currentAlertId === alertId
   try {
     const beat = matchMedia('(prefers-reduced-motion: reduce)').matches ? 200 : GESTURE_BEAT_MS
     const label = () => canvas.getAttribute('aria-label') ?? ''
+    if (notify) {
+      const showsOk = () => renderedAlertId === alertId && lens.page.textObject?.some(
+        box => box.containerName === 'opt1' && box.content?.trim() === '> OK') === true
+      if (!(await until(id, showsOk)) || !current()) return
+      await sleep(Math.max(beat, CARD_SETTLE_MS))
+      if (current() && showsOk()) press('tap')
+      return
+    }
     await until(id, () => /Dismiss/i.test(label()))
-    if (id !== run || phase !== 'answer') return
+    if (!current()) return
     // The mic opens with the card, after its blink. Wait for a yes before pressing anything.
     await until(id, () => host.voiceBusy() || phase !== 'answer', 5000)
-    if (id !== run || phase !== 'answer') return
+    if (!current()) return
     if (host.voiceBusy()) {
       await until(id, () => !host.voiceBusy() || phase !== 'answer', 16_000)
-      if (id !== run || phase !== 'answer' || host.voiceBusy()) return
+      if (!current() || host.voiceBusy()) return
     }
     if (!/>\s*(Close|Move|Set)/i.test(label())) {
       ring(document.querySelector('[data-gesture="down"]'))
       await sleep(beat)
-      if (id !== run || phase !== 'answer' || host.voiceBusy()) return
+      if (!current() || host.voiceBusy()) return
       // The card ignores the first gesture while it is still settling.
-      for (let i = 0; i < 3 && id === run && phase === 'answer' && !host.voiceBusy() && !/>\s*(Close|Move|Set)/i.test(label()); i++) {
+      for (let i = 0; i < 3 && current() && !host.voiceBusy() && !/>\s*(Close|Move|Set)/i.test(label()); i++) {
         press('down')
         await sleep(500)
       }
-      if (id !== run || phase !== 'answer' || host.voiceBusy() || !/>\s*(Close|Move|Set)/i.test(label())) return
+      if (!current() || host.voiceBusy() || !/>\s*(Close|Move|Set)/i.test(label())) return
     }
     clearRing() // the choice is selected; Click stays dark until the line has been read
     await sleep(beat)
-    if (id !== run || phase !== 'answer' || host.voiceBusy()) return
+    if (!current() || host.voiceBusy()) return
     ring(document.querySelector('[data-gesture="tap"]'))
     await sleep(beat)
-    if (id !== run || phase !== 'answer' || host.voiceBusy()) return
-    press('tap')
+    if (!current() || host.voiceBusy()) return
+    if (renderedAlertId === alertId) press('tap')
   } finally {
-    answering = false
+    if (answering === alertId) answering = undefined
   }
 }
 function press(g: Gesture) {
