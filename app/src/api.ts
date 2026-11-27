@@ -129,8 +129,9 @@ export const getPositions = () => request<(Position & { epoch: string })[]>('GET
 export const getOpenOrders = () => request<Order[]>('GET', '/api/orders/open')
 /** Every symbol the exchange trades, sorted. */
 export const getSymbols = () => request<string[]>('GET', '/api/symbols')
-/** Newest first; pass the last line's createdAt for the next page. */
-export const getHistory = (before?: number) => request<AlertRecord[]>('GET', `/api/history${before ? `?before=${before}` : ''}`)
+/** Newest first; pass the last alert as the next page's cursor. */
+export const getHistory = (before?: Pick<AlertRecord, 'createdAt' | 'id'>) =>
+  request<AlertRecord[]>('GET', before ? `/api/history?before=${before.createdAt}&beforeId=${id(before.id)}` : '/api/history')
 export const getAlertDetails = (alertId: string) => request<AlertDetails>('GET', `/api/history/${id(alertId)}`)
 /** New alerts for the in-app banner; polling it also tells the server the app is open. */
 export const getNotifications = (after: number) => request<AlertRecord[]>('GET', `/api/notifications?after=${after}`)

@@ -228,7 +228,8 @@ export function createServer(d: {
       // History, notifications, settings
       if (route === 'GET /api/history') {
         const limit = num('limit') ?? 50
-        return send(res, 200, store.history(num('before'), Number.isInteger(limit) ? Math.max(1, Math.min(limit, 200)) : 50))
+        const beforeId = url.searchParams.get('beforeId') ?? undefined
+        return send(res, 200, store.history(num('before'), Number.isInteger(limit) ? Math.max(1, Math.min(limit, 200)) : 50, beforeId))
       }
       const history = path.match(/^\/api\/history\/([\w-]+)$/)
       if (history && req.method === 'GET') {

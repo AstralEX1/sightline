@@ -51,7 +51,7 @@ Trade Shortcuts demo is running. Two simulator windows open: "Browser" is the ph
   1. The lens lists demo positions BTC, ETH, SOL (a paper exchange, no real money).
   2. Wait for the "Near liquidation · half" BTC alert. It appears about 30 s after start and is open for 120 s.
   3. Press Down. When the cursor reaches "Close 50%", click to confirm. The lens shows the fill.
-  4. On the phone page, open History (clock icon, top left) to see the trade.
+  4. On the phone page, tap History in the bottom menu to see the trade.
 The phone tied to the glasses is the simulator window named Browser. A separate tab at http://localhost:5173 does not drive Glasses Display. Ctrl+C stops everything.
 `)
 

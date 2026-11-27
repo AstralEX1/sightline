@@ -77,9 +77,6 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 
 .phone .circle-btn { position: relative; display: flex; flex: none; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%;
   background: var(--surface); color: var(--text); }
-.phone .new-shortcut { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border-radius: 999px;
-  background: var(--surface); font-size: .875rem; font-weight: 650; }
-.phone .new-shortcut svg { flex: none; }
 .phone .circle-btn--glass {
   background: radial-gradient(ellipse at 30% 0%, rgb(255 255 255 / .48), transparent 68%),
     color-mix(in srgb, var(--surface) 55%, transparent);

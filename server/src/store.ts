@@ -80,8 +80,8 @@ export interface Store {
   saveEpoch(positionKey: string, epoch: string | null): void
   saveAlert(a: AlertRecord): void
   alert(id: string): AlertRecord | null
-  /** Newest first, createdAt < before; default limit 50. */
-  history(before?: number, limit?: number): AlertRecord[]
+  /** Newest first. With beforeId, continue within the same timestamp. Default limit 50. */
+  history(before?: number, limit?: number, beforeId?: string): AlertRecord[]
   /** createdAt > after, oldest first. */
   alertsAfter(after: number, limit?: number): AlertRecord[]
   saveProposal(p: Proposal): void
@@ -284,9 +284,13 @@ export function createStore(path: string, clock: () => number = Date.now): Store
       a.id, ACCOUNT, a.shortcutId, a.createdAt, JSON.stringify(a),
     ),
     alert: aId => one<AlertRecord>('SELECT json FROM alerts WHERE account_id = ? AND id = ?', ACCOUNT, aId),
-    // shortcut: paging by createdAt alone skips alerts that share the boundary millisecond, page by (createdAt, id) if one tick ever writes more than a page
-    history: (before = Number.MAX_SAFE_INTEGER, limit = 50) => many<AlertRecord>(
-      'SELECT json FROM alerts WHERE account_id = ? AND created_at < ? ORDER BY created_at DESC, rowid DESC LIMIT ?', ACCOUNT, before, limit),
+    // The ID identifies the last displayed row among alerts written in the same millisecond.
+    history: (before = Number.MAX_SAFE_INTEGER, limit = 50, beforeId) => many<AlertRecord>(
+      `SELECT json FROM alerts
+       WHERE account_id = ? AND created_at <= ?
+         AND (created_at < ? OR rowid < (SELECT rowid FROM alerts WHERE account_id = ? AND created_at = ? AND id = ?))
+       ORDER BY created_at DESC, rowid DESC LIMIT ?`,
+      ACCOUNT, before, before, ACCOUNT, before, beforeId ?? null, limit),
     alertsAfter: (after, limit = 50) => many<AlertRecord>(
       'SELECT json FROM alerts WHERE account_id = ? AND created_at > ? ORDER BY created_at, rowid LIMIT ?', ACCOUNT, after, limit),
 

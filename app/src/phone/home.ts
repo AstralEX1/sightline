@@ -130,10 +130,10 @@ export async function renderHome(el: HTMLElement, first: boolean) {
   const nav = () => h('div', { class: 'nav nav--home' },
     h('h1', { class: 'title-large' }, 'Shortcuts'),
     h('a', {
-      class: 'new-shortcut circle-btn--glass', href: '#/shortcut/new', html: icon('plus', 16, 2.4),
+      class: 'circle-btn circle-btn--glass', href: '#/shortcut/new', html: icon('plus', 28),
       'aria-label': offline ? 'New shortcut, unavailable while the server is offline' : 'New shortcut',
       'aria-disabled': offline ? 'true' : undefined, onclick: (e: Event) => { if (offline) e.preventDefault() },
-    }, 'New shortcut'))
+    }))
   if (first && !app.tiles) {
     el.replaceChildren(nav(), h('div', { class: 'status-line' }),
       h('div', { class: 'grid' }, h('div', { class: 'tile is-loading' }), h('div', { class: 'tile is-loading' })))
@@ -156,7 +156,7 @@ export async function renderHome(el: HTMLElement, first: boolean) {
     nav(),
     statusLine(st, err),
     mine?.length ? h('div', { class: 'grid' }, ...mine.map(tile))
-      : mine ? h('p', { class: 'empty empty--hero' }, 'No shortcuts yet. Choose New shortcut or start from a template.')
+      : mine ? h('p', { class: 'empty empty--hero' }, 'No shortcuts yet. Tap + or start from a template.')
       : unreachable(err, () => void renderHome(el, true)),
     ...(templates?.length ? [h('h2', { class: 'title-section' }, 'Templates'), ...templateGroups(templates)] : []))
   if (f) el.querySelector<HTMLElement>(f)?.focus({ preventScroll: true })

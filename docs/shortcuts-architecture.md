@@ -274,7 +274,7 @@ Endpoints, by the screen that calls them. All under `/api`, behind the existing 
 | Editor | `POST /shortcuts`, `PUT /shortcuts/:id`, `DELETE /shortcuts/:id` | save a new version; invalidates outstanding proposals of the old one |
 | Editor · Apply to | `GET /positions`, `GET /orders/open`, `GET /symbols` | pickers for One position, One order, One symbol and Positions by coin (several coins and a side) (every USDT perpetual the exchange trades, sorted) |
 | Editor · title menu | `POST /shortcuts/:id/test` | a simulated alert and proposal (§9) |
-| History | `GET /history?before=` | alert lines with their last status (§9), newest first |
+| History | `GET /history?before=&beforeId=` | alert lines with their last status (§9), newest first. For the next page, pass the last alert's timestamp and ID. |
 | Settings | `GET /settings`, `PUT /settings` | Bybit status, environment, API access and withdrawals (from `/v5/user/query-api`), live trading (read-only: a server switch, off); Notifications: alerts on glasses, in-app notifications; cooldown and expiry |
 | Phone app, any screen | `GET /notifications?after=` | new alerts for the in-app banner and badge, polled while the app is open |
 | Lens · voice | `POST /voice` | PCM audio returns `{heard, answer, close}`. `answer` is yes or no for the card. `close` is a whole-phrase close from Speak. The client confirms either and does not parse the transcript. |

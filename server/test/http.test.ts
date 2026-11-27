@@ -107,6 +107,27 @@ test('History retrieves proposed terms and recorded partial execution for an exi
   assert.equal((await call('GET', '/history/unknown')).status, 404)
 })
 
+test('History continues at the last alert when a page ends within one millisecond', async () => {
+  const { call, store } = await serve()
+  const save = (id: string, createdAt: number) => store.saveAlert({
+    id, createdAt, shortcutId: 'rule', version: 1, targetKey: 'BTCUSDT', target: 'BTC',
+    title: 'Price alert', reason: 'Price changed', matched: [], priority: 'NORMAL', simulated: false,
+    delivery: { glasses: true, phone: true }, channels: [], status: 'Logged',
+  })
+  save('older', 100)
+  for (let i = 0; i < 52; i++) save(`same-${i}`, 200)
+
+  const first = await call('GET', '/history')
+  assert.equal(first.body.length, 50)
+  const cursor = first.body.at(-1)
+  assert.equal(cursor.id, 'same-2')
+  save('newer-with-same-time', 200)
+
+  const next = await call('GET', `/history?before=${cursor.createdAt}&beforeId=${cursor.id}`)
+  assert.deepEqual(next.body.map((alert: { id: string }) => alert.id), ['same-1', 'same-0', 'older'])
+  assert.deepEqual((await call('GET', '/history?before=200')).body.map((alert: { id: string }) => alert.id), ['older'])
+})
+
 test('History keeps the replacement proposal separate from the rejected execution', async () => {
   const { call, session, store, ex } = await serve()
   assert.ok(store.createShortcut({ ...draft(6), enabled: true }).ok)

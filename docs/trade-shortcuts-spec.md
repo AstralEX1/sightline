@@ -11,7 +11,7 @@ See the [phone client](../app/src/phone/), [rule catalog](../server/src/registry
 
 ## 2. Navigation
 
-No tab bar. Hash routes, one page:
+Hash routes, one page:
 
 | Route | Screen | Canvas board |
 |---|---|---|
@@ -24,7 +24,7 @@ No tab bar. Hash routes, one page:
 
 Overlays (not routes): token menu, bottom sheets (numeric, close amount, target, condition type, action type, pickers, options, rename), title menu, discard dialog, toast, in-app banner.
 
-- **New shortcut** opens `#/shortcut/new`. A template opens `#/shortcut/new?tpl=<id>` with a local editable copy. A saved shortcut opens `#/shortcut/:id`.
+- **+** opens `#/shortcut/new`. A template opens `#/shortcut/new?tpl=<id>` with a local editable copy. A saved shortcut opens `#/shortcut/:id`.
 - The bottom navigation switches between Shortcuts, History and Settings with scroll restoration. The home status line also opens Settings.
 - Leaving the editor with unsaved changes offers **Keep editing** and **Discard changes** (§7.1).
 
@@ -40,7 +40,7 @@ The app bundles the Inter variable font and Phosphor icons. Relative type sizes 
 
 ## 4. Components
 
-Home has a History button, a New shortcut button, an account status link, saved tiles and the template library. Each tile shows the action logo and a title: a custom name when set, otherwise the action title. A saved tile has a switch; a template has a plus. The body of a saved tile opens its editor. Tapping a category heading toggles the grid and stores the preference on the device.
+Home has a **+** button, an account status link, saved tiles and the template library. Each tile shows the action logo and a title: a custom name when set, otherwise the action title. A saved tile has a switch; a template has a plus. The body of a saved tile opens its editor. Tapping a category heading toggles the grid and stores the preference on the device.
 
 The editor uses editable tokens in a sentence, an Apply to disclosure, choice menus and bottom sheets. Numeric fields display units and bounds. The When/Do sentence uses menus for comparisons, single-choice sheets for metrics and actions, and a numeric sheet for quantities. Selecting a different metric clears incompatible units. An invalid choice leaves the rule editable and shows the validator’s reason beside the affected field. Sheets with pending edits use Cancel or Done.
 
@@ -77,7 +77,7 @@ Select a preset or enter a value in the displayed unit. Invalid inputs keep Done
 
 ### 5.6 New shortcut
 
-**New shortcut** opens an empty editor. **Add shortcut** validates and saves a complete rule switched off. Enable the rule in Shortcuts to start monitoring.
+**+** opens an empty editor. **Add shortcut** validates and saves a complete rule switched off. Enable the rule in Shortcuts to start monitoring.
 
 ### 5.7 Options
 

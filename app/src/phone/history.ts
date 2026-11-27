@@ -90,7 +90,7 @@ export function buildHistory(el: HTMLElement) {
   el.replaceChildren(h('header', { class: 'nav' }, h('h1', { class: 'title-large' }, 'History')), message, list, end)
   const entries = new Map<string, ReturnType<typeof row>>()
   const groups = new Map<number, { section: HTMLElement; title: HTMLElement; ul: HTMLUListElement }>()
-  let cursor: number | undefined
+  let cursor: Pick<AlertRecord, 'createdAt' | 'id'> | undefined
   let latest: Promise<void> | undefined
   let older: Promise<void> | undefined
 
@@ -127,7 +127,7 @@ export function buildHistory(el: HTMLElement) {
         for (const alert of page) upsert(alert)
         for (const [day, group] of groups) group.title.textContent = dayLabel(day)
         if (cursor === undefined && page.length) {
-          cursor = page.at(-1)!.createdAt
+          cursor = page.at(-1)
           end.hidden = false
         }
         if (!entries.size) message.replaceChildren(h('div', { class: 'empty-state' },
@@ -136,11 +136,11 @@ export function buildHistory(el: HTMLElement) {
           h('p', { class: 'empty-state__text' }, 'When one of your shortcuts fires, its alert lands here. Try one with Test alert in its menu.'),
           h('div', { class: 'empty-state__actions' }, h('a', { class: 'pill-btn', href: '#/' }, 'Your shortcuts'))))
 
-        const oldest = page.at(-1)?.createdAt ?? Infinity
         // A still-changing alert can move below the first page if a burst of new events arrives.
+        const latestIds = new Set(page.map(alert => alert.id))
         const active = /^(Waiting for a tap|Refreshed|Sending|Submitted|Partly filled|Unknown result)/
-        await Promise.all([...entries.values()].filter(item => item.createdAt < oldest && active.test(item.status))
-          .map(item => item.refreshDetails()))
+        await Promise.all([...entries].filter(([id, item]) => !latestIds.has(id) && active.test(item.status))
+          .map(([, item]) => item.refreshDetails()))
       } catch {
         if (!entries.size) message.textContent = 'Couldn’t load alerts. Retrying…'
       }
@@ -154,7 +154,7 @@ export function buildHistory(el: HTMLElement) {
       try {
         const page = await api.getHistory(cursor)
         for (const alert of page) upsert(alert, false)
-        if (page.length) cursor = page.at(-1)!.createdAt
+        if (page.length) cursor = page.at(-1)
         else end.hidden = true
       } catch {
         toast('Couldn’t load older alerts. Scroll back to try again.')
