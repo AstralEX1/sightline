@@ -6,7 +6,7 @@ The phone editor, G2 client and Bybit adapter share one rule catalog. It has 13 
 
 The landing feed uses the brand green `#0b7a3b` for the emphasized words in each heading. Position screens are the current lens frames on the same photo background as the other alerts. Each alert section shows two lens cards. The landing does not show the phone History list.
 
-The browser sandbox shows the glasses, the phone and the paper exchange on one stage. The other scenarios stay hidden until the story reaches Replay. Play dims the whole page with a fixed overlay and does not move the frames. Each stage rests before the next: switch the shortcut on, the price reaches the trigger, the glasses show the alert, then the exchange. Eligible paper cards can be answered out loud: the browser recognizes yes or no, and a spoken yes still waits five seconds. Take half is the scenario that waits for the word. The other guided scenarios press Down and Click if nobody speaks. The sandbox does not call OpenAI.
+The browser sandbox shows the glasses, the phone and the paper exchange on one stage. The other scenarios stay hidden until the story reaches Replay. Play dims the whole page with a fixed overlay and does not move the frames. Each stage rests before the next: switch the shortcut on, the price reaches the trigger, the glasses show the alert, then the exchange. Eligible paper cards can be answered out loud. The sandbox listens for a short yes or да, in English and Russian when the browser can share the microphone, and a spoken yes still waits five seconds. Take half is the scenario that waits for the word. The other guided scenarios press Down and Click if nobody speaks. The sandbox does not call OpenAI.
 
 The phone opens a template as an unsaved rule. Save it, then enable it on Home. On the lens, an actionable alert starts on Dismiss. For Open long or Open short with alternative sizes or leverages, the user picks the terms by hand and reviews the exact order. Other eligible cards support a spoken yes or no when transcription and voice answers are enabled. The microphone listens for ten seconds. A yes starts a five-second cancellation window.
 
@@ -25,6 +25,7 @@ Settings in the Even app can send a connection check to the lens in the same ses
 
 ## Verification and release history
 
+- The sandbox treats a spoken answer as a short command. The first final yes, no, or close is kept, a quiet mic cannot confirm, and “йес” or “da” still count. Typecheck passed and the sandbox voice tests passed on 27 November 2026. The live browser microphone was not exercised.
 - Play no longer shifts the sandbox. A notify alert stores its action, and a simulated Notify card does not block the real one. Typecheck passed and all 593 automated tests passed on 26 November 2026. The app, landing page, and browser sandbox built.
 - The sandbox answers eligible alerts by voice, and the glasses microphone listens for ten seconds. Typecheck passed and all 589 automated tests passed on 26 November 2026. The live browser microphone was not exercised.
 - Version 0.1.5. Speak uses the server's close reading, and closing one position says "close position". Typecheck passed and all 586 automated tests passed on 26 November 2026.
