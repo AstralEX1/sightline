@@ -26,7 +26,7 @@ Settings in the Even app can send a connection check to the lens in the same ses
 ## Verification and release history
 
 - Current Sandbox guided alerts use the simulated glasses gestures: Down → Click for trade actions, Click for Notify. Sandbox does not request microphone access. All four scenario tabs are visible, the spotlight moves between screens, and position changes receive an amber pre-change highlight held for 0.5 seconds after the change. The practice prompt replaces the stage notes when a demo finishes.
-- 27 November 2026, Sandbox UI follow-up: `git diff --check` passed. Automated tests and live browser/device walkthroughs were not run in this pass.
+- 27 November 2026, Sandbox UI follow-up: `git diff --check`, `npm run typecheck`, and `npm run build:sandbox` passed. Automated tests and live browser/device walkthroughs were not run in this pass.
 
 - Notify completes the sandbox walkthrough after OK. Manual steps follow the alert state, and Play acknowledges the rendered card when the scenario action is Notify. The scenario test covers acknowledgement on the paper exchange.
 

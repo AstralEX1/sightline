@@ -549,6 +549,8 @@ export function mountExchange(root: HTMLElement, m: Market, onChartInput: () => 
       editing = null
       setSide('Buy')
     },
+    /** Repaint after the walkthrough changes the amber position highlight. */
+    refresh() { render() },
   }
 }
 
