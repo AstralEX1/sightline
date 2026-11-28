@@ -13,9 +13,6 @@ const TIMEOUT_MS = 4000
 const VOICE_TIMEOUT_MS = 20_000 // upload plus transcription
 // Dev server only: in a build DEV is false and the bundler drops the token.
 const devToken: string = import.meta.env.DEV ? import.meta.env.VITE_APP_TOKEN ?? '' : ''
-// The public demo server's token, set only for the hosted phone page; a token typed in Settings wins.
-const demoToken: string = import.meta.env.VITE_DEMO_TOKEN ?? ''
-
 const store = createStorage(['gt.server', 'gt.token', 'gt.hints', 'gt.launches', 'gt.voice', 'gt.hiddenTemplates', 'gt.quiet'], (() => { try { return localStorage } catch { return null } })())
 /** Call once the Even bridge is up: the settings live in its storage, not in the WebView's. */
 export const loadSettings = store.load
@@ -23,7 +20,7 @@ export const loadSettings = store.load
 export function getSettings() {
   if (import.meta.env.TRADE_SHORTCUTS_SANDBOX || import.meta.env.MODE === 'paper') return { server: '', token: '' }
   const server = store.get('gt.server') || DEFAULT_SERVER
-  const token = store.get('gt.token') || (!server ? devToken : '') || (server === DEFAULT_SERVER ? demoToken : '')
+  const token = store.get('gt.token') || (!server ? devToken : '')
   return { server, token }
 }
 
@@ -64,7 +61,7 @@ async function request<T>(method: string, path: string, body?: unknown, timeoutM
   const raw = body instanceof Uint8Array
   const res = await fetch(serverAddress(server) + path, {
     method,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': raw ? 'application/octet-stream' : 'application/json' },
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), 'Content-Type': raw ? 'application/octet-stream' : 'application/json' },
     body: body === undefined ? undefined : raw ? (body as BodyInit) : JSON.stringify(body),
     signal: AbortSignal.timeout(timeoutMs),
   })

@@ -16,24 +16,24 @@ The standalone server stores the account and History in `server/data/`. Set `PAP
 | Bybit Demo or Testnet | Set `EXCHANGE=bybit` and provide the API key and secret for the chosen environment. Set `BYBIT_BASE` to `https://api-demo.bybit.com` or `https://api-testnet.bybit.com`, respectively. |
 | Voice answers | Set `OPENAI_API_KEY` on the server and enable voice answers in Settings. When a trade alert opens the G2 microphone, the server passes captured audio to OpenAI for transcription. |
 
-For a hosted paper-only backend, set `PUBLIC_DEMO=1` with `EXCHANGE=fake`. This mode disables transcription. The browser sandbox uses its own in-memory backend.
+For a hosted paper-only backend, set `PUBLIC_DEMO=1` with `EXCHANGE=fake`. The API then works without an access token, while writes remain confined to the fake exchange; voice is disabled. Do not put a server token in the public phone build. The browser sandbox uses its own in-memory backend.
 
 ## Preview on Even G2
 
 1. Pair the glasses with the Even Realities app. Sign in with your Even Hub developer account and enable Developer Mode. [Even Hub local testing guide](https://hub.evenrealities.com/docs/test/local-testing)
-2. Put the phone and computer on the same Wi-Fi. Keep `VITE_APP_TOKEN` and `VITE_DEMO_TOKEN` empty for device preview and shared builds.
+2. Put the phone and computer on the same Wi-Fi. Keep `VITE_APP_TOKEN` empty for device preview and shared builds. A private server's `APP_TOKEN` is entered on the phone; a `PUBLIC_DEMO=1` fake server needs no token.
 3. Run the configured backend and start Vite with `npm run dev -- --host`.
-4. Run `npm run qr` on macOS, or run `npx evenhub qr --url http://YOUR-LAN-IP:5173` with your computer's LAN address. Scan from the Even Realities app and enter the token under **Settings → Connection**. [Even Hub CLI QR command](https://hub.evenrealities.com/docs/cli/project#evenhub-qr)
+4. Run `npm run qr` on macOS, or run `npx evenhub qr --url http://YOUR-LAN-IP:5173` with your computer's LAN address. Scan from the Even Realities app. If you use a private server, enter its token under **Settings → Connection**; the public fake server needs none. [Even Hub CLI QR command](https://hub.evenrealities.com/docs/cli/project#evenhub-qr)
 
 ## Build an Even Hub package
 
-Run the command below with the HTTPS origin where the configured backend is reachable.
+Run the command below with the HTTPS origin where the configured backend is reachable. Device builds do not include a server token.
 
 ```sh
 npm run pack -- https://your-backend.example
 ```
 
-This creates `trade-shortcuts.ehpk` and allowlists the given origin in the manifest. To allowlist additional backends, append their HTTPS origins. The first is the default. The packer clears the hosted-page demo credential for device builds.
+This creates `trade-shortcuts.ehpk` and allowlists the given origin in the manifest. To allowlist additional backends, append their HTTPS origins. The first is the default. Private-server tokens are entered and stored on the phone.
 
 Upload the build to the existing app in Even Hub. Promote that version to **Beta**, then check that each tester who accepted the email invitation is **Active**. On the phone, open **Me → Beta tester**, install Trade Shortcuts, and enter the server access token under **Settings → Connection**. [G2 testing guide](judge-testing.md) · [Even Hub Beta Testing](https://hub.evenrealities.com/docs/test/beta-testing)
 

@@ -27,7 +27,7 @@ try {
   writeFileSync(manifestPath, JSON.stringify(manifest))
   execFileSync('npm', ['run', 'build', '--', '--outDir', dist], {
     stdio: 'inherit',
-    env: { ...process.env, VITE_TRADE_SHORTCUTS_BACKEND_ORIGIN: origin, VITE_DEMO_TOKEN: '' },
+    env: { ...process.env, VITE_TRADE_SHORTCUTS_BACKEND_ORIGIN: origin, VITE_APP_TOKEN: '' },
   })
   execFileSync('evenhub', ['pack', manifestPath, dist, '--sdk-ver', manifest.min_sdk_version, '-o', output], { stdio: 'inherit' })
 } finally {

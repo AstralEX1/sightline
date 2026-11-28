@@ -70,9 +70,9 @@ const version = (v: unknown) => {
 export type Transcribe = (pcm: Uint8Array) => Promise<string>
 type Notifier = ReturnType<typeof createNotifier>
 
-/** Every route needs the bearer token and works on the token's one account (§10). */
+/** Private routes require a bearer token; only the fake-only public demo can opt out. */
 export function createServer(d: {
-  session: Session; store: Store; token: string
+  session: Session; store: Store; token: string; publicDemo?: boolean
   notifier?: Notifier; transcribe?: Transcribe; source?: string; apiKeyInfo?: () => Promise<ApiKeyInfo>
 }): Server {
   const { session, store } = d
@@ -87,7 +87,7 @@ export function createServer(d: {
   })
 
   return createHttpServer(async (req, res) => {
-    // Any origin: the Even Hub WebView origin varies, and every route needs the token anyway.
+    // Any origin: the Even Hub WebView origin varies. Private deployments still require a token.
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type')
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
@@ -101,7 +101,7 @@ export function createServer(d: {
     }
     const path = url.pathname
     if (!path.startsWith('/api/')) return send(res, 404, { error: 'Not found' })
-    if (!authorized(req.headers.authorization, d.token)) return send(res, 401, { error: 'Unauthorized' })
+    if (!d.publicDemo && !authorized(req.headers.authorization, d.token)) return send(res, 401, { error: 'Unauthorized' })
 
     try {
       const route = `${req.method} ${path}`

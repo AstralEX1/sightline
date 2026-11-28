@@ -15,7 +15,7 @@ const btc: Position = {
   stopLoss: 60000, takeProfit: 0, positionIM: 310, leverage: 10, isolated: true, positionIdx: 0, openedAt: 0,
 }
 
-async function serve(o: { transcribe?: Transcribe; source?: string; trackClients?: boolean } = {}) {
+async function serve(o: { transcribe?: Transcribe; source?: string; trackClients?: boolean; publicDemo?: boolean } = {}) {
   const ex = new FakeExchange()
   ex.list = [structuredClone(btc)]
   const store = createStore(':memory:')
@@ -35,6 +35,13 @@ async function serve(o: { transcribe?: Transcribe; source?: string; trackClients
 
 const auth = { Authorization: 'Bearer secret' }
 
+test('a public demo allows phone API requests without a bearer token', async () => {
+  const { call } = await serve({ publicDemo: true })
+  const state = await call('GET', '/state', undefined, {})
+  assert.equal(state.status, 200)
+  assert.equal(state.body.source, '')
+})
+
 test('every route needs the token, and OPTIONS answers CORS', async () => {
   const { call, base } = await serve()
   const opt = await fetch(`${base}/state`, { method: 'OPTIONS' })
@@ -50,6 +57,7 @@ test('a short token is refused, loopback too: any web page can call localhost', 
   assert.match(tokenProblem('short') ?? '', /16/)
   assert.equal(tokenProblem('a'.repeat(16)), null)
   assert.match(tokenProblem('') ?? '', /APP_TOKEN/)
+  assert.equal(tokenProblem('', true), null)
 })
 
 test('state tells the lens what only the server knows: voice and which account', async () => {
