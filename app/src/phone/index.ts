@@ -58,7 +58,6 @@ export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<un
 
   async function route() {
     if (resolvingRoute) return
-    // First launch opens the Near liquidation · half template as an unsaved draft; #/ remains the explicit Shortcuts route.
     let hash = location.hash || START_HASH
     if (current?.hash === hash) return
     if (current?.name === 'editor') {
