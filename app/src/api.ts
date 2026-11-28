@@ -21,7 +21,7 @@ const store = createStorage(['gt.server', 'gt.token', 'gt.hints', 'gt.launches',
 export const loadSettings = store.load
 
 export function getSettings() {
-  if (import.meta.env.MODE === 'paper') return { server: '', token: '' } // the local proxy connects to the isolated paper account
+  if (import.meta.env.TRADE_SHORTCUTS_SANDBOX || import.meta.env.MODE === 'paper') return { server: '', token: '' }
   const server = store.get('gt.server') || DEFAULT_SERVER
   const token = store.get('gt.token') || (!server ? devToken : '') || (server === DEFAULT_SERVER ? demoToken : '')
   return { server, token }
