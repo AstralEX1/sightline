@@ -4,7 +4,7 @@ Trading alerts and order confirmations for [Even Realities G2](https://www.evenr
 
 Set a shortcut on your phone. The glasses show what triggered it, and the exact order, before anything is sent.
 
-**[Phone app](https://tradeshortcuts.xyz/phone/)** · **[Website demo](https://tradeshortcuts.xyz/sandbox/#liquidation)** · [Try on your G2](docs/judge-testing.md) · [Project site](https://tradeshortcuts.xyz/)
+**[Phone app](https://tradeshortcuts.xyz/phone/)** · **[Website demo](https://tradeshortcuts.xyz/sandbox/#liquidation)** · **[Watch the project pitch](https://x.com/AstralEX163/status/2126603447172841705)** · [Try on your G2](docs/judge-testing.md) · [Project site](https://tradeshortcuts.xyz/)
 
 The hosted phone page connects to the paper server with the address and token shared privately.
 
