@@ -112,9 +112,7 @@ With voice on, choose **Speak** and say “close” or “закрой” for th
 ### Demo
 
 ```bash
-git clone https://github.com/AstralEX1/trade-shortcuts.git
-cd trade-shortcuts
-npm run demo
+git clone https://github.com/AstralEX1/trade-shortcuts.git && cd trade-shortcuts && npm run demo
 ```
 
 Wait for the BTC **Near liquidation · half** alert, then confirm **Close 50%** the same way as the [website demo](#website-demo). The fill shows on the lens and in phone History.
@@ -123,7 +121,7 @@ Ctrl+C stops it. Run `npm run demo` again for a fresh demo.
 
 ### On a G2
 
-The [testing guide](docs/judge-testing.md) covers Even Hub Beta and a local QR. The [setup guide](docs/setup.md) covers a persistent server and an installable `.ehpk`.
+Run `npm run demo -- --qr` from the checkout and scan the QR in the Even Realities app. The [testing guide](docs/judge-testing.md) covers Developer Mode, the paper trade walkthrough and Even Hub Beta. The [setup guide](docs/setup.md) covers a persistent server and an installable `.ehpk`.
 
 ### Checks
 

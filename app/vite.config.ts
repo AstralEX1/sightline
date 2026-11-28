@@ -20,7 +20,12 @@ export default defineConfig(({ mode }) => ({
     port: 5173, // localhost only; `npm run dev -- --host` opens it to your Wi-Fi for real glasses
     // The app calls its own origin and Vite forwards /api, so the server stays on loopback and no CORS or whitelist is involved.
     proxy: { '/api': mode === 'paper'
-      ? { target: `http://127.0.0.1:${process.env.PORT}`, headers: { Authorization: `Bearer ${process.env.APP_TOKEN}` } }
+      ? {
+          target: `http://127.0.0.1:${process.env.PORT}`,
+          configure(proxy) {
+            proxy.on('proxyReq', request => request.setHeader('Authorization', `Bearer ${process.env.APP_TOKEN}`))
+          },
+        }
       : `http://127.0.0.1:${loadEnv(mode, envDir, '').PORT || 8787}` },
   },
   build: { target: 'esnext', outDir: 'dist', emptyOutDir: true },
