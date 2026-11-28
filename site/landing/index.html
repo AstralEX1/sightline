@@ -17,35 +17,45 @@
 body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
 .sl{--accent:#0b7a3b}
 .sl :is(h1,h2,h3) em{color:var(--accent);background:none}
-/* hero: copy left; lens screens right, laid out like an Even Hub catalogue gallery (lens over a blurred street, arrows, thumbnails) */
-.sl .i-assist{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:56px;align-items:center;height:auto;padding-block:64px}
-.sl .hcopy{max-width:none;margin:0}
-.sl .hcopy .ihead{margin-bottom:32px}
-.sl .i-assist [data-cta] .flex-1{flex-basis:200px}
-.sl .gal{display:grid;gap:12px;min-width:0}
-.sl .gal-view{position:relative;aspect-ratio:19/13;border-radius:18px;overflow:hidden;background:#141414 url(img/scene-street.jpg) center/cover}
-.sl .gal-track{display:flex;height:100%;overflow-x:auto;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;scrollbar-width:none}
-.sl .gal-track::-webkit-scrollbar,.sl .gal-th::-webkit-scrollbar{display:none}
-.sl .gal-track:focus-visible{outline:2px solid #fff;outline-offset:-4px;border-radius:18px}
-.sl .gal-track figure{flex:0 0 100%;display:grid;place-items:center;scroll-snap-align:center;scroll-snap-stop:always}
-.sl .gal-track img{width:80%;height:auto}
-.sl .gal-a{position:absolute;top:50%;width:44px;height:44px;margin-top:-22px;display:grid;place-items:center;padding:0;border:1px solid rgba(255,255,255,.16);border-radius:50%;background:rgba(255,255,255,.1);color:#fff;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
-.sl .gal-a:hover{background:rgba(255,255,255,.2)}
-.sl .gal-a.prev{left:12px}
-.sl .gal-a.next{right:12px}
-.sl .g2note{position:absolute;right:16px;bottom:14px;color:rgba(255,255,255,.7);font-size:12.5px;font-weight:600;pointer-events:none}
-.sl .gal-th{position:relative;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
-.sl .gal-th button{flex:1 0 64px;aspect-ratio:2/1;padding:0;border:0;border-radius:8px;overflow:hidden;background:#141414 url(img/scene-street.jpg) center/cover;cursor:pointer}
-.sl .gal-th button img{opacity:.4}
-.sl .gal-th button:hover img{opacity:.75}
-.sl .gal-th button[aria-current]{outline:2px solid #fff;outline-offset:-2px}
-.sl .gal-th button[aria-current] img{opacity:1}
-.sl .gal-th button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.sl .gal-th img{display:block;width:100%;height:100%;object-fit:contain}
-@media (prefers-reduced-motion:no-preference){.sl .gal-track,.sl .gal-th{scroll-behavior:smooth}}
-@media (hover:none){.sl .gal-a{display:none}}
-@media (max-width:980px){.sl .i-assist{grid-template-columns:minmax(0,1fr);gap:28px;padding-block:32px}}
-@media (max-width:760px){.sl .i-assist{padding-block:20px}.sl .gal-view{border-radius:14px}.sl .gal-track img{width:92%}.sl .gal-th button{flex-basis:88px}}
+/* Hero only: a phone rule turns into a decision on G2. */
+.sl .hero .i-assist{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:48px;align-items:center;height:auto;min-height:0;padding:48px;background:#fff}
+.sl .hero .hcopy{max-width:none;margin:0}
+.sl .hero .hcopy .ihead{margin-bottom:24px}
+.sl .hero .i-assist h1{font-size:60px;line-height:1;letter-spacing:-.04em;font-weight:600;text-wrap:balance}
+.sl .hero .isub{max-width:43ch;margin-top:24px;font-size:18px;line-height:28px}
+.sl .hero .i-assist [data-cta] .flex-1{flex-basis:200px}
+.sl .hero .hero-context{font-size:14px;line-height:20px;color:var(--ink-2);margin-top:12px}
+.sl .hero .hero-story{min-width:0;display:grid;gap:12px;padding:24px;background:#f3f4f6;border:1px solid var(--line);border-radius:24px}
+.sl .hero .hero-story-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;line-height:16px;font-weight:600;color:var(--ink-2)}
+.sl .hero .hero-story-head strong{color:var(--ink);font-size:14px;line-height:20px}
+.sl .hero .hero-step{display:flex;align-items:center;gap:8px;font-size:14px;line-height:20px;font-weight:700;color:var(--ink)}
+.sl .hero .hero-step b{display:grid;place-items:center;width:24px;height:24px;border:1px solid var(--line-2);border-radius:50%;font-size:12px;line-height:16px;color:var(--accent);background:white;flex:none}
+.sl .hero .hero-rule{display:grid;gap:12px;padding:16px;border:1px solid var(--line);border-radius:16px;background:#fff;box-shadow:var(--sh-1)}
+.sl .hero .hero-rule-title{display:flex;align-items:center;gap:8px;font-size:16px;line-height:24px;font-weight:700}
+.sl .hero .hero-action-icon{display:grid;place-items:center;flex:none;width:32px;height:32px;border-radius:8px;background:#F56472;color:#fff}
+.sl .hero .hero-action-icon img{width:24px;height:24px}
+.sl .hero .hero-rule-scope{margin-left:auto;color:var(--ink-2);font-size:12px;line-height:16px;font-weight:600;text-align:right}
+.sl .hero .hero-rule-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.sl .hero .hero-rule-field{padding:12px;background:#f3f4f6;border-radius:8px;font-size:14px;line-height:20px;color:var(--ink)}
+.sl .hero .hero-rule-field span{display:block;color:var(--ink-2);font-size:12px;line-height:16px;font-weight:600;margin-bottom:4px}
+.sl .hero .hero-rule-field strong{font-weight:700}
+.sl .hero .hero-connector{display:flex;align-items:center;gap:8px;padding-left:12px;color:var(--accent);font-size:12px;line-height:16px;font-weight:700}
+.sl .hero .hero-signal{position:relative;display:block;width:2px;height:24px;background:#a6d6b7;margin-inline:4px;flex:none}
+.sl .hero .hero-signal:after{content:"";position:absolute;bottom:0;left:-3px;width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.sl .hero .hero-lens{position:relative;overflow:hidden;border-radius:16px;background:#141414;border:1px solid #222}
+.sl .hero .hero-lens img{display:block;width:100%;height:auto;aspect-ratio:2/1;object-fit:contain}
+.sl .hero .hero-lens figcaption{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:12px 16px;color:#e4eee7;background:#181818;font-size:12px;line-height:16px;font-weight:600}
+.sl .hero .hero-lens figcaption strong{color:#b8efc8;font-weight:700}
+@keyframes hero-signal-pass{from{transform:translateY(-16px);opacity:.35}to{transform:translateY(0);opacity:1}}
+@keyframes hero-decision-arrive{from{transform:translateY(8px);opacity:.78}to{transform:translateY(0);opacity:1}}
+@media (prefers-reduced-motion:no-preference){
+.sl .hero .hero-signal:after{animation:hero-signal-pass .7s cubic-bezier(.22,1,.36,1) .35s both}
+.sl .hero .hero-lens{animation:hero-decision-arrive .65s cubic-bezier(.22,1,.36,1) .75s both}
+}
+@media (max-width:1200px){.sl .hero .i-assist{padding:32px;gap:32px}.sl .hero .i-assist h1{font-size:48px}}
+@media (max-width:980px){.sl .hero .i-assist{grid-template-columns:minmax(0,1fr);gap:32px}.sl .hero .hero-story{width:100%;max-width:640px;justify-self:center}}
+@media (max-width:760px){.sl .hero .i-assist{padding:24px 16px;gap:24px}.sl .hero .i-assist h1{font-size:36px;line-height:40px}.sl .hero .hcopy .ihead{margin-bottom:16px}.sl .hero .isub{margin-top:16px;font-size:16px;line-height:24px}.sl .hero .hero-story{padding:16px;gap:8px;border-radius:16px}.sl .hero .hero-rule{padding:12px}.sl .hero .hero-lens figcaption{padding:8px 12px}}
+@media (max-width:380px){.sl .hero .hero-rule-field{padding:8px}.sl .hero .hero-rule-fields{grid-template-columns:minmax(0,1fr)}}
 /* Base UI island (src/islands.jsx): the FAQ is an accordion */
 .sl .qa-i{border-bottom:1px solid var(--line-2)}
 .sl .qa-h{font:inherit;letter-spacing:normal}
@@ -135,28 +145,31 @@ body{font-family:Manrope,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
   <div class="island i-assist" id="isAssist">
     <div class="hcopy">
       <div class="ihead"><span class="lg"><img src="img/symbol-on-dark.svg" alt=""></span><span class="pn">Trading assistant for Even G2</span></div>
-      <h1>Your positions, <em>watched.</em></h1>
-      <p class="isub">Trading rules you build on your phone, answered on your glasses. Set and forget: one rule covers every Bybit position you open, today’s and tomorrow’s, and puts the exact trade on the lens for your tap.</p>
+      <h1>Manage trades.<br><em>Stay in the moment.</em></h1>
+      <p class="isub">Set trading shortcuts on your phone. Get market alerts and confirm proposed trades on your Even G2 glasses.</p>
       <div class="cta-slot" data-cta="hero"><div class="max-w-[500px]"><div class="flex flex-wrap gap-2.5"><div class="min-w-0 flex-1 md:min-w-[235px]"><div class="w-full"><a href="sandbox/" class="flex h-12 w-full items-center justify-center gap-2.5 rounded-full px-4 text-[15px] font-semibold transition-colors duration-500 md:h-[52px] md:px-6 bg-ink text-white shadow-soft"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>Try in browser</a></div></div><a href="https://github.com/AstralEX1/trade-shortcuts/blob/main/docs/judge-testing.md#local-qr-on-your-own-g2" target="_blank" rel="noopener" class="flex h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-full border border-ink/10 bg-white px-4 text-[15px] font-semibold text-ink-muted transition-colors hover:text-ink md:h-[52px] md:min-w-[235px] md:gap-2.5 md:px-5 md:text-[15px]"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 14h4M3 14l1.5-6M21 14l-1.5-6"/></svg>Set up on G2</a></div><a href="https://x.com/AstralEX163/status/2126603447172841705" target="_blank" rel="noopener noreferrer" class="mt-2 inline-flex min-h-[44px] items-center text-sm font-semibold text-ink-muted underline decoration-ink/20 underline-offset-4 transition-colors hover:text-ink">Watch the project pitch <span class="ml-1" aria-hidden="true">↗</span></a></div></div>
+      <p class="hero-context">No account needed for the browser demo. Bybit Demo and Testnet only.</p>
     </div>
-    <div class="gal" role="region" aria-roledescription="carousel" aria-label="Screens through the G2 lens">
-      <div class="gal-view">
-        <div class="gal-track" tabindex="0">
-          <figure data-caption="Open positions · G2 lens"><img src="img/hud/positions.png" alt="Main menu showing open BTC, ETH and SOL positions with their sizes" width="576" height="288"></figure>
-          <figure data-caption="Position detail · G2 lens"><img src="img/hud/position-detail.png" alt="BTC position detail showing size, leverage, PnL, liquidation distance and a price chart" width="576" height="288"></figure>
-          <figure><img src="img/hud/liq.png" alt="Liquidation alert: BTC long 3.2% from liquidation, Close 50% ready to confirm" width="1152" height="576" loading="lazy"></figure>
-          <figure><img src="img/hud/loss.png" alt="Loss alert" width="1152" height="576" loading="lazy"></figure>
-          <figure><img src="img/hud/nearstop.png" alt="Stop loss alert" width="1152" height="576" loading="lazy"></figure>
-          <figure><img src="img/hud/profit.png" alt="Profit alert" width="1152" height="576" loading="lazy"></figure>
-          <figure><img src="img/hud/tp.png" alt="Take profit alert" width="1152" height="576" loading="lazy"></figure>
-          <figure><img src="img/hud/plevel.png" alt="Lens alert: BTC crossed above 90,000. OK" width="1152" height="576" loading="lazy"></figure>
-          <figure><img src="img/hud/filled.png" alt="Order fill alert: SOL long filled, Set take profit ready to confirm" width="1152" height="576" loading="lazy"></figure>
+    <div class="hero-story" role="group" aria-label="Example shortcut from phone to Even G2">
+      <div class="hero-story-head"><strong>Near liquidation</strong><span>Example · Paper trading</span></div>
+      <div class="hero-step"><b aria-hidden="true">1</b> Set your rule on the phone</div>
+      <div class="hero-rule" aria-label="Illustrated phone rule">
+        <div class="hero-rule-title">
+          <span class="hero-action-icon"><img src="img/ic/close.svg" alt="" width="24" height="24"></span>
+          Close position
+          <span class="hero-rule-scope">All positions</span>
         </div>
-        <button type="button" class="gal-a prev" aria-label="Previous screen"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
-        <button type="button" class="gal-a next" aria-label="Next screen"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
-        <span class="g2note">Open positions · G2 lens</span>
+        <div class="hero-rule-fields">
+          <div class="hero-rule-field"><span>When</span>Liquidation distance <strong>below 5%</strong></div>
+          <div class="hero-rule-field"><span>Do</span>Propose closing <strong>50%</strong></div>
+        </div>
       </div>
-      <div class="gal-th"></div>
+      <div class="hero-connector"><span class="hero-signal" aria-hidden="true"></span> Condition met</div>
+      <div class="hero-step"><b aria-hidden="true">2</b> Review the trade on Even G2</div>
+      <figure class="hero-lens">
+        <img src="img/cards/liq.jpg" alt="Simulated G2 lens: BTC long is 3.2% from liquidation. Dismiss or close 50%, 0.025 BTC. Close is selected for review." width="1152" height="576" fetchpriority="high">
+        <figcaption><span>G2 lens · Simulator frame</span><strong>Selected action · Tap to confirm</strong></figcaption>
+      </figure>
     </div>
   </div>
 </section>
@@ -360,30 +373,6 @@ var RM=matchMedia("(prefers-reduced-motion: reduce)").matches, $=function(s){ret
     if(e.classList.contains("nums"))nums.forEach(function(x){var t0=performance.now();(function f(now){var r=Math.min(1,(now-t0)/900);x.b.textContent=Math.round(x.v*(1-Math.pow(1-r,3))).toLocaleString("en-US")+x.suf;if(r<1)requestAnimationFrame(f)})(t0)});
   }
   function sweep(){all.forEach(function(e){if(!e.classList.contains("in")&&e.getBoundingClientRect().top<.92*innerHeight){show(e);io.unobserve(e)}})}
-})();
-
-// hero gallery: swipe or scroll the lens screens; arrows step one screen (wrapping), thumbnails jump to one
-(function(){
-  var t=$(".gal-track");if(!t)return;
-  var g=t.closest(".gal"),row=g.querySelector(".gal-th"),caption=g.querySelector(".g2note"),n=t.children.length,cur=-1;
-  var th=[].map.call(t.children,function(f,i){
-    var b=document.createElement("button"),im=f.querySelector("img");
-    b.type="button";b.setAttribute("aria-label",im.alt);
-    b.innerHTML='<img src="'+im.getAttribute("src")+'" alt="">';
-    b.onclick=function(){go(i)};row.appendChild(b);return b;
-  });
-  function go(i){t.scrollTo({left:((i+n)%n)*t.clientWidth})}
-  function sync(){
-    if(!t.clientWidth)return;
-    var i=Math.max(0,Math.min(n-1,Math.round(t.scrollLeft/t.clientWidth)));if(i===cur)return;
-    if(cur>=0)th[cur].removeAttribute("aria-current");
-    cur=i;th[i].setAttribute("aria-current","true");
-    caption.textContent=t.children[i].dataset.caption||"Through the G2 lens";
-    row.scrollTo({left:th[i].offsetLeft-(row.clientWidth-th[i].offsetWidth)/2});
-  }
-  g.querySelector(".prev").onclick=function(){go(cur-1)};
-  g.querySelector(".next").onclick=function(){go(cur+1)};
-  t.addEventListener("scroll",sync,{passive:true});sync();
 })();
 
 // alert cards: float while visible; on phones, tap or swipe swaps the two cards
