@@ -12,7 +12,6 @@
 import { screen } from './src/view.ts'
 import { chartPng, titlePng } from './src/icons.ts'
 
-// ── Scenarios: edit or add here. Prices are made from `shape` around `last`; levels are % from the last price. ──
 // shape: wave | up | down | flat | spike | crash | noise ; minutes: how many 1-min candles (60 = full hour)
 const SCENARIOS = [
   { name: 'BTC long, stop 1% below, entry inside the hour', coin: 'BTC', side: 'Buy', last: 61960, shape: 'wave', amp: 0.004, entry: 0.2, stop: -1.0, liq: -8 },

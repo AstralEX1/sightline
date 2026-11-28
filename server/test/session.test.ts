@@ -720,8 +720,6 @@ test('closing a proposal does nothing once a tap has authorized it', async () =>
   assert.equal(store.proposal(p.id)!.status, 'AUTHORIZED')
 })
 
-// ---- Closes, order age, funding, volume ----
-
 const slOrder = { orderId: 'sl1', orderLinkId: '', symbol: 'BTCUSDT', side: 'Sell' as const, orderType: 'Market', price: 0, qty: 0.05, leavesQty: 0.05, reduceOnly: true, stopOrderType: 'StopLoss', triggerBy: 'LastPrice', triggerPrice: 60000, positionIdx: 0, status: 'Untriggered' }
 
 test('a position closed by its stop loss alerts once after it is gone, split fills included', async () => {
@@ -796,8 +794,6 @@ test('volume spike: the last 5 minutes against the hour before, read from last-p
   await ticks()
   assert.equal(store.history()[0].reason, 'volume 4.0× in 5 min')
 })
-
-// ── Receipts, starter rules ────────────────────────────────
 
 test('a done write gets a receipt from the position Bybit shows after it, on the next poll, in History too', async () => {
   const { s, store, ticks } = setup() // template 7: add 50 USDT margin at liquidation distance 2.5%

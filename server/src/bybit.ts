@@ -38,7 +38,6 @@ const rejected = (message: string) => Object.assign(new Error(message), { name: 
 
 // Bybit runs nothing on a rate limit (HTTP 403 "access too frequent", 429, or retCode 10006), so a resend is safe for writes too.
 // The waits stay short: a card tap must still answer within the app's 4 s request timeout.
-// shortcut: fixed waits, not X-Bapi-Limit-Reset-Timestamp; read that header if the limit keeps hitting
 const RATE_LIMIT_WAITS_MS = [250, 750]
 const RATE_LIMITED_HTTP = [403, 429]
 const RATE_LIMITED_CODE = 10006
@@ -170,7 +169,6 @@ export function createBybit(o: {
     },
 
     async openOrders(): Promise<Order[]> {
-      // shortcut: first page only (50 orders), page with the cursor if a trader keeps more open
       const rows = await list('/v5/order/realtime', { settleCoin: 'USDT', limit: 50 })
       return rows.map(r => ({
         orderId: String(r.orderId),

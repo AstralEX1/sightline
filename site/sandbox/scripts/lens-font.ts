@@ -53,7 +53,6 @@ const sheetPage = (sheet: string[][], textColor: number) => ({ textObject: [{
   content: '\n' + sheet.map(l => GAP + l.join(GAP)).join('\n\n\n'), // indented: a glyph may reach left of its pen
 }] })
 
-// ── simulator ──
 let job: object = {}
 let shown: (s: { seq: number; error: string }) => void = () => {}
 const vite = await createServer({
@@ -317,8 +316,6 @@ export const MENU_AT = ${JSON.stringify(MENU)}
 export const MISSING = ${JSON.stringify([...missing].join(''))}
 `)
 console.log(`${glyphs.length} glyphs, ${menuGlyphs.length} menu glyphs, ${shade.length} shades, atlas ${ATLAS_W}×${atlasH}, checked against ${placed.length * TONES + menuShots.length + 1} screenshots`)
-
-// ── PNG, just the kinds used here ──
 
 /** 8-bit RGBA, as the simulator writes it. */
 function decodePng(buf: Buffer): { w: number; h: number; rgba: Uint8Array } {

@@ -1,9 +1,3 @@
-/**
- * Shortcut rule model, catalog, compatibility matrices and templates: the single source the phone editor,
- * the validator and the engine read. Spec: docs/shortcuts-architecture.md §4–§7, §12.
- * Named ShortcutRule here while server/src/types.ts still has the old voice `Shortcut` (removed in step 2).
- */
-
 /** Decimal string as the phone sends it: "30", "0.5". */
 export type Dec = string
 
@@ -109,24 +103,21 @@ export const priority = (r: Pick<ShortcutRule, 'conditions'>) => (r.conditions.i
 /** Actions that change the exchange. Everything but Notify needs a tap on the glasses. */
 export const isTrade = (a: ActionType) => a !== 'NOTIFY'
 
-// Rows C1–C13, columns A1–A10, copied from §7. Y allowed, G allowed with runtime guards, N unsupported.
 const CONDITION_ACTION_ROWS = [
-  'YGGGGGGGGY', // PRICE
-  'YGGGGGGGGY', // PRICE_CHANGE
-  'YGGGGNNGNY', // PROFIT
-  'YGGGGNNGNY', // LOSS: Increase averages down, behind a stop and Once
-  'YGGNGNNNNY', // NEAR_LIQUIDATION
-  'YGNNGNNNNY', // NEAR_SL
-  'YGGGGNNNNY', // NEAR_TP
-  'GGGGGNNNNY', // ORDER_FILLED
-  'GGGGGNNNYY', // ORDER_PARTIAL
-  'YGGGGNNNNY', // VOLUME_SPIKE: a spike has no direction, so nothing that opens or adds; not on orders
-  'YNNNNNNNNY', // FUNDING: close before paying it, or just say so
-  'NNNNNNNNYY', // ORDER_STALE: cancel the order or say so
-  'NNNNNNNNNY', // POSITION_CLOSED: the position may be gone, so only a notice
+  'YGGGGGGGGY',
+  'YGGGGGGGGY',
+  'YGGGGNNGNY',
+  'YGGGGNNGNY',
+  'YGGNGNNNNY',
+  'YGNNGNNNNY',
+  'YGGGGNNNNY',
+  'GGGGGNNNNY',
+  'GGGGGNNNYY',
+  'YGGGGNNNNY',
+  'YNNNNNNNNY',
+  'NNNNNNNNYY',
+  'NNNNNNNNNY',
 ]
-// Symmetric, rows and columns C1–C13. B and/or, O or only, A and only, V same metric (checked in validate), - never
-// (no common scope, or a close, which leaves no position for the other condition to read).
 const STACKING_ROWS = [
   'VBBBBBBAABBB-',
   'BVBBBBBAABBB-',

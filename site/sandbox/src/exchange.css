@@ -27,7 +27,6 @@
 .bx .ex-down { color: var(--bx-down); }
 .bx .ex-warn { color: var(--bx-alert); font-weight: 700; }
 
-/* ── Charts | Trade, the pair ── */
 .bx .ex-views { display: grid; grid-template-columns: 1fr 1fr; flex: none; height: 30px; margin: 16px 14px 0; border-radius: 4px; background: var(--bx-card); }
 .bx .ex-views button { border: 0; border-radius: 4px; background: transparent; color: var(--bx-text2); font-size: 13px; font-weight: 600; }
 .bx .ex-views button[aria-selected="true"] { background: var(--bx-active); color: var(--bx-text); }
@@ -42,7 +41,6 @@
 
 .bx .ex-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
-/* ── Charts ── */
 .bx .ex-last { padding: 2px 14px 0; font-size: 24px; line-height: 32px; font-weight: 700; letter-spacing: -.01em; }
 .bx .ex-tf { padding: 2px 14px 6px; color: var(--bx-text3); font-size: 12.5px; }
 .bx .ex-tf b { color: var(--bx-text); font-weight: 700; }
@@ -60,15 +58,12 @@
 .bx .ex-quick:active { transform: scale(.98); }
 .bx .ex-cta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: none; padding: 8px 14px 18px; }
 
-
-/* ── buttons ── */
 .bx .ex-btn { width: 100%; height: 40px; border: 0; border-radius: 4px; color: #fff; font-size: 14.5px; font-weight: 600; transition: filter .15s, transform .12s ease; }
 .bx .ex-btn:hover { filter: brightness(1.08); }
 .bx .ex-btn:active { transform: scale(.98); }
 .bx .ex-btn-buy { background: var(--bx-up); }
 .bx .ex-btn-sell { background: var(--bx-down); }
 
-/* ── Trade: order form ── */
 .bx .ex-trade { overflow: auto; overscroll-behavior: contain; padding: 10px 14px 16px; scrollbar-width: none; }
 .bx .ex-trade::-webkit-scrollbar { display: none; }
 .bx .ex-form { display: grid; gap: 8px; }
@@ -111,7 +106,6 @@
 .bx .ex-err { margin: 0; color: var(--bx-down); font-size: 12px; }
 .bx .ex-err:empty { display: none; }
 
-/* ── positions and orders ── */
 .bx .ex-tabs { display: flex; gap: 20px; margin-top: 16px; border-bottom: 1px solid var(--bx-card); }
 .bx .ex-tabs button { margin-bottom: -1px; padding: 8px 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--bx-text3); font-size: 13.5px; font-weight: 600; }
 .bx .ex-tabs button[aria-selected="true"] { color: var(--bx-text); border-color: var(--bx-accent); }

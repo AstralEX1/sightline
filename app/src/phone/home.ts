@@ -8,7 +8,7 @@ import { app, h, isOffline, toast } from './ui.ts'
 let templates: TemplateTile[] | null = null
 let offline = false
 let lastKey = ''
-/** shortcut: the server does not report whether the lens is open, so G2 follows main.ts's #glasses text; read lens-seen from /settings once it is sent */
+
 const g2 = () => (document.getElementById('glasses')?.textContent === 'Glasses connected' ? 'G2' : 'G2 off')
 
 function statusLine(s: api.SettingsPage | null, err: unknown) {
