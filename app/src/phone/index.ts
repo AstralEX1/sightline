@@ -16,6 +16,7 @@ const HOME_MS = 10_000
 const OFFLINE_MS = 5000
 const ALERTS_MS = 5000
 const BANNER_MS = 8000
+const START_HASH = '#/shortcut/new?tpl=tpl_6'
 
 export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<unknown>; onConnect: () => void; onDisplayChange: () => void }): void {
   const root = o.root
@@ -57,7 +58,7 @@ export function startPhonePage(o: { root: HTMLElement; settingsReady: Promise<un
 
   async function route() {
     if (resolvingRoute) return
-    let hash = location.hash || '#/'
+    let hash = location.hash || START_HASH
     if (current?.hash === hash) return
     if (current?.name === 'editor') {
       resolvingRoute = true
