@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "demo": "node scripts/demo.mjs",
+    "lint:comments": "node scripts/lint-comments.mjs",
     "server": "node --env-file-if-exists=.env server/src/main.ts",
     "dev": "vite --config app/vite.config.ts",
     "sim": "evenhub-simulator http://localhost:5173",

@@ -97,7 +97,6 @@ new ResizeObserver(([entry]) => {
   phone.style.height = `${height / scale}px`
 }).observe(phone.parentElement!)
 
-// ── tabs ──
 let tab = TABS[0]
 let phase: Phase = 'move'
 let gliding = false
@@ -332,7 +331,6 @@ function canPlay(at: Phase = phase) {
   return at === 'move' && !!enabledShortcutId
 }
 
-// ── current step and playback ──
 function syncPlayback() {
   play.hidden = !tab.on && phase !== 'move'
   play.disabled = story === 'idle' && !canPlay()
@@ -648,7 +646,6 @@ setInterval(async () => {
   } catch { /* the tab is being replaced */ }
 }, 400)
 
-// ── glasses input: buttons, the lens itself, the keyboard ──
 for (const b of gestureButtons) {
   b.onmousedown = e => e.preventDefault() // keep focus off the button, so Enter and the arrows still reach the glasses
   b.onclick = () => press(b.dataset.gesture as Gesture)

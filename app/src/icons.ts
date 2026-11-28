@@ -63,7 +63,7 @@ async function draw(w: number, h: number, paint: (g: CanvasRenderingContext2D) =
   g.fillRect(0, 0, w, h)
   paint(g)
   if (typeof CompressionStream === 'function') return encodePng4(gray4Levels(g.getImageData(0, 0, w, h).data), w, h)
-  const blob = await new Promise<Blob | null>(r => canvas.toBlob(r, 'image/png')) // shortcut: an older WebView sends the 8-bit PNG
+  const blob = await new Promise<Blob | null>(r => canvas.toBlob(r, 'image/png'))
   if (!blob) throw new Error('no PNG')
   return new Uint8Array(await blob.arrayBuffer())
 }

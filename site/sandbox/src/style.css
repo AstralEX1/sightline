@@ -87,7 +87,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .secondary:active { background: #dfe1e5; }
 .secondary:disabled { color: #51555c; cursor: default; }
 
-/* The opening in the scrim travels between screens instead of jumping to the next one. */
 .spotlight-mask {
   position: fixed; z-index: 20; top: 0; left: 0; width: 1px; height: 1px; pointer-events: none; opacity: 0;
   border-radius: 12px; background: transparent; box-shadow: 0 0 0 200vmax rgba(13, 15, 19, .52);

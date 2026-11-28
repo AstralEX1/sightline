@@ -1,8 +1,3 @@
-/**
- * Execution service (§9 "Execution path"): the only module that writes to the exchange.
- * confirm(proposalId, idempotencyKey) consumes the proposal before any await, serializes per symbol and position,
- * rechecks fresh state, submits once and reconciles from fills and positions. No blind retries.
- */
 import type { Exchange, Execution, ExecutionStatus, Fill, Position, Proposal, ProposalStatus, Terms } from './types.ts'
 import type { Store } from './store.ts'
 import { executionLine } from './proposals.ts'
@@ -173,7 +168,6 @@ export function createExecutor(o: { ex: Exchange; store: Store; clock: () => num
      * an unknown cancel from the order's status. `fills` are the recent fills, already deduped: a repeat changes nothing.
      */
     async reconcile(fills: Fill[], positions: Position[]): Promise<void> {
-      // shortcut: scans every open execution each tick; age old ones out if the list grows
       for (let e of store.openExecutions()) {
         if (!RESOLVED.includes(e.status)) continue // still in flight: run() owns it
         const t = e.terms
@@ -220,7 +214,6 @@ export function createExecutor(o: { ex: Exchange; store: Store; clock: () => num
           else if (o.status === 'Filled' || o.status === 'Rejected') save(e, 'REJECTED', `order ${o.status.toLowerCase()} before the cancel`)
           else save(e, 'REJECTED', 'order is still open on Bybit')
         } else if (t.type !== 'notify' && !positions.some(p => p.symbol === t.symbol && p.positionIdx === t.positionIdx)) {
-          // shortcut: an unknown add margin has no record to look up, so it blocks until the position closes; compare positionIM if it happens
           save(e, 'REJECTED', 'position closed, result unknown')
         }
       }

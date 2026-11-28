@@ -6,7 +6,7 @@
 | --- | --- |
 | Name | Trade Shortcuts |
 | Package ID | `com.tradeshortcuts.g2` |
-| Version | 0.1.5 |
+| Version | 0.1.7 |
 | Language | English |
 | Suggested tags | Trading, Bybit, Alerts |
 
@@ -29,9 +29,9 @@ When a price reaches your target or a position gets close to liquidation, see th
 
 **Get started.** Try the paper scenario in your browser or connect the plugin to a Trade Shortcuts server with a paper account, Bybit Demo Trading or Bybit Testnet. Alerts appear while the plugin is open on G2. Optional voice replies require server transcription.
 
-## What’s new in 0.1.5
+## What’s new in 0.1.7
 
-Improved recognition of spoken close requests from the position screen. Choose **Speak** and say “close” to open a proposal with **Dismiss** selected.
+Order results now retain partial fills when the remaining quantity is cancelled, and equal-priority alerts follow the intended action order. Phone layouts handle narrow screens and larger text better; browser Sandbox confirmations use gestures.
 
 ## Assets and permissions
 

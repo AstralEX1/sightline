@@ -1,5 +1,5 @@
-/* Phone page tokens and components, docs/trade-shortcuts-spec.md §3–§4. Sizes in rem so text size settings scale the layout.
-   shortcut: lives here, not in app/index.html as §9 says, while index.html holds another session's work; move it there then. */
+
+
 @font-face { font-family: Inter; font-weight: 100 900; font-style: normal; font-display: swap; src: url('./fonts/InterVariable.woff2') format('woff2'); } /* Inter latin subset, SIL OFL; bundled, the WebView may be offline */
 :root {
   color-scheme: light dark;

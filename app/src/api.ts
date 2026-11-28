@@ -79,12 +79,10 @@ const glassesClient = Array.from(crypto.getRandomValues(new Uint8Array(16)), b =
 const glassesTestPath = `/api/glasses-test/${glassesClient}`
 type Reply = { ok: boolean; message: string }
 
-// ── lens ──────────────────────────────────────────────────
 export const getState = (lensOpen = false) => request<ServerState>('GET', lensOpen ? `/api/state?client=lens&device=${glassesClient}` : '/api/state')
 export const startGlassesTest = () => request<{ id: string; remainingMs: number }>('POST', glassesTestPath, {})
 export const getGlassesTest = (testId: string) => request<{ acknowledged: boolean }>('GET', `${glassesTestPath}/${id(testId)}`)
 export const acknowledgeGlassesTest = (testId: string) => request<{ acknowledged: boolean }>('POST', `${glassesTestPath}/${id(testId)}`, {})
-/** The only call that trades. A resend with the same key gets the same execution back, never a second order. */
 export const confirm = (proposalId: string, idempotencyKey: string) =>
   request<Reply & { executionId?: string; status?: ExecutionStatus }>('POST', `/api/proposals/${id(proposalId)}/confirm`, { idempotencyKey })
 export const dismiss = (proposalId: string, by: 'glasses' | 'app' = 'glasses') => request<Reply>('POST', `/api/proposals/${id(proposalId)}/dismiss`, { by })
@@ -102,7 +100,6 @@ export const command = (kind: Command, position?: { symbol: string; positionIdx:
 /** Transcript plus the two readings the server made. `answer` is yes or no. `close` is a whole-phrase close from Speak. */
 export const voice = (pcm: Uint8Array) => request<{ heard: string; answer: 'yes' | 'no' | null; close: { all: boolean; coin?: string } | null }>('POST', '/api/voice', pcm, VOICE_TIMEOUT_MS)
 
-// ── phone: shortcuts, editor, history, settings ───────────
 export type Catalog = ReturnType<typeof catalog>
 /** A Shortcuts tile: the rule plus its derived title and When/Do summaries (home shows logo + title). */
 export type Tile = ShortcutRule & { title: string; summary: string; doSummary: string }

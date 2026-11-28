@@ -60,8 +60,6 @@ export function wrap(text: string, max: number): string[] {
   return out
 }
 
-// ── the font ──
-
 type Font = { w: number; shade: Uint8Array }
 const GLYPH = new Map([...CHARS].map((ch, i) => [ch, i]))
 let font: Promise<Font> | undefined
@@ -76,8 +74,6 @@ async function loadFont(): Promise<Font> {
   const px = g.getImageData(0, 0, img.width, img.height).data
   return { w: img.width, shade: Uint8Array.from({ length: img.width * img.height }, (_, i) => Math.round(px[i * 4] / 17)) }
 }
-
-// ── LVGL's drawing, as the simulator runs it ──
 
 /** LVGL's blend of `src` over `dst` at opacity `mix` 0–255, in 8-bit grey. */
 const blend = (dst: number, src: number, mix: number) => (mix >= 253 ? src : mix <= 2 ? dst : (src * mix + dst * (255 - mix)) >> 8)
@@ -163,10 +159,6 @@ function radiusMask(buf: Uint8Array, ax: number, ay: number, [x1, y1, x2, y2]: n
   else { buf.fill(0, clamp(right + n, 0, len)); buf.fill(0, 0, clamp(left - n + 1, 0, len)) }
 }
 
-// ── the contextual menu: the simulator draws it over the whole page, in a font of its own ──
-// shortcut: exact for the app's own labels (lens-font.ts measures their kerning). Other labels get the menu glyphs
-// without kerning, so letters sit 1–3 px apart too wide; the panel width is approximate past ~140 px, and labels too
-// wide for it are not cut to "..." as the simulator does. Measure more if the app's menu grows.
 const MENU = { rows: 5, pad: 86, minW: 228, maxW: 292, radius: 6 }
 const MENU_GLYPH = new Map([...MENU_CHARS].map((ch, i) => [ch, i]))
 /** The pen's step from `a` to `b` in a menu label: the measured pair, else `a`'s advance before a space (past ASCII, the text font's). */

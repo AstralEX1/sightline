@@ -1,7 +1,5 @@
-/**
- * Rule → the editor's sentence (spec §5.2, arch §4 table) and the short strings around it. Pure, no DOM.
- * shortcut: the sentence words live here because GET /catalog sends labels only, move them to the catalog when it sends words.
- */
+
+
 import { ACTION_TITLE, SCOPE_LABEL, type Action, type Condition, type Scope, type ShortcutRule, type Target, type Template } from '../../../server/src/registry.ts'
 import { coin, fmt } from '../../../server/src/format.ts'
 

@@ -121,7 +121,6 @@ export function sheet(o: {
  * spring back. `close` returns false when the sheet keeps itself open (unsaved edits): then it springs back too.
  */
 function drag(el: HTMLElement, scrim: HTMLElement, close: () => void | false) {
-  // shortcut: a CSS curve stands in for the velocity-handoff spring of §3.5. Reduced motion keeps the 1:1 follow (direct manipulation is not decoration); its CSS drops the spring-back slide
   let y0 = 0, dy = 0, on = false
   let pts: { t: number; y: number }[] = [] // the last ~100 ms of moves, for the release velocity
   const grip = (e: PointerEvent) => (e.target as HTMLElement).closest('.sheet__grabber, .sheet__nav') && !(e.target as HTMLElement).closest('button')

@@ -82,7 +82,6 @@ export class FakeExchange implements Exchange {
 
   async slots(symbol: string) {
     const own = this.list.filter(p => p.symbol === symbol).map(p => ({ positionIdx: p.positionIdx, leverage: p.leverage, size: p.size }))
-    // shortcut: a flat symbol is one one-way slot, no empty hedge slots; add a hedge flag when a test needs one
     return this.read(own.length ? own : [{ positionIdx: 0, leverage: this.leverage[symbol] ?? LEVERAGE, size: 0 }])
   }
 
@@ -121,7 +120,6 @@ export class FakeExchange implements Exchange {
     if (!(qty > 0)) throw rejected(`Bad order qty ${o.qty}`)
     const p = this.find(o.symbol, o.positionIdx)
     if (o.reduceOnly && (!p || p.side === o.side || qty > p.size)) throw rejected('Reduce-only order would not reduce the position (Bybit 110017)')
-    // shortcut: an opposite order without reduceOnly (one-way netting) is not modelled; add it when the server sends one
     if (!o.reduceOnly && p && p.side !== o.side) throw new Error('FakeExchange: opposite order without reduceOnly')
     const price = this.last(o.symbol)
     this.calls.push({ type: 'order', ...o })
