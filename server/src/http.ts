@@ -70,7 +70,6 @@ const version = (v: unknown) => {
 export type Transcribe = (pcm: Uint8Array) => Promise<string>
 type Notifier = ReturnType<typeof createNotifier>
 
-/** Private routes require a bearer token; only the fake-only public demo can opt out. */
 export function createServer(d: {
   session: Session; store: Store; token: string; publicDemo?: boolean
   notifier?: Notifier; transcribe?: Transcribe; source?: string; apiKeyInfo?: () => Promise<ApiKeyInfo>
@@ -87,7 +86,6 @@ export function createServer(d: {
   })
 
   return createHttpServer(async (req, res) => {
-    // Any origin: the Even Hub WebView origin varies. Private deployments still require a token.
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type')
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
