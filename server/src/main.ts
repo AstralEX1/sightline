@@ -19,15 +19,15 @@ function fail(message: string): never {
 }
 
 const token = env.APP_TOKEN ?? ''
+const mode = env.EXCHANGE === 'bybit' ? 'bybit' : 'fake'
+const publicDemo = env.PUBLIC_DEMO === '1'
 const port = Number(env.PORT) || 8787
 const host = env.HOST || '127.0.0.1'
-const problem = tokenProblem(token)
+const problem = tokenProblem(token, publicDemo)
 if (problem) fail(problem)
 
 let ex: Exchange
 let source = 'Demo data' // shown on the phone page, so nobody mistakes the demo for an account
-const mode = env.EXCHANGE === 'bybit' ? 'bybit' : 'fake'
-const publicDemo = env.PUBLIC_DEMO === '1'
 if (publicDemo && mode !== 'fake') fail('PUBLIC_DEMO requires EXCHANGE=fake.')
 if (mode === 'bybit') {
   const base = env.BYBIT_BASE || 'https://api-testnet.bybit.com'
@@ -76,7 +76,7 @@ setInterval(tick, TICK_MS)
 
 const openaiKey = publicDemo ? undefined : env.OPENAI_API_KEY
 createServer({
-  session, store, token, notifier, source,
+  session, store, token, publicDemo, notifier, source,
   apiKeyInfo: () => ex.apiKeyInfo(),
   transcribe: openaiKey ? pcm => transcribe(pcm, openaiKey) : undefined,
 }).listen(port, host, () => console.log(`Trade Shortcuts server on http://${host}:${port} (exchange: ${mode}, voice: ${openaiKey ? 'on' : 'off'})`))

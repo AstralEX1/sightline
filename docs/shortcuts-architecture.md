@@ -299,7 +299,7 @@ The Bybit client uses authenticated REST and accepts the HTTPS demo and testnet 
 | Key permissions | `/v5/user/query-api` |
 | Order and position changes | `/v5/order/create`, `/v5/order/cancel`, `/v5/position/trading-stop`, `/v5/position/add-margin`, `/v5/position/set-leverage` |
 
-For a hosted paper-only server, `PUBLIC_DEMO=1` requires the fake adapter and disables transcription. The phone’s normal state poll does not mark a lens as present. A connected client with the lens in use sends `GET /state?client=lens`.
+For a hosted paper-only server, `PUBLIC_DEMO=1` permits anonymous API requests, requires the fake adapter, and disables transcription. Private deployments continue to require their bearer token. The phone’s normal state poll does not mark a lens as present. A connected client with the lens in use sends `GET /state?client=lens`.
 
 The symbol picker pages through tradable USDT perpetuals. The account open-order snapshot currently reads the first page. [Adapter](../server/src/bybit.ts)
 
