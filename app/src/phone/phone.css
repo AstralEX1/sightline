@@ -161,9 +161,9 @@ body:has(> .phone) { margin: 0; max-width: none; padding: 0; }
 
 /* Editor */
 .phone .screen--editor:not([hidden]) { display: flex; flex-direction: column;
-  min-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
-.phone .editor-fields { container-type: inline-size; padding-bottom: 16px; }
-.phone .editor-actions { position: sticky; z-index: 2; bottom: 0; display: grid; margin-top: auto;
+  height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); min-height: 0; overflow: hidden; }
+.phone .editor-fields { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; container-type: inline-size; padding-bottom: 16px; }
+.phone .editor-actions { position: sticky; z-index: 2; bottom: 0; display: grid; flex: none; margin-top: auto;
   padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); background: var(--bg); }
 .phone .editor-actions .pill-btn { justify-content: center; font-weight: 650; text-align: center; }
 .phone .editor-actions__note { color: var(--text-2); font-size: .8125rem; line-height: 1.125rem; text-align: center; }

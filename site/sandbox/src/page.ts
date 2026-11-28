@@ -7,7 +7,6 @@ import './style.css'
 import './sl/playback/buttons.css'
 import './sl/playback/buttons.js'
 import { CARD_SETTLE_MS, type RenderedAlert } from '../../../app/src/view.ts'
-import { TEMPLATES } from '../../../server/src/registry.ts'
 import type { AlertRecord, Position } from '../../../server/src/types.ts'
 import { createBackend, type Backend } from './backend.ts'
 import { mountExchange } from './exchange.ts'
@@ -44,15 +43,13 @@ const host = createHost(lens, () => say('The glasses would ask to close the app 
 const market = new Market()
 let backend: Backend | undefined
 let run = 0
-const guideDefaults = new Map([
-  ['gt.hiddenTemplates', [...new Set(TEMPLATES.map(t => t.category))].join(',')],
-])
+const guideDefaults = new Map([['gt.hiddenTemplates', '']])
 
 // What app-host.ts finds in the phone frame's parent.
 const sandbox = {
   attach(w: Window, id: number) {
     if (id !== run || !backend) return false
-    host.attach(w, () => id === run, tab.on ? guideDefaults : undefined)
+    host.attach(w, () => id === run, guideDefaults)
     w.addEventListener('trade-shortcuts:rendered-alert', e => {
       if (id !== run) return
       renderedAlertId = (e as CustomEvent<RenderedAlert | null>).detail?.id
@@ -79,8 +76,10 @@ const panel = $('panel')
 const play = $<HTMLButtonElement>('scenario-play')
 const restart = $<HTMLButtonElement>('restart')
 const result = $('result')
+const nextPrompt = $('next-prompt')
 const board = $('exchange')
 type View = 'phone' | 'chart' | 'glasses'
+const spotlightMask = $('spotlight-mask')
 const narrow = matchMedia('(max-width: 760px)')
 const viewButtons = Array.from($('views').querySelectorAll<HTMLButtonElement>('button'))
 const gestureButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-gesture]'))
@@ -108,6 +107,9 @@ let currentAlertId: string | undefined
 let renderedAlertId: string | undefined
 let notifyAlert = false
 let positionBefore: Position | undefined
+let activeAlert: AlertRecord | undefined
+let positionChangePending = false
+let positionChangeHandledAlertId: string | undefined
 let completionPauseUntil = 0
 /** A line under the current step: why it is still there. */
 let note = ''
@@ -115,10 +117,15 @@ let note = ''
 let missed = ''
 let status = ''
 
-const STAGE_PAUSE_MS = 1800
+const STAGE_PAUSE_MS = 2800
 const RULE_REVIEW_MS = STAGE_PAUSE_MS
+const SHORTCUTS_REVIEW_MS = 2500
+const GLASSES_FOCUS_DELAY_MS = 500
 const GLIDE_MS = 4200
 const GESTURE_BEAT_MS = 2400
+const POSITION_PREVIEW_MS = 500
+const POSITION_AFTER_CHANGE_MS = 500
+const POSITION_CHANGE_TIMEOUT_MS = 8000
 
 function updateViewButtons() {
   const active = narrow.matches ? panel.dataset.view : panel.dataset.side
@@ -130,22 +137,69 @@ function selectView(target: View) {
   updateViewButtons()
   updateGestureHint()
 }
-for (const button of viewButtons) button.onclick = () => selectView(button.dataset.view as View)
+function spotlightScreen(target: View) {
+  return target === 'glasses'
+    ? $('glasses-panel').querySelector<HTMLElement>('.sim')
+    : target === 'phone'
+      ? $('rule-panel').querySelector<HTMLElement>('.phone')
+      : $('market-panel').querySelector<HTMLElement>('.phone')
+}
+function moveSpotlight(target: View) {
+  const screen = spotlightScreen(target)
+  const rect = screen?.getBoundingClientRect()
+  if (!screen || !rect || !rect.width || !rect.height) return
+  spotlightMask.style.left = `${rect.left}px`
+  spotlightMask.style.top = `${rect.top}px`
+  spotlightMask.style.width = `${rect.width}px`
+  spotlightMask.style.height = `${rect.height}px`
+  spotlightMask.style.borderRadius = getComputedStyle(screen).borderRadius
+}
+for (const button of viewButtons) button.onclick = () => {
+  const target = button.dataset.view as View
+  if (tab.on && document.body.classList.contains('is-shade')) spotlight(target)
+  else selectView(target)
+}
 narrow.addEventListener('change', updateViewButtons)
 
 function spotlight(target: View) {
   if (!tab.on) return
+  if (spotlightHideTimer) clearTimeout(spotlightHideTimer)
   selectView(target)
   panel.dataset.spotlight = target
   document.body.dataset.spotlight = target
   document.body.classList.add('is-shade')
+  const entering = spotlightMask.hidden
+  spotlightMask.hidden = false
+  moveSpotlight(target)
+  if (entering) {
+    requestAnimationFrame(() => {
+      if (document.body.classList.contains('is-shade') && panel.dataset.spotlight === target) spotlightMask.classList.add('is-visible')
+    })
+  } else spotlightMask.classList.add('is-visible')
 }
 
+let spotlightHideTimer: ReturnType<typeof setTimeout> | undefined
 function releaseSpotlight() {
   document.body.classList.remove('is-shade')
   delete panel.dataset.spotlight
   delete document.body.dataset.spotlight
+  spotlightMask.classList.remove('is-visible')
+  if (spotlightHideTimer) clearTimeout(spotlightHideTimer)
+  const fadeMs = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 220
+  spotlightHideTimer = setTimeout(() => {
+    if (!document.body.classList.contains('is-shade')) spotlightMask.hidden = true
+    spotlightHideTimer = undefined
+  }, fadeMs)
 }
+
+window.addEventListener('resize', () => {
+  const target = panel.dataset.spotlight as View | undefined
+  if (target) moveSpotlight(target)
+})
+window.addEventListener('scroll', () => {
+  const target = panel.dataset.spotlight as View | undefined
+  if (target) moveSpotlight(target)
+}, { passive: true })
 
 function spotlightAlert() {
   if (!tab.on || phase !== 'answer' || !currentAlertId || currentAlertId !== renderedAlertId || panel.dataset.spotlight === 'glasses') return
@@ -167,8 +221,7 @@ function say(text: string) {
 
 const buttons = TABS.map((t, i) => {
   const b = el('button', { type: 'button', id: `tab-${t.id}`, className: 'tab', role: 'tab' } as Partial<HTMLButtonElement>,
-    el('span', { className: 'tab-n' }, String(i + 1)),
-    el('span', { className: 'tab-t' }, el('b', {}, t.title), el('small', {}, t.sub)))
+    el('span', { className: 'tab-t' }, el('b', {}, t.title)))
   b.setAttribute('aria-controls', 'panel')
   b.onmousedown = e => e.preventDefault() // a click must not keep focus here: Enter and the arrows belong to the glasses
   b.onclick = () => void open(t)
@@ -203,8 +256,12 @@ async function open(t: Tab, autoplay = false) {
   guidedStep = undefined
   notifyAlert = false
   positionBefore = undefined
+  activeAlert = undefined
+  positionChangePending = false
+  positionChangeHandledAlertId = undefined
   result.hidden = true
   result.textContent = ''
+  nextPrompt.hidden = true
   stepsEl.replaceChildren()
   completionPauseUntil = 0
   delete board.dataset.light
@@ -284,18 +341,31 @@ function syncPlayback() {
 function renderSteps() {
   syncPlayback()
   restart.hidden = tab.on
+  if (!nextPrompt.hidden) {
+    stepsEl.replaceChildren()
+    result.hidden = true
+    result.textContent = ''
+    noteEl.textContent = ''
+    updateGestureHint()
+    return
+  }
   const answer = phase === 'answer'
+  const positionActionStage = tab.on && (positionChangePending
+    || (!!currentAlertId && positionChangeHandledAlertId === currentAlertId))
   const step = phase === 'done' ? tab.steps.length - 1
+    : positionActionStage ? Math.min(3, tab.steps.length - 1)
     : phase === 'executing' && tab.on ? 3
     : answer || phase === 'missed' || phase === 'executing' ? 2
     : guidedStep ?? (story === 'idle' || phase === 'add' ? 0 : 1)
   const lastVisibleStep = Math.min(step, tab.steps.length - 1)
-  const title = phase === 'missed' ? 'Scenario ended'
+  const title = positionActionStage ? tab.steps[step]
+    : phase === 'missed' ? 'Scenario ended'
     : answer && notifyAlert ? 'Alert on the glasses'
     : answer ? 'Confirm on the glasses'
     : step === 0 && phase === 'move' && story === 'running' && tab.on ? 'Rule enabled'
     : tab.steps[step]
-  const detail = phase === 'missed' ? missed : phase === 'executing' ? status : note
+  const detail = positionChangePending ? 'Position highlighted before the change'
+    : phase === 'missed' ? missed : phase === 'executing' ? status : note
 
   for (let index = 0; index <= lastVisibleStep; index++) {
     let li = stepsEl.querySelector<HTMLLIElement>(`li[data-step-index="${index}"]`)
@@ -315,12 +385,12 @@ function renderSteps() {
     li.querySelector('.step-title')!.textContent = index === step ? title : tab.steps[index]
 
     let noteEl = li.querySelector<HTMLElement>('.step-note')
-    if (current && (detail || answer)) {
+    if (current && (detail || (answer && !positionActionStage))) {
       if (!noteEl) {
         noteEl = el('span', { className: 'step-note' })
         li.append(noteEl)
       }
-      noteEl.id = answer ? 'gesture-hint' : ''
+      noteEl.id = answer && !positionActionStage ? 'gesture-hint' : ''
       noteEl.textContent = detail
     } else noteEl?.remove()
   }
@@ -351,6 +421,8 @@ async function playMove() {
         if (id !== run) return
         back.click()
         if (!await until(id, () => !!toggle())) return
+        await sleep(reduceMotion ? 0 : SHORTCUTS_REVIEW_MS, id)
+        if (id !== run) return
       }
       if (toggle()?.getAttribute('aria-checked') === 'false') {
         toggle()?.click()
@@ -372,7 +444,7 @@ async function playMove() {
       guidedStep = 2
       spotlight('glasses')
       renderSteps()
-      await sleep(STAGE_PAUSE_MS, id)
+      await sleep(GLASSES_FOCUS_DELAY_MS, id)
       if (id !== run) return
     }
     server.hold(false)
@@ -424,6 +496,74 @@ function targetPosition(alert: AlertRecord) {
   if (kind === 'pos') return market.positions.find(p => p.symbol === symbol && String(p.positionIdx) === index)
 }
 
+type PositionField = 'size' | 'stops'
+
+function positionActionField(alert: AlertRecord): PositionField | undefined {
+  if (alert.actionType === 'CLOSE_POSITION') return 'size'
+  if (alert.actionType === 'MOVE_SL' || alert.actionType === 'SET_SL') return 'stops'
+}
+
+function positionChanged(alert: AlertRecord, field: PositionField) {
+  const before = positionBefore
+  if (!before) return false
+  const after = targetPosition(alert)
+  return field === 'size'
+    ? before.size !== (after?.size ?? 0)
+    : !after || before.stopLoss !== after.stopLoss
+}
+
+function armPositionChange(alert: AlertRecord, field: PositionField) {
+  if (!tab.on || !positionBefore || alert.id !== currentAlertId) return false
+  positionChangePending = true
+  positionChangeHandledAlertId = undefined
+  guidedStep = 3
+  spotlight('chart')
+  board.dataset.light = field
+  board.dataset.position = String(positionBefore.positionIdx)
+  exchange.refresh()
+  renderSteps()
+  return true
+}
+
+function finishPositionChange(alertId: string, changed: boolean) {
+  const spotlightStillBelongsToAction = !currentAlertId || currentAlertId === alertId
+  positionChangePending = false
+  positionChangeHandledAlertId = changed && currentAlertId === alertId ? alertId : undefined
+  delete board.dataset.light
+  delete board.dataset.position
+  exchange.refresh()
+  if (spotlightStillBelongsToAction) releaseSpotlight()
+  renderSteps()
+}
+
+async function previewPositionChange(alert: AlertRecord, field: PositionField) {
+  const id = run
+  if (!armPositionChange(alert, field)) return pressNow('tap')
+
+  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+  if (id !== run) return
+  await sleep(POSITION_PREVIEW_MS, id)
+  if (id !== run) return
+  if (currentAlertId !== alert.id || phase === 'missed' || phase === 'done') {
+    finishPositionChange(alert.id, positionChanged(alert, field))
+    return
+  }
+
+  if (!positionChanged(alert, field) && phase === 'answer') pressNow('tap')
+  const reached = await until(id,
+    () => positionChanged(alert, field) || phase === 'missed' || phase === 'done',
+    POSITION_CHANGE_TIMEOUT_MS)
+  if (id !== run) return
+  const changed = reached && positionChanged(alert, field)
+  if (changed) {
+    exchange.refresh()
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    if (id !== run) return
+    await sleep(POSITION_AFTER_CHANGE_MS, id)
+  }
+  if (id === run) finishPositionChange(alert.id, changed)
+}
+
 function showResult(alert: AlertRecord) {
   const before = positionBefore
   const after = targetPosition(alert)
@@ -434,11 +574,9 @@ function showResult(alert: AlertRecord) {
     : stops ? `Stop loss · ${price(before.stopLoss)} → ${price(after.stopLoss)} USDT`
     : alert.status
   result.hidden = false
-  if (after && (size || stops)) {
-    board.dataset.light = size ? 'size' : 'stops'
-    board.dataset.position = String(after.positionIdx)
-  }
+  const changedPosition = !!(size || stops)
   if (tab.on && (size || stops)) selectView('chart')
+  return changedPosition
 }
 
 /** Follow the real alert and execution so the UI shows a result only once confirmed. */
@@ -457,7 +595,8 @@ setInterval(async () => {
     const next = scenarioPhase(!!enabledShortcutId, alert?.status)
     const latest = alert?.status ?? ''
     const alertChanged = alert?.id !== currentAlertId
-    if (phase === 'executing' && next === 'done' && performance.now() < completionPauseUntil) return
+    activeAlert = alert
+    if (phase === 'executing' && next === 'done' && !positionChangePending && performance.now() < completionPauseUntil) return
     if (next === phase && latest === status && !alertChanged) {
       if (story === 'idle') play.disabled = !canPlay()
       return
@@ -469,6 +608,7 @@ setInterval(async () => {
     notifyAlert = alert?.actionType === 'NOTIFY'
     if (next !== 'move') note = ''
     if (alert && alertChanged) {
+      positionChangeHandledAlertId = undefined
       const position = targetPosition(alert)
       positionBefore = position && { ...position }
     }
@@ -478,23 +618,28 @@ setInterval(async () => {
     }
     if (next === 'executing' && entered && tab.on) {
       spotlight('chart')
-      completionPauseUntil = performance.now() + STAGE_PAUSE_MS
+      if (!positionChangePending) completionPauseUntil = performance.now() + STAGE_PAUSE_MS
     }
     if (alert && (next === 'done' || next === 'missed') && entered) {
       market.floor = 0
       story = 'done'
       guidedStep = undefined
       if (next === 'done') {
-        showResult(alert)
+        const changedPosition = showResult(alert)
+        const positionChangeManaged = positionChangePending
+          || (changedPosition && positionChangeHandledAlertId === alert.id)
+        nextPrompt.hidden = !tab.on
         if (tab.on) {
-          spotlight(alert.actionType === 'NOTIFY' ? 'glasses' : 'chart')
-          const left = completionPauseUntil ? Math.max(0, completionPauseUntil - performance.now()) : STAGE_PAUSE_MS
-          if (left) window.setTimeout(() => { if (id === run) releaseSpotlight() }, left)
-          else releaseSpotlight()
+          if (!positionChangeManaged) {
+            spotlight(alert.actionType === 'NOTIFY' ? 'glasses' : 'chart')
+            const left = Math.max(completionPauseUntil ? completionPauseUntil - performance.now() : 0, STAGE_PAUSE_MS)
+            if (left) window.setTimeout(() => { if (id === run) releaseSpotlight() }, left)
+            else releaseSpotlight()
+          }
         } else releaseSpotlight()
       } else {
         missed = alert.status
-        releaseSpotlight()
+        if (!positionChangePending) releaseSpotlight()
       }
     }
     renderSteps()
@@ -538,11 +683,24 @@ async function answerGlasses(id: number, alertId: string, notify: boolean) {
   }
   if (current() && readyToTap()) press('tap')
 }
-function press(g: Gesture) {
+function pressNow(g: Gesture) {
   host.gesture(g)
   const b = document.querySelector(`[data-gesture="${g}"]`)
   b?.classList.add('pressed')
   setTimeout(() => b?.classList.remove('pressed'), 160)
+}
+function press(g: Gesture) {
+  if (positionChangePending) return
+  const choice = selectedChoice()
+  if (g === 'tap' && !notifyAlert && activeAlert && activeAlert.id === currentAlertId
+    && /^>\s*(Close|Move|Set)\b/i.test(choice)) {
+    const field = positionActionField(activeAlert)
+    if (field) {
+      void previewPositionChange(activeAlert, field)
+      return
+    }
+  }
+  pressNow(g)
 }
 $('lens').onclick = () => press('tap')
 const KEYS: Record<string, Gesture> = { ArrowUp: 'up', ArrowDown: 'down', Enter: 'tap', ' ': 'tap', Escape: 'double', Backspace: 'double', m: 'menu' }

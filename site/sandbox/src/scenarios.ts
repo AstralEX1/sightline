@@ -58,7 +58,7 @@ export const TABS: Tab[] = [
     steps: ['Set up the shortcut and switch it on', 'The trigger fires', 'The alert arrives on the glasses', 'The close is sent, then the exchange fills it'],
   },
   {
-    id: 'volume', title: 'Volume spike', sub: 'Notify on a volume spike and a 5% price rise', on: true,
+    id: 'volume', title: 'Volume alert', sub: 'Notify on a volume spike and a 5% price rise', on: true,
     template: {
       id: 'sandbox-volume', category: 'Market', title: 'Notify', sub: 'Volume spike + price up 5%',
       draft: {

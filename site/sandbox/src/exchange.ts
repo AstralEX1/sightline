@@ -542,6 +542,7 @@ export function mountExchange(root: HTMLElement, m: Market, onChartInput: () => 
       editing = null
       setSide('Buy')
     },
+    refresh() { render() },
   }
 }
 

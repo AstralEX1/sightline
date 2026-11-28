@@ -6,7 +6,7 @@ The phone editor, G2 client and Bybit adapter share one rule catalog. It has 13 
 
 The landing feed uses the brand green `#0b7a3b` for the emphasized words in each heading. Position screens are the current lens frames on the same photo background as the other alerts. Each alert section shows two lens cards. The landing does not show the phone History list.
 
-The browser sandbox shows the glasses, the phone and the paper exchange on one stage. The other scenarios stay hidden until the story reaches Replay. Play dims the whole page with a fixed overlay and does not move the frames. Each stage rests before the next: switch the shortcut on, the price reaches the trigger, the glasses show the alert, then the exchange. Eligible paper cards can be answered out loud. The sandbox listens for a short yes or да, in English and Russian when the browser can share the microphone, and a spoken yes still waits five seconds. Take half is the scenario that waits for the word. The other guided scenarios press Down and Click if nobody speaks. The sandbox does not call OpenAI.
+The browser sandbox keeps all four scenario tabs and shows the templates in the phone preview. Its guided flow uses glasses gestures without voice input. The spotlight travels between the phone, market and glasses, and an amber frame marks a position before it changes and stays briefly afterward. When a demo ends, the stage notes clear and the practice prompt remains. The phone editor keeps its Add shortcut action visible while the fields scroll. The sandbox does not call OpenAI.
 
 The phone opens a template as an unsaved rule. Save it, then enable it on Home. On the lens, an actionable alert starts on Dismiss. For Open long or Open short with alternative sizes or leverages, the user picks the terms by hand and reviews the exact order. Other eligible cards support a spoken yes or no when transcription and voice answers are enabled. The microphone listens for ten seconds. A yes starts a five-second cancellation window.
 
@@ -25,7 +25,8 @@ Settings in the Even app can send a connection check to the lens in the same ses
 
 ## Verification and release history
 
-- Current Sandbox guided alerts use the simulated glasses gestures: Down → Click for trade actions, Click for Notify. Sandbox does not request microphone access.
+- Current Sandbox guided alerts use the simulated glasses gestures: Down → Click for trade actions, Click for Notify. Sandbox does not request microphone access. All four scenario tabs are visible, the spotlight moves between screens, and position changes receive an amber pre-change highlight held for 0.5 seconds after the change. The practice prompt replaces the stage notes when a demo finishes.
+- 27 November 2026, Sandbox UI follow-up: `git diff --check`, `npm run typecheck`, and `npm run build:sandbox` passed. Automated tests and live browser/device walkthroughs were not run in this pass.
 
 - Notify completes the sandbox walkthrough after OK. Manual steps follow the alert state, and Play acknowledges the rendered card when the scenario action is Notify. The scenario test covers acknowledgement on the paper exchange.
 
